@@ -1273,7 +1273,7 @@ export default function ProfilePage() {
                       ) : (
                         <div className="border-t border-gray-50 px-4 py-2 bg-amber-50">
                           <p className="text-xs text-amber-700">
-                            For last-minute changes, call us at <a href="tel:(626) 621-4646</a>
+                            For last-minute changes, call us at <a href="tel:6266214646" className="underline">(626) 621-4646</a>
                           </p>
                         </div>
                       )}
