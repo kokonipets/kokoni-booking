@@ -1735,7 +1735,7 @@ export default function DeskAdmin() {
     <div className="min-h-screen bg-white flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <Image src="/logo.png" alt="Kokoni" width={90} height={90} className="mb-4" />
+          <Image src="/logo.png" alt="Kokoni" width={140} height={140} className="mb-4" />
           <h1 className="text-xl font-bold text-gray-800">Admin Dashboard</h1>
           <p className="text-sm text-gray-400">Enter your PIN to continue</p>
         </div>
