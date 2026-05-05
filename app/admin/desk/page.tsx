@@ -3276,13 +3276,13 @@ export default function DeskAdmin() {
         <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {!isBookMode && <div className={`w-64 bg-sky-700 flex flex-col min-h-screen fixed left-0 top-0 bottom-0 z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+      {!isBookMode && <div className={`w-64 bg-sky-50 border-r border-sky-100 flex flex-col min-h-screen fixed left-0 top-0 bottom-0 z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         {/* Facility header */}
-        <div className="px-4 py-4 border-b border-white/10">
+        <div className="px-4 py-4 border-b border-sky-100">
           <div className="flex items-center gap-3">
             <Image src="/logo.png" alt="Kokoni" width={40} height={40} className="rounded-full shrink-0" />
             <div className="min-w-0">
-              <p className="text-white font-bold text-sm leading-tight truncate">Kokoni Pet Grooming Salon</p>
+              <p className="text-sky-900 font-bold text-sm leading-tight truncate">Kokoni Pet Grooming Salon</p>
               <span className="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full font-medium">Active</span>
             </div>
           </div>
@@ -3293,7 +3293,7 @@ export default function DeskAdmin() {
           {NAV.filter(({ key }) => !isBookMode || key === 'calendar').map(({ key, label, icon }) => (
             key === 'settings' ? (
               <a key={key} href="/admin/settings"
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left relative text-sky-100 hover:bg-white/5 hover:text-white`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left relative text-sky-600 hover:bg-sky-100 hover:text-sky-900`}
               >
                 <span className="text-base leading-none w-5 text-center">{icon}</span>
                 <span>{label}</span>
@@ -3302,11 +3302,11 @@ export default function DeskAdmin() {
             <button key={key} onClick={() => { setTab(key); setSidebarOpen(false) }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left relative ${
                 tab === key
-                  ? 'bg-white/10 text-white'
-                  : 'text-sky-100 hover:bg-white/5 hover:text-white'
+                  ? 'bg-sky-200 text-sky-900'
+                  : 'text-sky-600 hover:bg-sky-100 hover:text-sky-900'
               }`}
             >
-              {tab === key && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-rose-400 rounded-r-full" />}
+              {tab === key && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-sky-500 rounded-r-full" />}
               <span className="text-base leading-none w-5 text-center">{icon}</span>
               <span className="flex-1">{label}</span>
               {key === 'requests' && pendingCount > 0 && (
