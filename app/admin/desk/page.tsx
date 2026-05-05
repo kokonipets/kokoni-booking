@@ -3333,22 +3333,22 @@ export default function DeskAdmin() {
 
           {/* Kiosk link */}
           <a href="/kiosk" target="_blank" rel="noopener noreferrer"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
             onClick={() => setSidebarOpen(false)}
           >
             <span className="text-base leading-none w-5 text-center">🖥️</span>
             <span className="flex-1">Kiosk Screen</span>
-            <span className="text-sky-400 text-xs">↗</span>
+            <span className="text-sky-400 text-xs font-bold">↗</span>
           </a>
 
           {/* Front Desk launcher */}
           <a href="/front-desk" target="_blank" rel="noopener noreferrer"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
             onClick={() => setSidebarOpen(false)}
           >
             <span className="text-base leading-none w-5 text-center">🏠</span>
             <span className="flex-1">Front Desk</span>
-            <span className="text-sky-400 text-xs">↗</span>
+            <span className="text-sky-400 text-xs font-bold">↗</span>
           </a>
 
           {/* Chat — two-way SMS with customers */}
@@ -3357,7 +3357,7 @@ export default function DeskAdmin() {
           {/* Time Tracking */}
           <a
             href="/admin/timesheet"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
             onClick={() => setSidebarOpen(false)}
           >
             <span className="text-base leading-none w-5 text-center">🕐</span>
@@ -3366,12 +3366,12 @@ export default function DeskAdmin() {
           <a
             href="/clock"
             target="_blank"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
             onClick={() => setSidebarOpen(false)}
           >
             <span className="text-base leading-none w-5 text-center">⏱️</span>
             <span className="flex-1">Clock Kiosk</span>
-            <span className="text-sky-400 text-xs">↗</span>
+            <span className="text-sky-400 text-xs font-bold">↗</span>
           </a>
 
           {/* Income Manager */}
@@ -3379,12 +3379,12 @@ export default function DeskAdmin() {
             href="/income-manager.html"
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
             onClick={() => setSidebarOpen(false)}
           >
             <span className="text-base leading-none w-5 text-center">💰</span>
             <span className="flex-1">Income Manager</span>
-            <span className="text-sky-400 text-xs">↗</span>
+            <span className="text-sky-400 text-xs font-bold">↗</span>
           </a>
 
           {/* Stubs for future features */}
@@ -3392,7 +3392,7 @@ export default function DeskAdmin() {
             { label: 'Resources',          icon: '📚' },
           ].map(({ label, icon }) => (
             <button key={label}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-200 opacity-50 cursor-not-allowed text-left"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-400 opacity-50 cursor-not-allowed text-left"
               title="Coming soon"
             >
               <span className="text-base leading-none w-5 text-center">{icon}</span>
@@ -3402,14 +3402,14 @@ export default function DeskAdmin() {
         </nav>
 
         {/* User footer */}
-        <div className="px-4 py-3 border-t border-white/10">
+        <div className="px-4 py-3 border-t border-sky-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-purple-400 flex items-center justify-center text-white text-sm font-bold">S</div>
-              <span className="text-white text-sm font-medium">Semira Huang</span>
+              <div className="w-8 h-8 rounded-full bg-sky-400 flex items-center justify-center text-white text-sm font-bold">S</div>
+              <span className="text-sky-800 text-sm font-medium">Semira Huang</span>
             </div>
             <button onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false) }}
-              className="text-sky-200 hover:text-white text-xs">Sign out</button>
+              className="text-sky-400 hover:text-sky-700 text-xs">Sign out</button>
           </div>
         </div>
       </div>}
