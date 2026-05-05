@@ -154,7 +154,7 @@ export async function notifyClientConfirmed(data: {
   date: string
   time: string
 }) {
-  const body = `Appointment Confirmed!\nHi ${data.clientName}! ${data.petName}'s appointment is confirmed for ${data.date} at ${data.time}.\nKokoni Pet Grooming Salon - (949) 508-9155\nReply STOP to opt out.`
+  const body = `Appointment Confirmed!\nHi ${data.clientName}! ${data.petName}'s appointment is confirmed for ${data.date} at ${data.time}.\nKokoni Pet Grooming Salon - (626) 621-4646\nReply STOP to opt out.`
   return sendSMS(data.to, body, 'notifyClientConfirmed')
 }
 
@@ -166,7 +166,7 @@ export async function notifyClientRescheduled(data: {
   date: string
   time: string
 }) {
-  const body = `Appointment Rescheduled!\nHi ${data.clientName}! ${data.petName}'s appointment has been moved to ${data.date} at ${data.time}.\nQuestions? Call us at (949) 508-9155\nKokoni Pet Grooming Salon\nReply STOP to opt out.`
+  const body = `Appointment Rescheduled!\nHi ${data.clientName}! ${data.petName}'s appointment has been moved to ${data.date} at ${data.time}.\nQuestions? Call us at (626) 621-4646\nKokoni Pet Grooming Salon\nReply STOP to opt out.`
   return sendSMS(data.to, body, 'notifyClientRescheduled')
 }
 
@@ -176,7 +176,7 @@ export async function notifyClientGroomingReady(data: {
   clientName: string
   petName: string
 }) {
-  const body = `Hi ${data.clientName}! 🐾 Great news — ${data.petName} is all done and ready to be picked up! We can't wait to see you!\nKokoni Pet Grooming Salon — (949) 508-9155\nReply STOP to opt out.`
+  const body = `Hi ${data.clientName}! 🐾 Great news — ${data.petName} is all done and ready to be picked up! We can't wait to see you!\nKokoni Pet Grooming Salon — (626) 621-4646\nReply STOP to opt out.`
   return sendSMS(data.to, body, 'notifyClientGroomingReady')
 }
 
@@ -194,6 +194,6 @@ export async function sendAppointmentReminder(data: {
     asian_fusion: 'Asian Fusion Style',
   }
   const svcLabel = serviceLabels[data.service] ?? data.service
-  const body = `Hi ${data.clientName}! 🐾 Reminder: ${data.petName}'s ${svcLabel} appointment is TOMORROW at ${data.time}.\nKokoni Pet Grooming Salon — (949) 508-9155\nReply STOP to opt out.`
+  const body = `Hi ${data.clientName}! 🐾 Reminder: ${data.petName}'s ${svcLabel} appointment is TOMORROW at ${data.time}.\nKokoni Pet Grooming Salon — (626) 621-4646\nReply STOP to opt out.`
   return sendSMS(data.to, body, 'sendAppointmentReminder')
 }

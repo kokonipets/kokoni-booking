@@ -1167,7 +1167,7 @@ export default function BookPage() {
                     <Phone className="w-5 h-5 text-sky-500 shrink-0" />
                     <div>
                       <p className="text-sm font-medium text-gray-800">I&apos;ll text my records</p>
-                      <p className="text-xs text-gray-400 mt-0.5">(949) 508-9155</p>
+                      <p className="text-xs text-gray-400 mt-0.5">(626) 621-4646</p>
                     </div>
                     {vaccineSmsOnly && <CheckCircle2 className="w-5 h-5 text-sky-500 ml-auto" />}
                   </button>
@@ -1306,7 +1306,7 @@ export default function BookPage() {
                   Please {vaccineContactMethod === 'text' ? 'text' : 'email'} your vaccination records (Rabies + Distemper or Parvo Virus) to:
                 </p>
                 <p className="font-mono font-bold mt-1 text-rose-900">
-                  {vaccineContactMethod === 'text' ? '(949) 508-9155' : 'kokonipets@gmail.com'}
+                  {vaccineContactMethod === 'text' ? '(626) 621-4646' : 'kokonipets@gmail.com'}
                 </p>
                 <p className="text-xs mt-1.5 text-rose-600">Your appointment cannot be confirmed until we receive your records.</p>
               </div>
@@ -1335,14 +1335,14 @@ export default function BookPage() {
             </a>
 
             <p className="text-xs text-gray-400 mt-3">
-              Kokoni Pet Grooming Salon • (949) 508-9155
+              Kokoni Pet Grooming Salon • (626) 621-4646
             </p>
           </div>
         )}
       </div>
 
       <p className="text-xs text-gray-400 mt-6 text-center">
-        Kokoni Pet Grooming Salon • (949) 508-9155
+        Kokoni Pet Grooming Salon • (626) 621-4646
       </p>
     </div>
   )

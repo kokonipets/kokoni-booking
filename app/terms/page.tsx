@@ -139,7 +139,7 @@ export default function TermsOfService() {
             <p>If you have questions about these Terms, contact us:</p>
             <ul className="list-none pl-0 mt-2 space-y-1">
               <li><strong>Kokoni Pet Grooming Salon</strong></li>
-              <li>Phone: (949) 508-9155</li>
+              <li>Phone: (626) 621-4646</li>
               <li>
                 Email:{' '}
                 <a href="mailto:kokonipets@gmail.com" className="text-sky-700 underline">

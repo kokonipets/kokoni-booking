@@ -1053,7 +1053,7 @@ export default function ProfilePage() {
                     <Phone className="w-4 h-4 text-sky-500 shrink-0" />
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-gray-800">I&apos;ll text my records</p>
-                      <p className="text-[10px] text-gray-400">(949) 508-9155</p>
+                      <p className="text-[10px] text-gray-400">(626) 621-4646</p>
                     </div>
                     {newPetVaccineSmsOnly && <CheckCircle2 className="w-4 h-4 text-sky-500 ml-auto shrink-0" />}
                   </button>
@@ -1273,7 +1273,7 @@ export default function ProfilePage() {
                       ) : (
                         <div className="border-t border-gray-50 px-4 py-2 bg-amber-50">
                           <p className="text-xs text-amber-700">
-                            For last-minute changes, call us at <a href="tel:9495089155" className="font-bold underline">(949) 508-9155</a>
+                            For last-minute changes, call us at <a href="tel:(626) 621-4646</a>
                           </p>
                         </div>
                       )}

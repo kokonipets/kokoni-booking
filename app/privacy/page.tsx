@@ -50,7 +50,7 @@ export default function PrivacyPolicy() {
             </p>
             <p className="mt-2">
               You can opt out at any time by replying <strong>STOP</strong> to any message. Reply{' '}
-              <strong>HELP</strong> for help, or call us at (949) 508-9155.
+              <strong>HELP</strong> for help, or call us at (626) 621-4646.
             </p>
             <p className="mt-2">
               <strong>We do not share SMS opt-in data or phone numbers with third parties or affiliates for
@@ -126,7 +126,7 @@ export default function PrivacyPolicy() {
             <p>If you have questions about this Privacy Policy or your information, contact us:</p>
             <ul className="list-none pl-0 mt-2 space-y-1">
               <li><strong>Kokoni Pet Grooming Salon</strong></li>
-              <li>Phone: (949) 508-9155</li>
+              <li>Phone: (626) 621-4646</li>
             </ul>
           </div>
         </section>

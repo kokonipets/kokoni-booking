@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
   if (HELP_WORDS.has(firstWord)) {
     return xmlResponse(
-      'Kokoni Pet Grooming Salon: For help, call (949) 508-9155. Reply STOP to opt out.'
+      'Kokoni Pet Grooming Salon: For help, call (626) 621-4646. Reply STOP to opt out.'
     )
   }
 
