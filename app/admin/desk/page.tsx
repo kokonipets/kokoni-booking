@@ -3329,7 +3329,7 @@ export default function DeskAdmin() {
           ))}
 
           {/* Divider */}
-          <div className="border-t border-white/10 my-2" />
+          <div className="border-t border-sky-200 my-2" />
 
           {/* Kiosk link */}
           <a href="/kiosk" target="_blank" rel="noopener noreferrer"
