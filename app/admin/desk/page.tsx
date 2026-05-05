@@ -1732,20 +1732,20 @@ export default function DeskAdmin() {
 
   // ── PIN screen ─────────────────────────────────────────────────────────────
   if (!authed) return (
-    <div className="min-h-screen bg-sky-700 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-white flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <Image src="/logo.png" alt="Kokoni" width={80} height={80} className="mb-3 rounded-full" />
-          <h1 className="text-xl font-bold text-white">Admin Dashboard</h1>
-          <p className="text-sm text-sky-200">Enter your PIN to continue</p>
+          <Image src="/logo.png" alt="Kokoni" width={90} height={90} className="mb-4" />
+          <h1 className="text-xl font-bold text-gray-800">Admin Dashboard</h1>
+          <p className="text-sm text-gray-400">Enter your PIN to continue</p>
         </div>
-        <div className="bg-white rounded-2xl p-6">
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 shadow-sm">
           <input type="password" inputMode="numeric" placeholder="Enter PIN" value={pin}
             onChange={e => setPin(e.target.value)} onKeyDown={e => e.key==='Enter' && handlePin()}
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-400 mb-3" />
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-400 mb-3 bg-white" />
           {pinError && <p className="text-red-500 text-sm text-center mb-3">{pinError}</p>}
           <button onClick={handlePin} disabled={pinLoading||!pin}
-            className="w-full bg-sky-700 hover:bg-sky-800 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+            className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
             {pinLoading ? 'Checking...' : 'Enter'}
           </button>
         </div>
