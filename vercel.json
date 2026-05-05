@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/reminders",
+      "schedule": "0 18 * * *"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "kiosk.kokonipetsalon.com" }],
+      "destination": "/kiosk",
+      "permanent": false
+    }
+  ]
+}

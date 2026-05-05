@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🦄 Kokoni — Income Manager</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --purple:#7c3aed;--purple2:#6d28d9;--purple-light:#ede9fe;
+  --green:#059669;--green-light:#d1fae5;
+  --blue:#2563eb;--blue-light:#dbeafe;
+  --amber:#d97706;--amber-light:#fef3c7;
+  --red:#dc2626;--red-light:#fee2e2;
+  --gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;
+  --gray-300:#d1d5db;--gray-500:#6b7280;--gray-700:#374151;--gray-900:#111827;
+  --shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+  --shadow-md:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--gray-50);color:var(--gray-900);min-height:100vh;padding-bottom:72px;}
+
+/* ── HEADER ── */
+.header{background:var(--purple);color:#fff;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:90;box-shadow:var(--shadow-md);}
+.header-brand{display:flex;align-items:center;gap:10px;}
+.header-title{font-size:18px;font-weight:800;letter-spacing:-.3px;}
+.header-sub{font-size:11px;opacity:.75;margin-top:1px;}
+.header-date{font-size:12px;opacity:.8;text-align:right;}
+
+/* ── BOTTOM NAV ── */
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--gray-200);display:flex;z-index:90;padding-bottom:env(safe-area-inset-bottom,0px);}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;border:none;background:none;color:var(--gray-500);font-size:10px;font-weight:600;cursor:pointer;transition:color .15s;}
+.nav-item.active{color:var(--purple);}
+.nav-item svg{width:22px;height:22px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+
+/* ── VIEWS ── */
+.view{display:none;padding:16px;}
+.view.active{display:block;}
+
+/* ── CARDS ── */
+.card{background:#fff;border-radius:14px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px;}
+.card-title{font-size:11px;color:var(--gray-500);font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;}
+
+/* ── STATS ── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.stat-card{background:#fff;border-radius:12px;padding:14px;box-shadow:var(--shadow);text-align:center;}
+.stat-value{font-size:22px;font-weight:800;color:var(--purple);}
+.stat-label{font-size:11px;color:var(--gray-500);margin-top:3px;}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:12px 18px;border-radius:10px;font-size:15px;font-weight:700;border:none;cursor:pointer;transition:transform .1s,opacity .15s;width:100%;}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--purple);color:#fff;}
+.btn-secondary{background:var(--gray-100);color:var(--gray-700);}
+.btn-success{background:var(--green);color:#fff;}
+.btn-danger{background:var(--red-light);color:var(--red);}
+.btn-sm{padding:6px 12px;font-size:12px;width:auto;border-radius:7px;}
+
+/* ── UPLOAD AREA ── */
+.upload-area{border:2px dashed var(--gray-300);border-radius:12px;padding:28px 16px;text-align:center;cursor:pointer;transition:all .15s;background:var(--gray-50);margin-bottom:12px;}
+.upload-area:hover,.upload-area.drag-over{border-color:var(--purple);background:var(--purple-light);}
+.upload-icon{font-size:38px;margin-bottom:6px;}
+.upload-text{font-size:15px;font-weight:700;color:var(--gray-700);}
+.upload-sub{font-size:12px;color:var(--gray-500);margin-top:3px;}
+.photo-preview{width:100%;border-radius:10px;max-height:300px;object-fit:contain;margin-bottom:10px;background:var(--gray-100);display:none;cursor:zoom-in;}
+.photo-preview.zoomed{max-height:none;position:fixed;inset:10px;z-index:300;object-fit:contain;background:rgba(0,0,0,.85);border-radius:16px;cursor:zoom-out;max-width:calc(100vw - 20px);}
+
+/* ── OCR STATUS ── */
+.ocr-status{display:flex;align-items:center;gap:8px;padding:10px 13px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:10px;display:none;}
+.ocr-status.processing{background:var(--blue-light);color:var(--blue);}
+.ocr-status.done{background:var(--green-light);color:var(--green);}
+.ocr-status.error{background:var(--red-light);color:var(--red);}
+
+/* ── FORMS ── */
+.form-group{margin-bottom:13px;}
+.form-label{display:block;font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:5px;}
+.form-input{width:100%;padding:11px 13px;border:1.5px solid var(--gray-200);border-radius:9px;font-size:15px;color:var(--gray-900);background:#fff;-webkit-appearance:none;transition:border-color .15s;}
+.form-input:focus{outline:none;border-color:var(--purple);}
+.form-input.ocr-filled{border-color:var(--green);background:var(--green-light);}
+
+/* ── DAILY TABLE ── */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -16px;padding:0 2px;}
+.report-table{width:100%;border-collapse:collapse;font-size:12px;min-width:420px;}
+.report-table th{background:var(--purple);color:#fff;padding:8px 6px;text-align:left;font-size:11px;font-weight:700;}
+.report-table td{padding:3px 4px;border-bottom:1px solid var(--gray-100);}
+.report-table tr:nth-child(even) td{background:var(--gray-50);}
+.report-table input,.report-table select{width:100%;padding:5px 4px;border:1px solid var(--gray-200);border-radius:5px;font-size:12px;background:transparent;}
+.report-table input:focus,.report-table select:focus{outline:none;border-color:var(--purple);background:#fff;}
+.time-cell{font-size:11px;color:var(--gray-500);white-space:nowrap;padding:3px 6px;}
+
+/* ── TOTAL BAR ── */
+.total-bar{background:var(--purple);color:#fff;border-radius:11px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:12px;}
+.total-bar-label{font-size:13px;font-weight:600;}
+.total-bar-value{font-size:22px;font-weight:800;}
+
+/* ── DENOMINATION GRID ── */
+.denom-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.denom-section{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:12px;}
+.denom-section-title{font-size:12px;font-weight:800;color:var(--gray-700);margin-bottom:8px;text-align:center;}
+.denom-row{display:flex;align-items:center;gap:5px;margin-bottom:5px;}
+.denom-bill{font-size:12px;font-weight:700;color:var(--gray-700);width:32px;}
+.denom-x{font-size:11px;color:var(--gray-500);}
+.denom-count{width:44px;padding:5px 4px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;text-align:center;background:#fff;}
+.denom-count:focus{outline:none;border-color:var(--purple);}
+.denom-eq{font-size:11px;color:var(--gray-500);width:36px;text-align:right;}
+.denom-subtotal{font-size:12px;font-weight:700;color:var(--gray-700);margin-top:8px;padding-top:6px;border-top:1px solid var(--gray-200);}
+
+/* ── PAYMENT ROWS ── */
+.pay-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--gray-100);}
+.pay-row:last-of-type{border-bottom:none;}
+.pay-label{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;}
+.pay-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;}
+.pay-input{width:105px;padding:8px 10px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:15px;font-weight:700;text-align:right;-webkit-appearance:none;}
+.pay-input:focus{outline:none;border-color:var(--purple);}
+.pay-input.ocr-filled{border-color:var(--green);background:var(--green-light);}
+
+/* ── MONTH SELECTOR ── */
+.month-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.month-nav{background:#fff;border:1.5px solid var(--gray-200);border-radius:8px;width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.month-label{font-size:17px;font-weight:800;}
+
+/* ── RECORD ITEMS ── */
+.record-item{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;background:#fff;border-radius:11px;box-shadow:var(--shadow);margin-bottom:8px;cursor:pointer;}
+.record-date{font-size:15px;font-weight:700;}
+.record-sub{font-size:11px;color:var(--gray-500);margin-top:2px;}
+.record-amount{font-size:18px;font-weight:800;color:var(--purple);}
+.badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:uppercase;}
+.badge-daily{background:var(--purple-light);color:var(--purple);}
+.badge-cash{background:var(--green-light);color:var(--green);}
+
+/* ── TABS ── */
+.tab-row{display:flex;gap:7px;margin-bottom:14px;}
+.tab-btn{flex:1;padding:9px;border-radius:8px;border:1.5px solid var(--gray-200);font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:var(--gray-500);transition:all .15s;}
+.tab-btn.active{background:var(--purple);border-color:var(--purple);color:#fff;}
+
+/* ── MODAL ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:flex-end;}
+.modal-bg.open{display:flex;}
+.modal-sheet{background:#fff;border-radius:20px 20px 0 0;padding:20px 18px 28px;width:100%;max-height:85vh;overflow-y:auto;}
+.modal-handle{width:36px;height:4px;background:var(--gray-200);border-radius:99px;margin:0 auto 16px;}
+
+/* ── MISC ── */
+.divider{height:1px;background:var(--gray-200);margin:14px 0;}
+.section-hdr{font-size:15px;font-weight:800;margin-bottom:10px;}
+.empty-state{text-align:center;padding:36px 20px;color:var(--gray-500);}
+.empty-icon{font-size:44px;margin-bottom:10px;}
+.empty-text{font-size:14px;font-weight:600;}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .65s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.highlight-note{background:var(--amber-light);border-left:3px solid var(--amber);padding:10px 12px;border-radius:0 8px 8px 0;font-size:12px;color:var(--amber);font-weight:600;margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-brand">
+    <div>
+      <div class="header-title">🦄 Kokoni</div>
+      <div class="header-sub">Income Manager</div>
+    </div>
+  </div>
+  <div class="header-date" id="hdr-date"></div>
+</div>
+
+<!-- ═══════════════════════════════════ HOME ═══════════════════════════════════ -->
+<div class="view active" id="view-home">
+  <div class="month-row">
+    <button class="month-nav" onclick="changeMonth(-1)">‹</button>
+    <span class="month-label" id="month-label"></span>
+    <button class="month-nav" onclick="changeMonth(1)">›</button>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-sales">$0</div>
+      <div class="stat-label">Monthly Sales</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-tips">$0</div>
+      <div class="stat-label">Monthly Tips</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-revenue">$0</div>
+      <div class="stat-label">Total Revenue</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-days">0</div>
+      <div class="stat-label">Days Recorded</div>
+    </div>
+  </div>
+
+  <div class="section-hdr">This Month's Records</div>
+  <div id="home-list">
+    <div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">No records yet</div><div style="font-size:12px;margin-top:5px;">Tap Daily or Cash Count below to add one</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ DAILY ═══════════════════════════════════ -->
+<div class="view" id="view-daily">
+  <!-- PHOTO UPLOAD -->
+  <div class="card">
+    <div class="card-title">📷 Upload Daily Report Photo</div>
+    <div class="highlight-note">📌 Take a photo of your paper sheet — numbers will be read automatically</div>
+    <div class="upload-area" id="daily-drop" onclick="document.getElementById('daily-file').click()">
+      <div class="upload-icon">📸</div>
+      <div class="upload-text">Tap to take or upload photo</div>
+      <div class="upload-sub">Daily Sale Report sheet</div>
+    </div>
+    <input type="file" id="daily-file" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto('daily',event)">
+    <img id="daily-preview" class="photo-preview">
+    <div id="daily-ocr" class="ocr-status"></div>
+  </div>
+
+  <!-- FORM -->
+  <div class="card">
+    <div class="form-group">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-input" id="daily-date">
+    </div>
+
+    <div class="section-hdr" style="font-size:13px;">Service Entries</div>
+    <div class="table-wrap">
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th>Time</th><th>Customer</th><th>Service</th><th>Price $</th><th>Tip $</th><th>Payment</th>
+          </tr>
+        </thead>
+        <tbody id="daily-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="two-col" style="margin-bottom:14px;">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Today Total Sales</label>
+        <input type="number" class="form-input" id="d-total-sales" placeholder="0" step="0.01" oninput="calcDailyGrand()">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">Total Tips</label>
+        <input type="number" class="form-input" id="d-total-tips" placeholder="0" step="0.01" oninput="calcDailyGrand()">
+      </div>
+    </div>
+
+    <div class="total-bar">
+      <span class="total-bar-label">Grand Total (Sales + Tips)</span>
+      <span class="total-bar-value" id="d-grand">$0.00</span>
+    </div>
+
+    <div style="margin-top:14px;display:flex;gap:10px;">
+      <button class="btn btn-secondary" style="flex:0 0 auto;width:auto;padding:12px 16px;" onclick="clearDailyForm()">Clear</button>
+      <button class="btn btn-primary" onclick="saveDailyReport()">💾 Save Daily Report</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ CASH COUNT ═══════════════════════════════════ -->
+<div class="view" id="view-cash">
+  <!-- PHOTO UPLOAD -->
+  <div class="card">
+    <div class="card-title">📷 Upload Cash Count Photo</div>
+    <div class="highlight-note">📌 Take a photo of your cash count sheet — numbers will be read automatically</div>
+    <div class="upload-area" id="cash-drop" onclick="document.getElementById('cash-file').click()">
+      <div class="upload-icon">📸</div>
+      <div class="upload-text">Tap to take or upload photo</div>
+      <div class="upload-sub">Cash Count sheet (現金清點)</div>
+    </div>
+    <input type="file" id="cash-file" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto('cash',event)">
+    <img id="cash-preview" class="photo-preview">
+    <div id="cash-ocr" class="ocr-status"></div>
+  </div>
+
+  <!-- DENOMINATION COUNT -->
+  <div class="card">
+    <div class="form-group">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-input" id="cash-date">
+    </div>
+
+    <div class="section-hdr" style="font-size:13px;">Cash Drawer Count</div>
+    <div class="denom-grid">
+      <div class="denom-section">
+        <div class="denom-section-title">Open</div>
+        <div id="open-denoms"></div>
+        <div class="denom-subtotal">Total: $<span id="open-total">0</span></div>
+      </div>
+      <div class="denom-section">
+        <div class="denom-section-title">Close</div>
+        <div id="close-denoms"></div>
+        <div class="denom-subtotal">Total: $<span id="close-total">0</span></div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-hdr" style="font-size:13px;">Payment Breakdown</div>
+
+    <div class="pay-row">
+      <div class="pay-label">
+        <div class="pay-icon" style="background:#dcfce7;">💵</div>
+        <div><div>Cash Income</div><div style="font-size:10px;color:#6b7280;">現金收入</div></div>
+      </div>
+      <input type="number" class="pay-input" id="p-cash" placeholder="0" step="0.01" oninput="calcCashTotal()">
+    </div>
+    <div class="pay-row">
+      <div class="pay-label">
+        <div class="pay-icon" style="background:#dbeafe;">💳</div>
+        <div><div>Card</div><div style="font-size:10px;color:#6b7280;">刷卡</div></div>
+      </div>
+      <input type="number" class="pay-input" id="p-card" placeholder="0" step="0.01" oninput="calcCashTotal()">
+    </div>
+    <div class="pay-row">
+      <div class="pay-label">
+        <div class="pay-icon" style="background:#fef3c7;">🔄</div>
+        <div><div>Zelle</div></div>
+      </div>
+      <input type="number" class="pay-input" id="p-zelle" placeholder="0" step="0.01" oninput="calcCashTotal()">
+    </div>
+    <div class="pay-row">
+      <div class="pay-label">
+        <div class="pay-icon" style="background:#ede9fe;">📱</div>
+        <div><div>Venmo</div></div>
+      </div>
+      <input type="number" class="pay-input" id="p-venmo" placeholder="0" step="0.01" oninput="calcCashTotal()">
+    </div>
+
+    <div class="total-bar" style="margin-top:12px;">
+      <span class="total-bar-label">總營業額 Total Revenue</span>
+      <span class="total-bar-value" id="cash-grand">$0.00</span>
+    </div>
+
+    <div class="form-group" style="margin-top:14px;">
+      <label class="form-label">Cash to Bank (現金Bank)</label>
+      <input type="number" class="form-input" id="p-bank" placeholder="0" step="0.01">
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-secondary" style="flex:0 0 auto;width:auto;padding:12px 16px;" onclick="clearCashForm()">Clear</button>
+      <button class="btn btn-primary" onclick="saveCashCount()">💾 Save Cash Count</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ HISTORY ═══════════════════════════════════ -->
+<div class="view" id="view-history">
+  <div class="tab-row">
+    <button class="tab-btn active" id="htab-all"   onclick="setHistTab('all')">All</button>
+    <button class="tab-btn"        id="htab-daily" onclick="setHistTab('daily')">Daily Reports</button>
+    <button class="tab-btn"        id="htab-cash"  onclick="setHistTab('cash')">Cash Counts</button>
+  </div>
+  <div id="history-list"></div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="nav-item active" id="nav-home" onclick="showView('home')">
+    <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Home
+  </button>
+  <button class="nav-item" id="nav-daily" onclick="showView('daily')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+    Daily
+  </button>
+  <button class="nav-item" id="nav-cash" onclick="showView('cash')">
+    <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+    Cash Count
+  </button>
+  <button class="nav-item" id="nav-history" onclick="showView('history')">
+    <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    History
+  </button>
+</nav>
+
+<!-- DETAIL MODAL -->
+<div class="modal-bg" id="detail-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div id="modal-body"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+<script>
+// ─────────────────────────────────────────────
+//  CONSTANTS
+// ─────────────────────────────────────────────
+const TIME_SLOTS = [
+  '8:00','8:30','9:00','9:30','10:00','10:30',
+  '11:00','11:30','12:00','12:30',
+  '1:00','1:30','2:00','2:30','3:00','3:30',
+  '4:00','4:30','5:00','5:30','6:00','6:30','7:00'
+];
+const DENOMS = [1,5,10,20,50,100];
+
+// ─────────────────────────────────────────────
+//  STORAGE
+// ─────────────────────────────────────────────
+function getRecords(){
+  try{return JSON.parse(localStorage.getItem('ub_income')||'[]');}catch(e){return [];}
+}
+function saveRecords(r){localStorage.setItem('ub_income',JSON.stringify(r));}
+function addRecord(r){
+  const all=getRecords();
+  r.id=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  all.unshift(r);
+  saveRecords(all);
+}
+function deleteRecord(id){saveRecords(getRecords().filter(r=>r.id!==id));}
+
+// ─────────────────────────────────────────────
+//  NAVIGATION
+// ─────────────────────────────────────────────
+let curView='home', curMonth=new Date();
+
+function showView(v){
+  document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
+  document.getElementById('view-'+v).classList.add('active');
+  document.getElementById('nav-'+v).classList.add('active');
+  curView=v;
+  if(v==='home')refreshHome();
+  if(v==='history')refreshHistory();
+}
+function changeMonth(d){
+  curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()+d,1);
+  refreshHome();
+}
+
+// ─────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function fmtDate(s){
+  if(!s)return '';
+  const[y,m,d]=s.split('-');
+  return `${+m}/${+d}/${y.slice(2)}`;
+}
+function monthKey(d){return d?d.slice(0,7):'';}
+function fmt$(n){return '$'+(+n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});}
+
+// ─────────────────────────────────────────────
+//  HOME
+// ─────────────────────────────────────────────
+function refreshHome(){
+  const now=curMonth;
+  document.getElementById('month-label').textContent=now.toLocaleString('en-US',{month:'long',year:'numeric'});
+  const mk=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const recs=getRecords().filter(r=>monthKey(r.date)===mk);
+
+  let sales=0,tips=0,revenue=0,days=new Set();
+  recs.forEach(r=>{
+    days.add(r.date);
+    if(r.type==='daily'){sales+=+r.totalSales||0;tips+=+r.totalTips||0;}
+    if(r.type==='cash'){revenue+=+r.totalRevenue||0;}
+  });
+
+  document.getElementById('stat-sales').textContent=fmt$(sales);
+  document.getElementById('stat-tips').textContent=fmt$(tips);
+  document.getElementById('stat-revenue').textContent=fmt$(revenue);
+  document.getElementById('stat-days').textContent=days.size;
+
+  const el=document.getElementById('home-list');
+  if(!recs.length){
+    el.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">No records for this month</div></div>';
+    return;
+  }
+  el.innerHTML=recs.map(r=>`
+    <div class="record-item" onclick="showDetail('${r.id}')">
+      <div>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <span class="record-date">${fmtDate(r.date)}</span>
+          <span class="badge ${r.type==='daily'?'badge-daily':'badge-cash'}">${r.type==='daily'?'Daily':'Cash'}</span>
+        </div>
+        <div class="record-sub">${r.type==='daily'?`Tips: ${fmt$(r.totalTips)}`:`Card: ${fmt$(r.card)} · Zelle: ${fmt$(r.zelle)} · Venmo: ${fmt$(r.venmo)}`}</div>
+      </div>
+      <div class="record-amount">${fmt$(r.type==='daily'?r.totalSales:r.totalRevenue)}</div>
+    </div>
+  `).join('');
+}
+
+// ─────────────────────────────────────────────
+//  DAILY FORM
+// ─────────────────────────────────────────────
+function buildDailyTable(){
+  document.getElementById('daily-tbody').innerHTML=TIME_SLOTS.map((t,i)=>`
+    <tr>
+      <td class="time-cell">${t}</td>
+      <td><input type="text" id="dc-${i}" placeholder="Name"></td>
+      <td><input type="text" id="ds-${i}" placeholder="BIC" style="width:52px;"></td>
+      <td><input type="number" id="dp-${i}" placeholder="0" step="0.01" oninput="calcFromTable()"></td>
+      <td><input type="number" id="dt-${i}" placeholder="0" step="0.01" oninput="calcFromTable()"></td>
+      <td>
+        <select id="dy-${i}">
+          <option>Card</option><option>Cash</option><option>Zelle</option><option>Venmo</option>
+        </select>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function calcFromTable(){
+  let p=0,t=0;
+  TIME_SLOTS.forEach((_,i)=>{
+    p+=parseFloat(document.getElementById(`dp-${i}`)?.value||0);
+    t+=parseFloat(document.getElementById(`dt-${i}`)?.value||0);
+  });
+  if(p){document.getElementById('d-total-sales').value=p.toFixed(2);}
+  if(t){document.getElementById('d-total-tips').value=t.toFixed(2);}
+  calcDailyGrand();
+}
+
+function calcDailyGrand(){
+  const s=parseFloat(document.getElementById('d-total-sales').value||0);
+  const t=parseFloat(document.getElementById('d-total-tips').value||0);
+  document.getElementById('d-grand').textContent='$'+(s+t).toFixed(2);
+}
+
+function getDailyRows(){
+  return TIME_SLOTS.map((t,i)=>({
+    time:t,
+    customer:document.getElementById(`dc-${i}`)?.value||'',
+    service:document.getElementById(`ds-${i}`)?.value||'',
+    price:parseFloat(document.getElementById(`dp-${i}`)?.value||0),
+    tip:parseFloat(document.getElementById(`dt-${i}`)?.value||0),
+    payment:document.getElementById(`dy-${i}`)?.value||'Card',
+  })).filter(r=>r.customer||r.price>0);
+}
+
+function saveDailyReport(){
+  const date=document.getElementById('daily-date').value;
+  if(!date){alert('Please enter a date');return;}
+  const ts=parseFloat(document.getElementById('d-total-sales').value||0);
+  const tt=parseFloat(document.getElementById('d-total-tips').value||0);
+  addRecord({
+    type:'daily',date,
+    totalSales:ts.toFixed(2),
+    totalTips:tt.toFixed(2),
+    grandTotal:(ts+tt).toFixed(2),
+    rows:getDailyRows()
+  });
+  alert('✅ Daily report saved!');
+  clearDailyForm();
+  showView('home');
+}
+
+function clearDailyForm(){
+  document.getElementById('daily-date').value=todayStr();
+  document.getElementById('d-total-sales').value='';
+  document.getElementById('d-total-tips').value='';
+  document.getElementById('d-grand').textContent='$0.00';
+  document.getElementById('daily-preview').style.display='none';
+  document.getElementById('daily-ocr').style.display='none';
+  document.getElementById('daily-ocr').className='ocr-status';
+  buildDailyTable();
+}
+
+// ─────────────────────────────────────────────
+//  CASH FORM
+// ─────────────────────────────────────────────
+function buildDenomRows(){
+  ['open','close'].forEach(side=>{
+    document.getElementById(`${side}-denoms`).innerHTML=DENOMS.map(d=>`
+      <div class="denom-row">
+        <span class="denom-bill">$${d}</span>
+        <span class="denom-x">×</span>
+        <input type="number" class="denom-count" id="${side}-${d}" min="0" placeholder="0" oninput="calcDenoms('${side}')">
+        <span class="denom-eq" id="${side}-${d}-eq">=$0</span>
+      </div>
+    `).join('');
+  });
+}
+
+function calcDenoms(side){
+  let total=0;
+  DENOMS.forEach(d=>{
+    const cnt=parseInt(document.getElementById(`${side}-${d}`)?.value||0);
+    const amt=cnt*d;
+    total+=amt;
+    document.getElementById(`${side}-${d}-eq`).textContent=`=$${amt}`;
+  });
+  document.getElementById(`${side}-total`).textContent=total;
+}
+
+function calcCashTotal(){
+  const c=parseFloat(document.getElementById('p-cash').value||0);
+  const cr=parseFloat(document.getElementById('p-card').value||0);
+  const z=parseFloat(document.getElementById('p-zelle').value||0);
+  const v=parseFloat(document.getElementById('p-venmo').value||0);
+  document.getElementById('cash-grand').textContent='$'+(c+cr+z+v).toFixed(2);
+}
+
+function saveCashCount(){
+  const date=document.getElementById('cash-date').value;
+  if(!date){alert('Please enter a date');return;}
+  const cash=parseFloat(document.getElementById('p-cash').value||0);
+  const card=parseFloat(document.getElementById('p-card').value||0);
+  const zelle=parseFloat(document.getElementById('p-zelle').value||0);
+  const venmo=parseFloat(document.getElementById('p-venmo').value||0);
+  const totalRevenue=(cash+card+zelle+venmo).toFixed(2);
+  const bank=parseFloat(document.getElementById('p-bank').value||0);
+
+  const openCount={},closeCount={};
+  DENOMS.forEach(d=>{
+    openCount[d]=parseInt(document.getElementById(`open-${d}`)?.value||0);
+    closeCount[d]=parseInt(document.getElementById(`close-${d}`)?.value||0);
+  });
+
+  addRecord({type:'cash',date,cashIncome:cash.toFixed(2),card:card.toFixed(2),zelle:zelle.toFixed(2),venmo:venmo.toFixed(2),totalRevenue,cashBank:bank.toFixed(2),openCount,closeCount});
+  alert('✅ Cash count saved!');
+  clearCashForm();
+  showView('home');
+}
+
+function clearCashForm(){
+  document.getElementById('cash-date').value=todayStr();
+  ['p-cash','p-card','p-zelle','p-venmo','p-bank'].forEach(id=>{
+    const el=document.getElementById(id);
+    el.value='';el.classList.remove('ocr-filled');
+  });
+  document.getElementById('cash-grand').textContent='$0.00';
+  document.getElementById('cash-preview').style.display='none';
+  document.getElementById('cash-ocr').style.display='none';
+  document.getElementById('cash-ocr').className='ocr-status';
+  buildDenomRows();
+}
+
+// ─────────────────────────────────────────────
+//  OCR
+// ─────────────────────────────────────────────
+async function handlePhoto(type, evt){
+  const file=evt.target.files[0];
+  if(!file)return;
+  const preview=document.getElementById(type+'-preview');
+  preview.src=URL.createObjectURL(file);
+  preview.style.display='block';
+  await runOCR(file,type);
+}
+
+async function runOCR(file,type){
+  const statusEl=document.getElementById(type+'-ocr');
+  statusEl.style.display='flex';
+  statusEl.className='ocr-status processing';
+  statusEl.innerHTML='<span class="spinner"></span>&nbsp;Reading handwriting… please wait';
+
+  try{
+    const {data:{text}}=await Tesseract.recognize(file,'eng',{
+      logger:m=>{
+        if(m.status==='recognizing text'){
+          statusEl.innerHTML=`<span class="spinner"></span>&nbsp;Reading… ${Math.round(m.progress*100)}%`;
+        }
+      }
+    });
+
+    console.log('OCR result:\n',text);
+    if(type==='daily') parseDailyOCR(text);
+    else               parseCashOCR(text);
+
+    // Show raw OCR text so user can verify what was read
+    const debugId=type+'-debug';
+    let debugEl=document.getElementById(debugId);
+    if(!debugEl){
+      debugEl=document.createElement('div');
+      debugEl.id=debugId;
+      statusEl.parentNode.insertBefore(debugEl,statusEl.nextSibling);
+    }
+    debugEl.innerHTML=`
+      <details style="margin-top:8px;font-size:11px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px;">
+        <summary style="cursor:pointer;font-weight:700;color:#6b7280;">🔍 What OCR read (tap to see)</summary>
+        <pre style="margin-top:8px;white-space:pre-wrap;font-size:11px;color:#374151;max-height:200px;overflow-y:auto;">${text.replace(/</g,'&lt;')}</pre>
+      </details>`;
+
+    statusEl.className='ocr-status done';
+    statusEl.innerHTML='✅ Done! Green fields were auto-filled — tap photo to zoom in and check each number, then Save.';
+  }catch(e){
+    console.error(e);
+    statusEl.className='ocr-status error';
+    statusEl.innerHTML='⚠️ Could not read image. Photo is shown above — tap it to zoom in and fill numbers manually.';
+  }
+}
+
+// ── Parse Daily Sale Report ──
+function parseDailyOCR(text){
+  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
+
+  // Date: pattern m/d/yy or m/d/yyyy
+  const dm=text.match(/(\d{1,2})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{2,4})/);
+  if(dm){
+    let[,m,d,y]=dm;
+    y=y.length===2?'20'+y:y;
+    document.getElementById('daily-date').value=`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+
+  // Helper: pluck realistic service prices (30–500) and tips (0–200)
+  function extractPriceAndTip(nums){
+    const prices=nums.map(Number).filter(n=>n>=30&&n<=500);
+    const tips  =nums.map(Number).filter(n=>n>=0 &&n<=200);
+    // Largest plausible price, then next number for tip
+    const price=prices.length?Math.max(...prices):null;
+    // Tip is usually smaller than price
+    const tipCandidates=tips.filter(n=>price===null||n<price);
+    const tip=tipCandidates.length?tipCandidates[tipCandidates.length-1]:null;
+    return{price,tip};
+  }
+
+  // Per-row extraction: time patterns "9:00", "9 00", "900"
+  lines.forEach(line=>{
+    // Try "H:MM" or "H MM"
+    let tm=line.match(/^(\d{1,2})[:\s](\d{2})/);
+    // Also try bare "900" "1000" etc
+    if(!tm) tm=line.match(/^(8|9|10|11|12|1|2|3|4|5|6|7)(00|30)\b/);
+    if(!tm)return;
+    const h=parseInt(tm[1]),mn=parseInt(tm[2]);
+    const si=TIME_SLOTS.findIndex(s=>{
+      const[sh,sm]=s.split(':');
+      return parseInt(sh)===h&&parseInt(sm||0)===mn;
+    });
+    if(si<0)return;
+
+    // All numbers in line, excluding time digits
+    const allNums=(line.match(/\d+\.?\d*/g)||[]).filter(n=>{
+      const v=parseInt(n);
+      return !(v===h||(v===mn&&mn<10)||(v===h*100+mn));
+    });
+    const {price,tip}=extractPriceAndTip(allNums);
+    if(price!==null){
+      document.getElementById(`dp-${si}`).value=price;
+      document.getElementById(`dp-${si}`).classList.add('ocr-filled');
+    }
+    if(tip!==null&&tip>0){
+      document.getElementById(`dt-${si}`).value=tip;
+      document.getElementById(`dt-${si}`).classList.add('ocr-filled');
+    }
+    // Payment keyword detection
+    if(/zelle/i.test(line))       document.getElementById(`dy-${si}`).value='Zelle';
+    else if(/venmo/i.test(line))  document.getElementById(`dy-${si}`).value='Venmo';
+    else if(/cash/i.test(line))   document.getElementById(`dy-${si}`).value='Cash';
+
+    // Customer name — letters before first digit group after time
+    const afterTime=line.replace(/^\d{1,2}[:\s]?\d{2}\s*/,'');
+    const nameMatch=afterTime.match(/^([A-Za-z][A-Za-z\/\s]{1,20})/);
+    if(nameMatch){
+      const name=nameMatch[1].trim();
+      if(name.length>1) document.getElementById(`dc-${si}`).value=name;
+    }
+  });
+
+  // "Today Total Sales" — look for the summary row
+  const totLine=lines.find(l=>/today\s*total|total\s*sales/i.test(l));
+  if(totLine){
+    const nums=(totLine.match(/\d+\.?\d*/g)||[]).map(Number).filter(n=>n>=10);
+    if(nums.length>=1){document.getElementById('d-total-sales').value=nums[0];document.getElementById('d-total-sales').classList.add('ocr-filled');}
+    if(nums.length>=2){document.getElementById('d-total-tips').value=nums[1];document.getElementById('d-total-tips').classList.add('ocr-filled');}
+  }
+
+  // Fallback: if totals not found, sum from table rows
+  calcFromTable();
+  calcDailyGrand();
+}
+
+// ── Parse Cash Count Sheet ──
+function parseCashOCR(text){
+  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
+
+  // Date
+  const dm=text.match(/(\d{1,2})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{2,4})/);
+  if(dm){
+    let[,m,d,y]=dm;
+    y=y.length===2?'20'+y:y;
+    document.getElementById('cash-date').value=`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+
+  // ── Denomination rows ──
+  // Patterns: "20X 4 = 80", "20 x 4 =80", "20X4=80", "20 4 80"
+  const denomLines=lines.filter(l=>
+    /\d+\s*[xX×]\s*\d+/.test(l)||          // "20X4"
+    DENOMS.some(d=>new RegExp(`^${d}\\b`).test(l)) // starts with a bill value
+  );
+  // The form has Open on the left, Closed on the right, printed side by side.
+  // OCR usually reads left-to-right top-to-bottom, so we get Open block first.
+  // Bills appear in order: 1,5,10,20,50,100 for Open then same for Closed.
+  const openFilled={}, closeFilled={};
+  denomLines.forEach(line=>{
+    // Find all "BILL x COUNT" pairs in the line (could have two — open + close side by side)
+    const pairs=[...line.matchAll(/(\d+)\s*[xX×]\s*(\d+)/g)];
+    pairs.forEach((p,pIdx)=>{
+      const bill=parseInt(p[1]), count=parseInt(p[2]);
+      if(!DENOMS.includes(bill))return;
+      if(pIdx===0&&!openFilled[bill]){
+        openFilled[bill]=true;
+        const el=document.getElementById(`open-${bill}`);
+        if(el){el.value=count;calcDenoms('open');}
+      } else if(!closeFilled[bill]){
+        closeFilled[bill]=true;
+        const el=document.getElementById(`close-${bill}`);
+        if(el){el.value=count;calcDenoms('close');}
+      }
+    });
+  });
+
+  // ── Payment breakdown ──
+  // Scan each line; grab the last number on the line as the amount
+  lines.forEach(line=>{
+    // Numbers: "$648.5", "648.5", "648", preceded by keyword
+    const amtMatch=line.match(/\$?\s*(\d+\.?\d*)\s*$/);
+    if(!amtMatch)return;
+    const val=parseFloat(amtMatch[1]);
+    if(isNaN(val)||val<=0)return;
+
+    const L=line.toLowerCase();
+    if(/card|刷卡/.test(L)){
+      setPayField('p-card',val);
+    } else if(/zelle/.test(L)){
+      setPayField('p-zelle',val);
+    } else if(/venmo/.test(L)){
+      setPayField('p-venmo',val);
+    } else if(/cash\s*income|現金收入|cash\s*in/.test(L)){
+      setPayField('p-cash',val);
+    } else if(/bank/.test(L)&&!/venmo|zelle|card/.test(L)){
+      document.getElementById('p-bank').value=val;
+    }
+    // Skip 總營業額 (total) lines — it's a derived value
+  });
+
+  // ── Fallback for payment fields ──
+  // If we still have empty payment fields, look for "$xxx" dollar amounts
+  // sorted descending and try to assign them (card is usually biggest)
+  const filled=['p-card','p-zelle','p-venmo','p-cash'].filter(id=>document.getElementById(id).value);
+  if(filled.length<2){
+    const dollarAmts=[...text.matchAll(/\$\s*(\d{2,}\.?\d*)/g)]
+      .map(m=>parseFloat(m[1]))
+      .filter(n=>n>=10&&n<5000)
+      .sort((a,b)=>b-a);
+    const targets=['p-card','p-venmo','p-zelle','p-cash'];
+    let ti=0;
+    dollarAmts.forEach(amt=>{
+      while(ti<targets.length&&document.getElementById(targets[ti]).value) ti++;
+      if(ti<targets.length){setPayField(targets[ti],amt);ti++;}
+    });
+  }
+
+  calcCashTotal();
+}
+
+function setPayField(id,val){
+  const el=document.getElementById(id);
+  if(el){el.value=val;el.classList.add('ocr-filled');}
+}
+
+// ─────────────────────────────────────────────
+//  HISTORY
+// ─────────────────────────────────────────────
+let histTab='all';
+function setHistTab(t){
+  histTab=t;
+  ['all','daily','cash'].forEach(x=>document.getElementById(`htab-${x}`).classList.toggle('active',x===t));
+  refreshHistory();
+}
+function refreshHistory(){
+  const all=getRecords();
+  const list=histTab==='all'?all:all.filter(r=>r.type===histTab);
+  const el=document.getElementById('history-list');
+  if(!list.length){
+    el.innerHTML='<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-text">No records found</div></div>';
+    return;
+  }
+  el.innerHTML=list.map(r=>`
+    <div class="record-item" onclick="showDetail('${r.id}')">
+      <div>
+        <div style="display:flex;align-items:center;gap:7px;">
+          <span class="record-date">${fmtDate(r.date)}</span>
+          <span class="badge ${r.type==='daily'?'badge-daily':'badge-cash'}">${r.type==='daily'?'Daily':'Cash'}</span>
+        </div>
+        <div class="record-sub">${r.type==='daily'
+          ?`Tips: ${fmt$(r.totalTips)} · ${r.rows?.length||0} services`
+          :`Card: ${fmt$(r.card)} · Zelle: ${fmt$(r.zelle)} · Venmo: ${fmt$(r.venmo)}`}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="record-amount">${fmt$(r.type==='daily'?r.totalSales:r.totalRevenue)}</div>
+        <button class="btn btn-danger btn-sm" style="margin-top:4px;" onclick="event.stopPropagation();doDelete('${r.id}')">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function doDelete(id){
+  if(confirm('Delete this record?')){deleteRecord(id);refreshHistory();refreshHome();}
+}
+
+// ─────────────────────────────────────────────
+//  DETAIL MODAL
+// ─────────────────────────────────────────────
+function showDetail(id){
+  const r=getRecords().find(x=>x.id===id);
+  if(!r)return;
+  let html='';
+  if(r.type==='daily'){
+    html=`
+      <div style="font-size:17px;font-weight:800;margin-bottom:3px;">📋 Daily Report</div>
+      <div style="color:var(--gray-500);font-size:13px;margin-bottom:14px;">${fmtDate(r.date)}</div>
+      ${r.rows&&r.rows.length?`
+      <div style="overflow-x:auto;margin-bottom:12px;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:340px;">
+          <thead><tr style="background:var(--purple);color:#fff;">
+            <th style="padding:7px 6px;">Time</th>
+            <th style="padding:7px 6px;">Customer</th>
+            <th style="padding:7px 6px;text-align:right;">Price</th>
+            <th style="padding:7px 6px;text-align:right;">Tip</th>
+            <th style="padding:7px 6px;">Pay</th>
+          </tr></thead>
+          <tbody>${r.rows.map(row=>`
+            <tr style="border-bottom:1px solid var(--gray-100);">
+              <td style="padding:6px;">${row.time}</td>
+              <td style="padding:6px;">${row.customer}</td>
+              <td style="padding:6px;text-align:right;">$${row.price}</td>
+              <td style="padding:6px;text-align:right;">$${row.tip}</td>
+              <td style="padding:6px;">${row.payment}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`:''}
+      <div class="total-bar">
+        <div><div style="font-size:11px;opacity:.8;">Sales</div><div style="font-size:17px;font-weight:800;">$${r.totalSales}</div></div>
+        <div><div style="font-size:11px;opacity:.8;">Tips</div><div style="font-size:17px;font-weight:800;">$${r.totalTips}</div></div>
+        <div><div style="font-size:11px;opacity:.8;">Grand Total</div><div style="font-size:17px;font-weight:800;">$${r.grandTotal}</div></div>
+      </div>`;
+  } else {
+    html=`
+      <div style="font-size:17px;font-weight:800;margin-bottom:3px;">💰 Cash Count</div>
+      <div style="color:var(--gray-500);font-size:13px;margin-bottom:14px;">${fmtDate(r.date)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        ${[['💵','Cash Income',r.cashIncome],['💳','Card',r.card],['🔄','Zelle',r.zelle],['📱','Venmo',r.venmo]].map(([icon,label,val])=>`
+          <div style="background:var(--gray-50);border-radius:9px;padding:10px;">
+            <div style="font-size:11px;color:var(--gray-500);">${icon} ${label}</div>
+            <div style="font-size:18px;font-weight:800;">$${val||0}</div>
+          </div>`).join('')}
+      </div>
+      <div class="total-bar">
+        <span style="font-weight:700;">總營業額 Total Revenue</span>
+        <span style="font-size:20px;font-weight:800;">$${r.totalRevenue}</span>
+      </div>
+      ${r.cashBank&&+r.cashBank>0?`<div style="margin-top:8px;background:var(--gray-50);border-radius:9px;padding:10px;display:flex;justify-content:space-between;align-items:center;"><span style="font-size:13px;">現金Bank</span><strong>$${r.cashBank}</strong></div>`:''}`;
+  }
+  document.getElementById('modal-body').innerHTML=html;
+  document.getElementById('detail-modal').classList.add('open');
+}
+function closeModal(){document.getElementById('detail-modal').classList.remove('open');}
+
+// ─────────────────────────────────────────────
+//  DRAG & DROP
+// ─────────────────────────────────────────────
+function setupDrop(areaId,type){
+  const area=document.getElementById(areaId);
+  area.addEventListener('dragover',e=>{e.preventDefault();area.classList.add('drag-over');});
+  area.addEventListener('dragleave',()=>area.classList.remove('drag-over'));
+  area.addEventListener('drop',async e=>{
+    e.preventDefault();area.classList.remove('drag-over');
+    const file=e.dataTransfer.files[0];
+    if(!file)return;
+    const preview=document.getElementById(type+'-preview');
+    preview.src=URL.createObjectURL(file);
+    preview.style.display='block';
+    await runOCR(file,type);
+  });
+}
+
+// ─────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────
+function init(){
+  const now=new Date();
+  document.getElementById('hdr-date').textContent=now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  document.getElementById('daily-date').value=todayStr();
+  document.getElementById('cash-date').value=todayStr();
+  buildDailyTable();
+  buildDenomRows();
+  setupDrop('daily-drop','daily');
+  setupDrop('cash-drop','cash');
+  refreshHome();
+
+  // Tap photo to zoom full-screen for easy reference while filling form
+  document.querySelectorAll('.photo-preview').forEach(img=>{
+    img.addEventListener('click',()=>img.classList.toggle('zoomed'));
+  });
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,7440 @@
+'use client'
+
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import Image from 'next/image'
+import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
+import ChatSidebarLink from '@/components/ChatSidebarLink'
+import ChatIconButton from '@/components/ChatIconButton'
+
+// ── Types ──────────────────────────────────────────────────────────────────
+type StaffMember = {
+  id: string
+  name: string
+  first_name?: string | null
+  last_name?: string | null
+  role: string
+  is_active: boolean
+  commission_percent: number
+  tip_percent: number
+  days_off?: string[]
+  created_at: string
+}
+
+type ServiceDef = {
+  id: string
+  name: string
+  desc: string
+  price: string
+  tiers?: { label: string; price: string; duration: string }[]
+  visible?: boolean   // true = shown to customers; false = admin-only
+}
+
+type NoteEntry = {
+  id: string
+  text: string
+  notes_english?: string | null
+  notes_chinese?: string | null
+  author: string
+  created_at: string
+  price?: string
+  is_addon?: boolean
+}
+
+type Appointment = {
+  id: string
+  client_phone: string
+  pet_id?: string | null
+  service: string
+  appointment_date: string
+  appointment_time: string
+  notes: string | null
+  notes_chinese: string | null
+  notes_english: string | null
+  notes_author: string | null
+  notes_updated_at: string | null
+  notes_list: NoteEntry[] | null
+  status: string
+  created_at: string
+  confirmed_at: string | null
+  assigned_groomer: string | null
+  assigned_bather: string | null
+  payment_amount: string | null
+  payment_method: string | null
+  payment_status: string | null
+  tip_amount: string | null
+  grooming_status: string | null
+  grooming_status_updated_at: string | null
+  grooming_started_at: string | null
+  grooming_finished_at: string | null
+  owner_notified_at: string | null
+  checked_out_at: string | null
+  checked_in_at: string | null
+  groomer_confirmed: boolean | null
+  health_check: any | null
+  health_check_completed_at: string | null
+  grooming_quality: any | null
+  grooming_quality_completed_at: string | null
+  clients: { name: string; phone: string; email: string | null } | null
+  pets: { id?: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry?: string | null; photo_url: string | null } | null
+  is_new_client?: boolean
+}
+
+type ClientRecord = {
+  name: string
+  phone: string
+  email: string | null
+  address?: string | null
+  created_at: string
+  pets: { id: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry: string | null; photo_url: string | null; tags?: { id: string; name: string; color: string }[] }[]
+  appointments: { id: string; appointment_date: string; appointment_time: string; service: string; status: string; pet_id: string | null; assigned_groomer: string | null; assigned_bather: string | null; payment_amount: string | null; payment_method: string | null; created_at?: string | null; confirmed_at?: string | null; checked_in_at?: string | null; grooming_started_at?: string | null; grooming_finished_at?: string | null; notes?: string | null; notes_english?: string | null; notes_chinese?: string | null; notes_list?: { id: string; text: string; author: string; created_at: string; notes_english?: string | null; notes_chinese?: string | null; is_addon?: boolean }[] | null; health_check?: any | null; grooming_quality?: any | null; health_check_completed_at?: string | null; grooming_quality_completed_at?: string | null }[]
+  authorized_pickups: { id: string; name: string; relationship: string | null }[]
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const SERVICE_LABELS: Record<string, string> = {
+  simply_cute: 'Simply Cute',
+  bath_brush: 'Bath & Brush',
+  asian_fusion: 'Asian Fusion Style',
+}
+
+// ── Dog breed autocomplete ──────────────────────────────────────────────────
+const DOG_BREEDS = [
+  'Affenpinscher','Afghan Hound','Airedale Terrier','Akita','Alaskan Malamute',
+  'American Bulldog','American Eskimo Dog','American Foxhound','American Pit Bull Terrier',
+  'American Staffordshire Terrier','Australian Cattle Dog','Australian Shepherd',
+  'Australian Terrier','Basenji','Basset Hound','Beagle','Bearded Collie',
+  'Belgian Malinois','Bernese Mountain Dog','Bichon Frise','Bloodhound','Border Collie',
+  'Border Terrier','Boston Terrier','Boxer','Brittany','Brussels Griffon','Bull Terrier',
+  'Bulldog','Bullmastiff','Cairn Terrier','Cavalier King Charles Spaniel','Chihuahua',
+  'Chinese Crested','Chinese Shar-Pei','Chow Chow','Cockapoo','Cocker Spaniel',
+  'Collie','Corgi','Dachshund','Dalmatian','Doberman Pinscher','Doodle',
+  'English Setter','English Springer Spaniel','French Bulldog','German Shepherd',
+  'German Shorthaired Pointer','Golden Retriever','Goldendoodle','Great Dane',
+  'Great Pyrenees','Greyhound','Havanese','Irish Setter','Irish Wolfhound',
+  'Italian Greyhound','Jack Russell Terrier','Japanese Chin','Labradoodle',
+  'Labrador Retriever','Lhasa Apso','Maltese','Maltipoo','Mastiff',
+  'Miniature Pinscher','Miniature Schnauzer','Mixed Breed','Newfoundland',
+  'Norfolk Terrier','Norwegian Elkhound','Old English Sheepdog','Papillon',
+  'Pekingese','Pembroke Welsh Corgi','Persian','Pit Bull','Plott Hound',
+  'Pointer','Pomeranian','Pomsky','Poodle','Portuguese Water Dog','Pug',
+  'Rat Terrier','Rhodesian Ridgeback','Rottweiler','Saint Bernard','Samoyed',
+  'Schnauzer','Scottish Terrier','Shetland Sheepdog','Shiba Inu','Shih Tzu',
+  'Siberian Husky','Silky Terrier','Soft Coated Wheaten Terrier','Spinone Italiano',
+  'Staffordshire Bull Terrier','Standard Schnauzer','Toy Fox Terrier','Toy Poodle',
+  'Vizsla','Weimaraner','Welsh Corgi','West Highland White Terrier','Whippet',
+  'Wire Fox Terrier','Wirehaired Pointing Griffon','Xoloitzcuintli',
+  'Yorkshire Terrier',
+]
+
+function BreedInput({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const suggestions = value.length >= 2
+    ? DOG_BREEDS.filter(b => b.toLowerCase().includes(value.toLowerCase())).slice(0, 8)
+    : []
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        placeholder="Breed"
+        className={className}
+        autoComplete="off"
+      />
+      {open && suggestions.length > 0 && (
+        <ul className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          {suggestions.map(breed => (
+            <li
+              key={breed}
+              onMouseDown={e => { e.preventDefault(); onChange(breed); setOpen(false) }}
+              className="px-3 py-2 text-sm text-gray-700 hover:bg-sky-50 hover:text-sky-700 cursor-pointer"
+            >
+              {breed}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  pending:     'bg-amber-100 text-amber-700',
+  confirmed:   'bg-emerald-100 text-emerald-700',
+  in_progress: 'bg-sky-100 text-sky-700',
+  completed:   'bg-gray-100 text-gray-500',
+  cancelled:   'bg-red-100 text-red-600',
+}
+
+const GROOMING_STAGES = [
+  { id: 'waiting', label: 'Waiting',          icon: '⏳', bg: 'bg-amber-50',  border: 'border-amber-300', text: 'text-amber-700',  btnBg: '#f59e0b', next: 'Start Grooming →' },
+  { id: 'incare',  label: 'In Good Hands 🐾', icon: '✂️', bg: 'bg-sky-50',    border: 'border-sky-300',   text: 'text-sky-700',    btnBg: '#0ea5e9', next: 'Mark Ready →' },
+  { id: 'ready',   label: 'Ready to Pick Up', icon: '🔔', bg: 'bg-green-50',  border: 'border-green-300', text: 'text-green-700',  btnBg: '#22c55e', next: 'Check Out' },
+  { id: 'done',    label: 'Checked Out',      icon: '🎉', bg: 'bg-pink-50',   border: 'border-pink-300',  text: 'text-pink-700',   btnBg: '#ec4899', next: '' },
+]
+const GROOMING_STAGE_ORDER = GROOMING_STAGES.map(s => s.id)
+
+function formatDate(d: string) {
+  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function firstName(name: string | null | undefined): string {
+  if (!name) return ''
+  return name.trim().split(/\s+/)[0]
+}
+
+// Parse "1:15 PM" or "13:15" or "13:15:00" into a local Date on the given date string
+function parseApptTime(dateStr: string, timeStr: string): Date {
+  const upper = timeStr.trim().toUpperCase()
+  if (upper.includes('AM') || upper.includes('PM')) {
+    const [t, period] = upper.split(' ')
+    const [hStr, mStr] = t.split(':')
+    let h = parseInt(hStr, 10)
+    const m = parseInt(mStr, 10)
+    if (period === 'PM' && h !== 12) h += 12
+    if (period === 'AM' && h === 12) h = 0
+    const d = new Date(dateStr + 'T00:00:00')
+    d.setHours(h, m, 0, 0)
+    return d
+  }
+  return new Date(`${dateStr}T${timeStr}`)
+}
+
+function groomingDuration(startedAt: string | null | undefined): string | null {
+  if (!startedAt) return null
+  const mins = Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000)
+  if (mins < 1) return 'just started'
+  if (mins < 60) return `${mins} min`
+  const h = Math.floor(mins / 60), m = mins % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+const AVATAR_COLORS = ['bg-sky-500','bg-violet-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-indigo-500','bg-teal-500','bg-orange-500']
+function avatarColor(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
+// ── Sidebar nav items ──────────────────────────────────────────────────────
+const NAV = [
+  { key: 'requests',   label: 'Pending Request',         icon: '📋' },
+  { key: 'calendar',   label: 'Calendar',                icon: '📅' },
+  { key: 'today',      label: 'Today',                   icon: '✅' },
+  { key: 'grooming',   label: 'Grooming Board',          icon: '✂️' },
+  { key: 'clients',    label: 'Pet Parents',             icon: '🐾' },
+  { key: 'vaccines',   label: 'Vaccine Records',         icon: '💉' },
+  { key: 'payroll',    label: 'Payroll',                 icon: '💵' },
+  { key: 'intake',     label: 'New Client Intake',       icon: '📝' },
+  { key: 'waitlist',   label: 'Waitlist',                icon: '⏳' },
+  { key: 'cashier',    label: 'Cashier',                 icon: '💰' },
+  { key: 'reviews',    label: 'SMS Reviews',             icon: '⭐' },
+  { key: 'reports',    label: 'Reports',                 icon: '📊' },
+  { key: 'settings',   label: 'Settings',                icon: '⚙️' },
+] as const
+
+type TabKey = typeof NAV[number]['key']
+
+type VaccineRecord = {
+  id: string
+  file_url: string | null
+  signedUrl: string | null
+  is_email_only: boolean
+  verified: boolean
+  verified_at: string | null
+  submitted_at: string
+  admin_notes: string | null
+  pets: {
+    id: string
+    name: string
+    breed: string | null
+    weight: string | null
+    photo_url: string | null
+    vaccine_status: string
+    vaccine_expiry: string | null
+    client_phone: string
+    clients: { name: string; phone: string; email: string | null } | null
+  } | null
+}
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+const TIME_OPTIONS = [
+  '7:00 AM','7:15 AM','7:30 AM','7:45 AM',
+  '8:00 AM','8:15 AM','8:30 AM','8:45 AM',
+  '9:00 AM','9:15 AM','9:30 AM','9:45 AM',
+  '10:00 AM','10:15 AM','10:30 AM','10:45 AM',
+  '11:00 AM','11:15 AM','11:30 AM','11:45 AM',
+  '12:00 PM','12:15 PM','12:30 PM','12:45 PM',
+  '1:00 PM','1:15 PM','1:30 PM','1:45 PM',
+  '2:00 PM','2:15 PM','2:30 PM','2:45 PM',
+  '3:00 PM','3:15 PM','3:30 PM','3:45 PM',
+  '4:00 PM','4:15 PM','4:30 PM','4:45 PM',
+  '5:00 PM','5:15 PM','5:30 PM','5:45 PM',
+  '6:00 PM','6:15 PM','6:30 PM','6:45 PM',
+  '7:00 PM','7:15 PM','7:30 PM','7:45 PM',
+  '8:00 PM',
+]
+
+// ── Main component ─────────────────────────────────────────────────────────
+export default function DeskAdmin() {
+  const [isBookMode, setIsBookMode] = useState(false)
+  const [authed, setAuthed] = useState(false)
+  const [pin, setPin] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [pinLoading, setPinLoading] = useState(false)
+
+  const [tab, setTab] = useState<TabKey>('today')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [loading, setLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const [pendingCount, setPendingCount] = useState<number>(0)
+  const prevPendingCountRef = useRef<number | null>(null)
+  const confirmedGroomerIdsRef = useRef<Set<string>>(new Set())
+  const audioCtxRef = useRef<AudioContext | null>(null)
+
+  // Clients
+  const [clients, setClients] = useState<ClientRecord[]>([])
+  const [clientsLoading, setClientsLoading] = useState(false)
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientTagFilter, setClientTagFilter] = useState<string[]>([])
+  const [expandedClient, setExpandedClient] = useState<string | null>(null)
+  const [expandedPetHistoryIds, setExpandedPetHistoryIds] = useState<Set<string>>(new Set())
+  // Intake inline-editing state
+  const [intakeEditId, setIntakeEditId] = useState<string | null>(null)
+  const [intakeFirstName, setIntakeFirstName] = useState('')
+  const [intakeLastName, setIntakeLastName] = useState('')
+  const [intakeEmail, setIntakeEmail] = useState('')
+  const [intakeBreed, setIntakeBreed] = useState('')
+  const [intakeWeight, setIntakeWeight] = useState('')
+  const [intakeVaccine, setIntakeVaccine] = useState('')
+  const [intakeNotes, setIntakeNotes] = useState('')
+  const [intakeSaving, setIntakeSaving] = useState(false)
+  const [uploadingPetId, setUploadingPetId] = useState<string | null>(null)
+  const [uploadDonePetId, setUploadDonePetId] = useState<string | null>(null)
+
+  // Client editing
+  const [editingClient, setEditingClient] = useState<string | null>(null)
+  const [clientEditData, setClientEditData] = useState<{ firstName: string; lastName: string; email: string; address: string } | null>(null)
+  const [savingClient, setSavingClient] = useState(false)
+  const [newPickupName, setNewPickupName] = useState('')
+  const [newPickupRel, setNewPickupRel] = useState('')
+  const [addingPickupFor, setAddingPickupFor] = useState<string | null>(null)
+
+  // Vaccine records
+  const [vaccineRecords, setVaccineRecords] = useState<VaccineRecord[]>([])
+  const [vaccineLoading, setVaccineLoading] = useState(false)
+  const [vaccineCount, setVaccineCount] = useState(0)
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+  const [vaccineFilter, setVaccineFilter] = useState<'all' | 'uploaded' | 'email' | 'text'>('all')
+  const [vaccineShowAll, setVaccineShowAll] = useState(false)
+  const [vaccineError, setVaccineError] = useState<string | null>(null)
+  const [expiryEditing, setExpiryEditing] = useState<string | null>(null)   // pet id being edited (Clients tab)
+  const [expiryValue, setExpiryValue] = useState('')                        // date string YYYY-MM-DD (Clients tab)
+  const [savingExpiry, setSavingExpiry] = useState(false)
+  const [rowExpiryValues, setRowExpiryValues] = useState<Record<string, string>>({}) // petId → date for Vaccine Records rows
+
+  // Reviews
+  const [reviewMetrics, setReviewMetrics] = useState<{ sent: number; responses: number; positive: number; negative: number; responseRate: number }>({ sent: 0, responses: 0, positive: 0, negative: 0, responseRate: 0 })
+  const [reviewAlerts, setReviewAlerts] = useState<any[]>([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [reviewSettings, setReviewSettings] = useState<any>(null)
+  const [reviewSettingsEdit, setReviewSettingsEdit] = useState<any>(null)
+  const [reviewSettingsSaving, setReviewSettingsSaving] = useState(false)
+  const [reviewSettingsMode, setReviewSettingsMode] = useState<'view' | 'edit'>('view')
+
+  // Calendar
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`
+  })
+  const [calendarAppts, setCalendarAppts] = useState<Appointment[]>([])
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [calendarStaffFilter, setCalendarStaffFilter] = useState<string>('all')
+  const [todayGroupByStaff, setTodayGroupByStaff] = useState(false)
+  const [blockedTimes, setBlockedTimes] = useState<{date:string;time:string;reason:string|null}[]>([])
+  const [blockingSlot, setBlockingSlot] = useState<{date:string;time:string}|null>(null)
+  const [blockReason, setBlockReason] = useState('')
+  const [savingBlock, setSavingBlock] = useState(false)
+
+  // Quick-add appointment from calendar
+  const [addingApptSlot, setAddingApptSlot] = useState<{date:string;time:string}|null>(null)
+  const [addApptPhone, setAddApptPhone] = useState('')
+  const [addApptClientName, setAddApptClientName] = useState('')
+  const [addApptFirstName, setAddApptFirstName] = useState('')
+  const [addApptLastName, setAddApptLastName] = useState('')
+  const [addApptEmail, setAddApptEmail] = useState('')
+  const [addApptPetId, setAddApptPetId] = useState('')
+  const [addApptPetName, setAddApptPetName] = useState('')
+  const [addApptBreed, setAddApptBreed] = useState('')
+  const [addApptWeight, setAddApptWeight] = useState('')
+  const [addApptVaccine, setAddApptVaccine] = useState('pending')
+  const [addApptService, setAddApptService] = useState('bath_brush')
+  const [addApptSaving, setAddApptSaving] = useState(false)
+  const [addApptClientData, setAddApptClientData] = useState<{name:string;pets:{id:string;name:string;breed?:string;weight?:string}[]}|null>(null)
+  const [addApptPhoneLooking, setAddApptPhoneLooking] = useState(false)
+
+  // Appointment detail slide-over
+  const [detailAppt, setDetailAppt] = useState<Appointment | null>(null)
+  const [detailTab, setDetailTab] = useState<'appt' | 'customer' | 'payment' | 'future' | 'notes'>('appt')
+  const [detailClient, setDetailClient] = useState<ClientRecord | null>(null)
+  const [detailClientLoading, setDetailClientLoading] = useState(false)
+  const [detailFutureAppts, setDetailFutureAppts] = useState<Appointment[]>([])
+  const [detailFutureLoading, setDetailFutureLoading] = useState(false)
+  const [detailNotes, setDetailNotes] = useState('')
+  const [noteAuthor, setNoteAuthor] = useState('')
+  const [editingNotes, setEditingNotes] = useState(false)
+  const [savingDetailNotes, setSavingDetailNotes] = useState(false)
+  const [detailActionLoading, setDetailActionLoading] = useState<string | null>(null)
+
+  // Reschedule (detail panel)
+  const [detailRescheduleDate, setDetailRescheduleDate] = useState('')
+  const [detailRescheduleTime, setDetailRescheduleTime] = useState('')
+  const [savingReschedule, setSavingReschedule] = useState(false)
+  const [showRescheduleInputs, setShowRescheduleInputs] = useState(false)
+
+  // Inline reschedule (Today tab row button)
+  const [inlineRescheduleAppt, setInlineRescheduleAppt] = useState<Appointment | null>(null)
+  const [inlineRescheduleDate, setInlineRescheduleDate] = useState('')
+  const [inlineRescheduleTime, setInlineRescheduleTime] = useState('')
+  const [inlineRescheduleSlots, setInlineRescheduleSlots] = useState<string[]>([])
+  const [inlineRescheduleLoading, setInlineRescheduleLoading] = useState(false)
+  const [inlineRescheduleSaving, setInlineRescheduleSaving] = useState(false)
+
+  // Staff assignment in detail panel
+  const [detailGroomer, setDetailGroomer] = useState('')
+  const [detailBather, setDetailBather] = useState('')
+  const [savingStaff, setSavingStaff] = useState(false)
+
+  // Payment in detail panel
+  const [detailPayAmount, setDetailPayAmount] = useState('')
+  const [detailTipAmount, setDetailTipAmount] = useState('')
+  const [detailPayMethod, setDetailPayMethod] = useState('cash')
+  const [detailPayStatus, setDetailPayStatus] = useState('unpaid')
+  const [savingPayment, setSavingPayment] = useState(false)
+  const [totalSaved, setTotalSaved] = useState(false)
+  // Add-on services before checkout
+  const [detailBasePrice, setDetailBasePrice] = useState('')
+  const [detailBaseTier, setDetailBaseTier] = useState('')  // tier label to avoid same-price collision
+  const [detailAddOns, setDetailAddOns] = useState<{id: string; name: string; price: string}[]>([])
+  // Inline price editing for service tiers
+  const [detailEditTiersMode, setDetailEditTiersMode] = useState(false)
+  const [detailEditTiers, setDetailEditTiers] = useState<{label:string;price:string;duration:string}[]>([])
+  const [savingTiers, setSavingTiers] = useState(false)
+  // Change service
+  const [changingService, setChangingService] = useState(false)
+  const [savingServiceChange, setSavingServiceChange] = useState(false)
+  // Notes translation (3-way: EN + 繁體 + 簡體, auto on type)
+  const [translatingNotes, setTranslatingNotes] = useState(false)
+  const [noteTranslations, setNoteTranslations] = useState<{english:string;traditional:string;simplified:string;detected:string} | null>(null)
+  const noteTranslateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const noteIsComposingRef = useRef(false)
+  const noteInputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Settings
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [timezone, setTimezone] = useState('America/Los_Angeles')
+  const [openDays, setOpenDays] = useState<number[]>([1,2,3,4,5,6])
+  const [openTime, setOpenTime] = useState('9:00 AM')
+  const [closeTime, setCloseTime] = useState('5:00 PM')
+  const [appointmentInterval, setAppointmentInterval] = useState<15 | 30>(30)
+  const [settingsSaved, setSettingsSaved] = useState(false)
+  const [blockedDates, setBlockedDates] = useState<{id:string;date:string;reason:string|null}[]>([])
+  const [newBlockDate, setNewBlockDate] = useState('')
+  const [newBlockReason, setNewBlockReason] = useState('')
+
+  // ── Tags ──
+  type Tag = { id: string; name: string; color: string }
+  const [tags, setTags] = useState<Tag[]>([])
+  const [newTagName, setNewTagName] = useState('')
+  const [newTagColor, setNewTagColor] = useState('sky')
+  const [savingTag, setSavingTag] = useState(false)
+
+  // Service pricing
+  type PriceTier = { label: string; price: string; duration: string }
+  type ServicePricingMap = Record<string, PriceTier[]>
+  const DEFAULT_TIERS: PriceTier[] = [
+    { label: 'Small (under 10 lbs)', price: '', duration: '' },
+    { label: 'Medium (11–25 lbs)',  price: '', duration: '' },
+    { label: 'Large (26–45 lbs)',   price: '', duration: '' },
+    { label: 'XL (45+ lbs)',        price: '', duration: '' },
+  ]
+  const [servicePricing, setServicePricing] = useState<ServicePricingMap>({
+    simply_cute:  DEFAULT_TIERS.map(t => ({...t})),
+    bath_brush:   DEFAULT_TIERS.map(t => ({...t})),
+    asian_fusion: DEFAULT_TIERS.map(t => ({...t})),
+  })
+  const [pricingSaved, setPricingSaved] = useState(false)
+
+  // Staff
+  const [staff, setStaff] = useState<StaffMember[]>([])
+  const [newStaffName, setNewStaffName] = useState('')
+  const [newStaffRole, setNewStaffRole] = useState('groomer')
+
+  // Payroll
+  const [payrollStartDate, setPayrollStartDate] = useState('')
+  const [payrollEndDate, setPayrollEndDate] = useState('')
+  const [payrollNotes, setPayrollNotes] = useState('')
+
+  // Reports
+  const [reportsRange, setReportsRange] = useState<'week' | 'month' | 'all'>('month')
+  const [reportsAppts, setReportsAppts] = useState<Appointment[]>([])
+  const [reportsLoading, setReportsLoading] = useState(false)
+  const [reportEditingId, setReportEditingId] = useState<string | null>(null)
+  const [reportEditAmount, setReportEditAmount] = useState('')
+  const [reportEditTip, setReportEditTip] = useState('')
+  const [reportEditMethod, setReportEditMethod] = useState('cash')
+  const [reportEditStatus, setReportEditStatus] = useState('paid')
+  const [reportSavingId, setReportSavingId] = useState<string | null>(null)
+
+  // Cashier
+  const [cashierRange, setCashierRange] = useState<'today' | 'week' | 'month'>('today')
+  const [cashierExpandedId, setCashierExpandedId] = useState<string | null>(null)
+  const [cashierMode, setCashierMode] = useState<'pay' | 'edit' | null>(null)
+  const [cashierAmount, setCashierAmount] = useState('')
+  const [cashierTip, setCashierTip] = useState('')
+  const [cashierService, setCashierService] = useState('')
+  const [cashierSavingId, setCashierSavingId] = useState<string | null>(null)
+
+  // Services
+  const [services, setServices] = useState<ServiceDef[]>([
+    { id: 'simply_cute', name: 'Simply Cute', desc: 'Classic clean cut, bath, blow-dry & finishing touches', price: '', tiers: DEFAULT_TIERS.map(t => ({...t})) },
+    { id: 'bath_brush', name: 'Bath & Brush', desc: 'Thorough bath, blow-dry & brush-out', price: '', tiers: DEFAULT_TIERS.map(t => ({...t})) },
+    { id: 'asian_fusion', name: 'Asian Fusion Style', desc: 'Creative styling with a modern Asian-inspired look', price: '', tiers: DEFAULT_TIERS.map(t => ({...t})) },
+  ])
+  // Dynamic lookup: static labels + anything added via Settings
+  const serviceMap: Record<string, string> = {
+    ...SERVICE_LABELS,
+    ...Object.fromEntries(services.filter(s => s.name).map(s => [s.id, s.name])),
+  }
+  const [servicesSaved, setServicesSaved] = useState(false)
+  const [hoursSaved, setHoursSaved] = useState(false)
+
+  // Grooming board
+  const [groomingAppts, setGroomingAppts] = useState<Appointment[]>([])
+  const [groomingLoading, setGroomingLoading] = useState(false)
+  const [groomingView, setGroomingView] = useState<'list' | 'board'>('list')
+  const [groomingUpdating, setGroomingUpdating] = useState<string | null>(null)
+  const [groomingCelebrate, setGroomingCelebrate] = useState<Appointment | null>(null)
+  const [groomingSmsAlert, setGroomingSmsAlert] = useState<string | null>(null)
+
+  // Delete confirmation
+  const [deletingApptId, setDeletingApptId] = useState<string | null>(null)
+  const [deletingPetId, setDeletingPetId] = useState<string | null>(null)
+
+  // Vaccine status inline edit
+  const [editingVaccineId, setEditingVaccineId] = useState<string | null>(null)
+  const [savingVaccineId, setSavingVaccineId] = useState<string | null>(null)
+
+  // Weight inline edit (clients tab + appointment popup)
+  const [editingWeightId, setEditingWeightId] = useState<string | null>(null)
+  const [editingWeightValue, setEditingWeightValue] = useState('')
+  const [customWeightText, setCustomWeightText] = useState('')
+  const [savingWeightId, setSavingWeightId] = useState<string | null>(null)
+  const [editingApptWeight, setEditingApptWeight] = useState(false)
+  const [apptWeightDraft, setApptWeightDraft] = useState('')
+
+  useEffect(() => {
+    const bookMode = new URLSearchParams(window.location.search).get('mode') === 'book'
+    if (bookMode) {
+      setIsBookMode(true)
+      setTab('calendar')
+      setAuthed(true)
+    } else if (sessionStorage.getItem('admin_authed') === 'yes') {
+      setAuthed(true)
+    }
+  }, [])
+
+  // No-op — AudioContext created on demand inside play functions
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
+
+  // ── Auth ─────────────────────────────────────────────────────────────────
+  const handlePin = async () => {
+    setPinLoading(true); setPinError('')
+    try {
+      const res = await fetch('/api/admin/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ pin }) })
+      const data = await res.json()
+      if (data.success) { sessionStorage.setItem('admin_authed','yes'); setAuthed(true) }
+      else setPinError('Incorrect PIN.')
+    } catch { setPinError('Something went wrong.') }
+    setPinLoading(false)
+  }
+
+  // ── Data fetching ─────────────────────────────────────────────────────────
+  const fetchAppointments = useCallback(async (status: string) => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/appointments?status=${status}`)
+      const data = await res.json()
+      setAppointments(data.appointments || [])
+    } catch { setAppointments([]) }
+    setLoading(false)
+  }, [])
+
+  const fetchCalendar = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [apptRes, btRes, sRes] = await Promise.all([
+        fetch(`/api/admin/appointments?status=month&month=${calendarMonth}`),
+        fetch('/api/admin/blocked-times'),
+        fetch('/api/admin/settings'),
+      ])
+      const apptData = await apptRes.json()
+      const btData = await btRes.json()
+      const sData = await sRes.json()
+      setCalendarAppts(apptData.appointments || [])
+      setBlockedTimes(btData.blocked_times || [])
+      const s = sData.settings || {}
+      if (s.open_time) setOpenTime(s.open_time)
+      if (s.close_time) setCloseTime(s.close_time)
+    } catch { setCalendarAppts([]) }
+    setLoading(false)
+  }, [calendarMonth])
+
+  const fetchClients = useCallback(async () => {
+    setClientsLoading(true)
+    try {
+      const res = await fetch('/api/admin/clients')
+      const data = await res.json()
+      setClients(data.clients || [])
+    } catch { setClients([]) }
+    setClientsLoading(false)
+  }, [])
+
+  const uploadPetPhoto = async (petId: string, file: File) => {
+    setUploadingPetId(petId)
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const img = new window.Image()
+        img.onload = () => {
+          const MAX = 1200
+          let { width, height } = img
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round((height / width) * MAX); width = MAX }
+            else { width = Math.round((width / height) * MAX); height = MAX }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width; canvas.height = height
+          canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+          resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1])
+        }
+        img.onerror = reject
+        img.src = URL.createObjectURL(file)
+      })
+      const res = await fetch('/api/pets/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ petId, fileBase64: base64, contentType: 'image/jpeg', ext: 'jpg' }),
+      })
+      const data = await res.json()
+      if (data.url) {
+        setClients(prev => prev.map(c => ({
+          ...c,
+          pets: c.pets.map(p => p.id === petId ? { ...p, photo_url: data.url } : p)
+        })))
+        setUploadDonePetId(petId)
+        setTimeout(() => setUploadDonePetId(null), 2000)
+        showToast('Photo updated!')
+      } else {
+        showToast('⚠️ Upload failed')
+      }
+    } catch { showToast('⚠️ Upload error') }
+    finally { setUploadingPetId(null) }
+  }
+
+  const saveClientEdit = async (phone: string) => {
+    if (!clientEditData) return
+    setSavingClient(true)
+    try {
+      const res = await fetch('/api/admin/clients', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, name: `${clientEditData.firstName.trim()} ${clientEditData.lastName.trim()}`.trim(), email: clientEditData.email, address: clientEditData.address }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const fullName = `${clientEditData.firstName.trim()} ${clientEditData.lastName.trim()}`.trim()
+        setClients(prev => prev.map(c => c.phone === phone ? { ...c, name: fullName, email: clientEditData!.email, address: clientEditData!.address } : c))
+        setEditingClient(null)
+        setClientEditData(null)
+        showToast('Client info saved!')
+      } else {
+        showToast('⚠️ Save failed')
+      }
+    } catch { showToast('⚠️ Save error') }
+    finally { setSavingClient(false) }
+  }
+
+  const [deletingClient, setDeletingClient] = useState<string|null>(null)
+  const [confirmDeleteClient, setConfirmDeleteClient] = useState<string|null>(null)
+
+  const handleDeleteClient = async (phone: string) => {
+    setDeletingClient(phone)
+    try {
+      const res = await fetch('/api/admin/clients', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setClients(prev => prev.filter(c => c.phone !== phone))
+        setExpandedClient(null)
+        setConfirmDeleteClient(null)
+        showToast('Client deleted')
+      } else {
+        showToast('⚠️ Delete failed')
+      }
+    } catch { showToast('⚠️ Delete error') }
+    finally { setDeletingClient(null) }
+  }
+
+  const addPickup = async (clientPhone: string) => {
+    if (!newPickupName.trim()) return
+    try {
+      const res = await fetch('/api/admin/pickups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: clientPhone, name: newPickupName, relationship: newPickupRel }),
+      })
+      const data = await res.json()
+      if (data.pickup) {
+        setClients(prev => prev.map(c => c.phone === clientPhone
+          ? { ...c, authorized_pickups: [...(c.authorized_pickups || []), data.pickup] }
+          : c))
+        setNewPickupName('')
+        setNewPickupRel('')
+        setAddingPickupFor(null)
+        showToast('Pickup person added!')
+      } else {
+        showToast('⚠️ Failed to add pickup')
+      }
+    } catch { showToast('⚠️ Error adding pickup') }
+  }
+
+  const removePickup = async (clientPhone: string, pickupId: string) => {
+    try {
+      const res = await fetch('/api/admin/pickups', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pickupId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setClients(prev => prev.map(c => c.phone === clientPhone
+          ? { ...c, authorized_pickups: c.authorized_pickups.filter(p => p.id !== pickupId) }
+          : c))
+        showToast('Pickup person removed')
+      }
+    } catch { showToast('⚠️ Error removing pickup') }
+  }
+
+  const openApptDetail = async (appt: Appointment) => {
+    setDetailAppt(appt)
+    setDetailTab('appt')
+    setDetailNotes(appt.notes || '')
+    setEditingNotes(false)
+    setDetailRescheduleDate(appt.appointment_date)
+    setDetailRescheduleTime(appt.appointment_time)
+    setDetailGroomer(appt.assigned_groomer || '')
+    setDetailBather(appt.assigned_bather || '')
+    setDetailPayAmount(appt.payment_amount || '')
+    setDetailTipAmount(appt.tip_amount || '')
+    setDetailPayMethod(appt.payment_method || 'cash')
+    setDetailPayStatus(appt.payment_status || 'unpaid')
+    setTotalSaved(!!appt.payment_amount)
+    // Load saved add-ons from notes_list (is_addon: true entries)
+    const savedAddOns = (appt.notes_list ?? [])
+      .filter((n: { is_addon?: boolean }) => n.is_addon)
+      .map((n: { id: string; text: string; price?: string }) => ({ id: n.id, name: n.text, price: n.price ?? '' }))
+    setDetailAddOns(savedAddOns)
+    // Base price = total minus add-ons
+    if (appt.payment_amount) {
+      const addonTotal = savedAddOns.reduce((s: number, a: { price: string }) => s + (parseFloat(a.price) || 0), 0)
+      const base = parseFloat(appt.payment_amount) - addonTotal
+      setDetailBasePrice(base > 0 ? base.toString() : appt.payment_amount)
+    } else {
+      setDetailBasePrice('')
+    }
+    setDetailBaseTier('')
+    setDetailEditTiersMode(false)
+    setDetailEditTiers([])
+    setNoteTranslations(null)
+    setDetailClient(null)
+    setDetailFutureAppts([])
+    setShowRescheduleInputs(false)
+
+    // Fetch full client record (address, pickups, etc.)
+    setDetailClientLoading(true)
+    try {
+      const res = await fetch(`/api/admin/clients?phone=${appt.client_phone}`)
+      const data = await res.json()
+      setDetailClient((data.clients || [])[0] ?? null)
+    } catch {/**/}
+    finally { setDetailClientLoading(false) }
+
+    // Fetch upcoming appointments for this client
+    setDetailFutureLoading(true)
+    try {
+      const res = await fetch(`/api/admin/appointments?status=client&clientPhone=${appt.client_phone}`)
+      const data = await res.json()
+      setDetailFutureAppts((data.appointments || []).filter((a: Appointment) => a.id !== appt.id))
+    } catch {/**/}
+    finally { setDetailFutureLoading(false) }
+  }
+
+  const detailHandleAction = async (action: 'confirm' | 'decline' | 'start' | 'complete') => {
+    if (!detailAppt) return
+    setDetailActionLoading(action)
+    try {
+      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const newStatus = action === 'confirm' ? 'confirmed' : action === 'decline' ? 'cancelled' : action === 'start' ? 'in_progress' : 'completed'
+        setDetailAppt(prev => prev ? { ...prev, status: newStatus } : prev)
+        setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, status: newStatus } : a))
+        setCalendarAppts(prev => prev.map(a => a.id === detailAppt.id ? { ...a, status: newStatus } : a))
+        showToast(action === 'confirm' ? '✓ Confirmed! SMS sent.' : action === 'decline' ? 'Declined.' : action === 'start' ? 'Checked in!' : 'Completed!')
+        if (action === 'confirm' || action === 'decline') setDetailAppt(null)
+      }
+    } catch {/**/}
+    finally { setDetailActionLoading(null) }
+  }
+
+  const detailUpdateGroomingStatus = async (newStatus: string) => {
+    if (!detailAppt) return
+    setDetailActionLoading('grooming-' + newStatus)
+    try {
+      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'grooming-status', grooming_status: newStatus }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const now = new Date().toISOString()
+        setDetailAppt(prev => prev ? { ...prev, grooming_status: newStatus, grooming_status_updated_at: now } : prev)
+        setGroomingAppts(prev => prev.map(a => a.id === detailAppt.id ? { ...a, grooming_status: newStatus, grooming_status_updated_at: now } : a))
+        if (newStatus === 'ready') showToast('📱 SMS sent — pet is ready!')
+        if (newStatus === 'done') showToast('🎉 Checked out!')
+      }
+    } catch {/**/}
+    finally { setDetailActionLoading(null) }
+  }
+
+  const saveDetailNotes = async () => {
+    if (!detailAppt) return
+    setSavingDetailNotes(true)
+    try {
+      const newNote: NoteEntry = {
+        id: crypto.randomUUID(),
+        text: noteInputRef.current?.value?.trim() ?? '',
+        author: noteAuthor || 'Staff',
+        created_at: new Date().toISOString(),
+        notes_english: noteTranslations?.detected !== 'english' ? (noteTranslations?.english ?? null) : null,
+        notes_chinese: noteTranslations?.detected !== 'traditional' ? (noteTranslations?.traditional ?? null) : null,
+      }
+
+      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add-note', note: newNote }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || data.error) {
+        showToast('⚠️ Could not save note')
+        return
+      }
+
+      setDetailAppt(prev => prev ? {
+        ...prev,
+        notes_list: data.notes_list,
+      } : prev)
+      setDetailNotes('')
+      setNoteTranslations(null)
+      setEditingNotes(false)
+      showToast('✓ Note saved!')
+    } catch {
+      showToast('⚠️ Could not save note')
+    }
+    finally { setSavingDetailNotes(false) }
+  }
+
+  const deleteNote = async (noteId: string) => {
+    if (!detailAppt) return
+    setSavingDetailNotes(true)
+    try {
+      // Handle legacy note deletion differently
+      const action = noteId === '__legacy__' ? 'delete-legacy-note' : 'delete-note'
+      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, noteId }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { showToast('⚠️ Could not delete note'); return }
+
+      // Update state based on what was deleted
+      if (noteId === '__legacy__') {
+        setDetailAppt(prev => prev ? { ...prev, notes: null, notes_english: null, notes_chinese: null, notes_author: null, notes_updated_at: null } : prev)
+      } else {
+        setDetailAppt(prev => prev ? { ...prev, notes_list: data.notes_list } : prev)
+      }
+      showToast('🗑️ Note deleted')
+    } catch { showToast('⚠️ Could not delete note') }
+    finally { setSavingDetailNotes(false) }
+  }
+
+  // Auto-translate notes after user stops typing (800ms debounce)
+  const triggerAutoTranslate = useCallback((text: string) => {
+    if (noteTranslateTimerRef.current) clearTimeout(noteTranslateTimerRef.current)
+    if (!text.trim()) { setNoteTranslations(null); return }
+    noteTranslateTimerRef.current = setTimeout(async () => {
+      setTranslatingNotes(true)
+      try {
+        const res = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        })
+        const data = await res.json()
+        if (data.english !== undefined || data.traditional !== undefined) {
+          setNoteTranslations({
+            english: data.english || '',
+            traditional: data.traditional || '',
+            simplified: data.simplified || '',
+            detected: data.detected || 'unknown',
+          })
+        } else {
+          setToast('⚠️ Translation failed'); setTimeout(() => setToast(null), 3000)
+        }
+      } catch {
+        setToast('⚠️ Translation unavailable'); setTimeout(() => setToast(null), 3000)
+      } finally {
+        setTranslatingNotes(false)
+      }
+    }, 800)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Re-translate an existing note (for fixing bad translations)
+  const retranslateNote = async (noteId: string, text: string) => {
+    if (!detailAppt) return
+    setSavingDetailNotes(true)
+    try {
+      const tRes = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      const tData = await tRes.json()
+      if (!tData.english && !tData.traditional) {
+        showToast('⚠️ Translation failed')
+        return
+      }
+      const newEnglish = tData.detected !== 'english' ? (tData.english || null) : null
+      const newChinese = tData.detected !== 'traditional' ? (tData.traditional || null) : null
+
+      if (noteId === '__legacy__') {
+        // Update legacy note translations
+        const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update-notes', notes: text, notes_english: newEnglish, notes_chinese: newChinese }),
+        })
+        if (res.ok) {
+          setDetailAppt(prev => prev ? { ...prev, notes_english: newEnglish, notes_chinese: newChinese } : prev)
+          showToast('✓ Re-translated!')
+        }
+      } else {
+        // Update note in notes_list
+        const updatedList = (detailAppt.notes_list ?? []).map(n =>
+          n.id === noteId ? { ...n, notes_english: newEnglish, notes_chinese: newChinese } : n
+        )
+        const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update-note-translations', noteId, notes_english: newEnglish, notes_chinese: newChinese }),
+        })
+        if (res.ok) {
+          setDetailAppt(prev => prev ? { ...prev, notes_list: updatedList } : prev)
+          showToast('✓ Re-translated!')
+        }
+      }
+    } catch { showToast('⚠️ Could not re-translate') }
+    finally { setSavingDetailNotes(false) }
+  }
+
+  const saveStaffAssignment = async () => {
+    if (!detailAppt) return
+    setSavingStaff(true)
+    try {
+      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'assign-staff', assigned_groomer: detailGroomer, assigned_bather: detailBather }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setDetailAppt(prev => prev ? { ...prev, assigned_groomer: detailGroomer || null, assigned_bather: detailBather || null } : prev)
+        setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, assigned_groomer: detailGroomer || null, assigned_bather: detailBather || null } : a))
+        setCalendarAppts(prev => prev.map(a => a.id === detailAppt.id ? { ...a, assigned_groomer: detailGroomer || null, assigned_bather: detailBather || null } : a))
+        showToast('Staff assigned!')
+        if (tab === 'requests') setDetailAppt(null)
+      }
+    } catch {/**/}
+    finally { setSavingStaff(false) }
+  }
+
+  const rescheduleAppointment = async () => {
+    if (!detailAppt || !detailRescheduleDate || !detailRescheduleTime) return
+    setSavingReschedule(true)
+    try {
+      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reschedule', appointment_date: detailRescheduleDate, appointment_time: detailRescheduleTime }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const updater = (a: Appointment) =>
+          a.id === detailAppt.id
+            ? { ...a, appointment_date: detailRescheduleDate, appointment_time: detailRescheduleTime, status: 'pending', groomer_confirmed: false }
+            : a
+        setDetailAppt(prev => prev ? { ...prev, appointment_date: detailRescheduleDate, appointment_time: detailRescheduleTime, status: 'pending', groomer_confirmed: false } : prev)
+        setAppointments(prev => prev.map(updater))
+        setCalendarAppts(prev => prev.map(updater))
+        showToast('✓ Rescheduled! Groomer needs to re-confirm.')
+      } else {
+        showToast('⚠️ Reschedule failed')
+      }
+    } catch { showToast('⚠️ Reschedule error') }
+    finally { setSavingReschedule(false) }
+  }
+
+  const savePayment = async () => {
+    if (!detailAppt) return
+    setSavingPayment(true)
+    try {
+      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'record-payment', payment_amount: detailPayAmount, tip_amount: detailTipAmount, payment_method: detailPayMethod, payment_status: detailPayStatus }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setDetailAppt(prev => prev ? { ...prev, payment_amount: detailPayAmount || null, tip_amount: detailTipAmount || null, payment_method: detailPayMethod, payment_status: detailPayStatus } : prev)
+        setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: detailPayAmount || null, tip_amount: detailTipAmount || null, payment_method: detailPayMethod, payment_status: detailPayStatus } : a))
+        showToast(detailPayStatus === 'paid' ? '✓ Payment recorded!' : 'Payment updated.')
+      }
+    } catch {/**/}
+    finally { setSavingPayment(false) }
+  }
+
+  const addStaff = async () => {
+    if (!newStaffName.trim()) return
+    await fetch('/api/admin/staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newStaffName, role: newStaffRole }),
+    })
+    setNewStaffName('')
+    fetchSettings()
+  }
+
+  const toggleStaff = async (id: string, is_active: boolean) => {
+    await fetch(`/api/admin/staff/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active }),
+    })
+    fetchSettings()
+  }
+
+  const saveServices = async () => {
+    // Save full services (with tiers + duration)
+    await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'services', value: JSON.stringify(services) }),
+    })
+    // Also save derived pricing map for backward compat with detail panel
+    const pricingMap: Record<string, { label: string; price: string }[]> = {}
+    services.forEach(svc => { if (svc.tiers) pricingMap[svc.id] = svc.tiers })
+    await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'service_pricing', value: JSON.stringify(pricingMap) }),
+    })
+    setServicesSaved(true)
+    setTimeout(() => setServicesSaved(false), 2000)
+  }
+
+  const deleteAppointment = async (id: string) => {
+    setDeletingApptId(id)
+    try {
+      const res = await fetch(`/api/admin/appointments/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        setDetailAppt(null)
+        setAppointments(prev => prev.filter(a => a.id !== id))
+        setCalendarAppts(prev => prev.filter(a => a.id !== id))
+        showToast('Appointment deleted.')
+      } else {
+        showToast('⚠️ Delete failed')
+      }
+    } catch { showToast('⚠️ Delete error') }
+    finally { setDeletingApptId(null) }
+  }
+
+  const blockTimeSlot = async (date: string, time: string, reason: string) => {
+    setSavingBlock(true)
+    try {
+      const res = await fetch('/api/admin/blocked-times', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, time, reason: reason || null }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setBlockedTimes(prev => [...prev.filter(b => !(b.date === date && b.time === time)), { date, time, reason: reason || null }])
+        setBlockingSlot(null)
+        setBlockReason('')
+        showToast('Time slot blocked.')
+      }
+    } catch { showToast('⚠️ Error blocking slot') }
+    finally { setSavingBlock(false) }
+  }
+
+  const unblockTimeSlot = async (date: string, time: string) => {
+    try {
+      const res = await fetch('/api/admin/blocked-times', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, time }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setBlockedTimes(prev => prev.filter(b => !(b.date === date && b.time === time)))
+        showToast('Time slot unblocked.')
+      }
+    } catch { showToast('⚠️ Error unblocking') }
+  }
+
+  const lookupClientByPhone = useCallback(async (phone: string) => {
+    const digits = phone.replace(/\D/g, '')
+    if (digits.length < 7) return
+    setAddApptPhoneLooking(true)
+    try {
+      // Fetch all formats in parallel — much faster than sequential
+      const formats = [
+        digits,
+        digits.length === 10 ? `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}` : null,
+        digits.length === 10 ? `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}` : null,
+        digits.length === 10 ? `+1${digits}` : null,
+      ].filter(Boolean) as string[]
+
+      const results = await Promise.all(
+        formats.map(fmt =>
+          fetch(`/api/admin/clients?phone=${encodeURIComponent(fmt)}`).then(r => r.json()).catch(() => ({ clients: [] }))
+        )
+      )
+
+      let client = null
+      for (const data of results) {
+        if (data.clients && data.clients.length > 0) {
+          const named = data.clients.find((c: {name:string}) => c.name && c.name.replace(/\D/g,'').length !== 10)
+          client = named ?? data.clients[0]
+          break
+        }
+      }
+
+      if (client) {
+        const displayName = client.name && client.name.replace(/\D/g,'').length === 10 ? '(name not on file)' : client.name
+        setAddApptClientData({ name: displayName, pets: client.pets || [] })
+        setAddApptClientName(displayName)
+        if (client.pets?.length === 1) {
+          setAddApptPetId(client.pets[0].id)
+          setAddApptPetName(client.pets[0].name)
+        }
+      } else {
+        setAddApptClientData(null)
+        setAddApptClientName('')
+        setAddApptFirstName(''); setAddApptLastName('')
+      }
+    } catch {/**/}
+    finally { setAddApptPhoneLooking(false) }
+  }, [])
+
+  const clearAddApptForm = () => {
+    setAddingApptSlot(null)
+    setAddApptPhone(''); setAddApptClientName(''); setAddApptFirstName(''); setAddApptLastName(''); setAddApptEmail('')
+    setAddApptPetId(''); setAddApptPetName(''); setAddApptBreed(''); setAddApptWeight('')
+    setAddApptVaccine('pending'); setAddApptClientData(null)
+  }
+
+  const submitQuickAddAppt = async () => {
+    if (!addingApptSlot || !addApptPhone || (!addApptPetId && !addApptPetName)) return
+    setAddApptSaving(true)
+    try {
+      const res = await fetch('/api/admin/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: addApptPhone,
+          clientName: `${addApptFirstName.trim()} ${addApptLastName.trim()}`.trim() || addApptClientName || addApptPhone,
+          email: addApptEmail || null,
+          petId: addApptPetId || null,
+          petName: addApptPetName,
+          breed: addApptBreed || null,
+          weight: addApptWeight || null,
+          vaccineStatus: addApptVaccine,
+          service: addApptService,
+          date: addingApptSlot.date,
+          time: addingApptSlot.time,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        clearAddApptForm()
+        if (data.newClientCreated) {
+          // New client — send to New Client Intake so admin can complete their profile
+          showToast('🆕 New client added! Complete their profile in New Client Intake.')
+          setTab('intake')
+          fetchAppointments('pending')
+        } else {
+          showToast('✓ Appointment added!')
+          fetchCalendar()
+        }
+      } else {
+        showToast('⚠️ ' + (data.error || 'Error adding appointment'))
+      }
+    } catch { showToast('⚠️ Error adding appointment') }
+    finally { setAddApptSaving(false) }
+  }
+
+  const updateVaccineStatus = async (clientPhone: string, petId: string, status: string) => {
+    setSavingVaccineId(petId)
+    try {
+      const res = await fetch(`/api/admin/pets/${petId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vaccine_status: status }),
+      })
+      const data = await res.json()
+      if (data.success || !data.error) {
+        setClients(prev => prev.map(c => c.phone === clientPhone
+          ? { ...c, pets: c.pets.map(p => p.id === petId ? { ...p, vaccine_status: status } : p) }
+          : c))
+        setEditingVaccineId(null)
+        showToast('Vaccine status updated!')
+      } else {
+        showToast('⚠️ Update failed')
+      }
+    } catch { showToast('⚠️ Update error') }
+    finally { setSavingVaccineId(null) }
+  }
+
+  const WEIGHT_OPTIONS = [
+    'Small (under 10 lbs)',
+    'Medium (11–25 lbs)',
+    'Large (26–45 lbs)',
+    'XL (45+ lbs)',
+  ]
+
+  const updatePetWeight = async (petId: string, weight: string, clientPhone?: string) => {
+    setSavingWeightId(petId)
+    try {
+      const res = await fetch(`/api/admin/pets/${petId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weight }),
+      })
+      const data = await res.json()
+      if (data.success || !data.error) {
+        // Update clients list
+        if (clientPhone) {
+          setClients(prev => prev.map(c => c.phone === clientPhone
+            ? { ...c, pets: c.pets.map(p => p.id === petId ? { ...p, weight } : p) }
+            : c))
+        }
+        // Update appointment popup pet if it's the same pet
+        setDetailAppt(prev => prev && prev.pets?.id === petId
+          ? { ...prev, pets: { ...prev.pets!, weight } }
+          : prev)
+        // Update appointments list
+        setAppointments(prev => prev.map(a => a.pets?.id === petId
+          ? { ...a, pets: { ...a.pets!, weight } }
+          : a))
+        setEditingWeightId(null)
+        setEditingApptWeight(false)
+        showToast('✓ Weight updated')
+      } else {
+        showToast('⚠️ Failed to update weight')
+      }
+    } catch { showToast('⚠️ Update error') }
+    finally { setSavingWeightId(null) }
+  }
+
+  const deletePet = async (clientPhone: string, petId: string) => {
+    setDeletingPetId(petId)
+    try {
+      const res = await fetch(`/api/admin/pets/${petId}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        setClients(prev => prev.map(c => c.phone === clientPhone
+          ? { ...c, pets: c.pets.filter(p => p.id !== petId) }
+          : c))
+        showToast('Pet profile deleted.')
+      } else {
+        showToast('⚠️ Delete failed')
+      }
+    } catch { showToast('⚠️ Delete error') }
+    finally { setDeletingPetId(null) }
+  }
+
+  const fetchVaccineRecords = useCallback(async (showAll?: boolean) => {
+    setVaccineLoading(true)
+    setVaccineError(null)
+    try {
+      const url = (showAll ?? vaccineShowAll) ? '/api/admin/vaccines?all=true' : '/api/admin/vaccines'
+      const res = await fetch(url)
+      const data = await res.json()
+      if (data.error) { setVaccineError(data.error); return }
+      const records = data.records ?? []
+      setVaccineRecords(records)
+      setVaccineCount(records.filter((r: VaccineRecord) => !r.verified).length)
+      // Pre-fill per-row expiry values from existing pet data
+      const map: Record<string, string> = {}
+      records.forEach((r: VaccineRecord) => { if (r.pets?.id) map[r.pets.id] = r.pets.vaccine_expiry || '' })
+      setRowExpiryValues(map)
+    } catch (e) { setVaccineError(String(e)) }
+    finally { setVaccineLoading(false) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaccineShowAll])
+
+  const saveVaccineExpiry = async (petId: string, expiry: string) => {
+    setSavingExpiry(true)
+    try {
+      const res = await fetch(`/api/admin/pets/${petId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vaccine_expiry: expiry || null }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      // Update local vaccine records list
+      setVaccineRecords(prev => prev.map(r =>
+        r.pets?.id === petId ? { ...r, pets: r.pets ? { ...r.pets, vaccine_expiry: expiry || null } : r.pets } : r
+      ))
+      // Update local clients list if loaded
+      setClients(prev => prev.map(c => ({
+        ...c,
+        pets: c.pets.map(p => p.id === petId ? { ...p, vaccine_expiry: expiry || null } : p),
+      })))
+      setExpiryEditing(null)
+      showToast(expiry ? `✓ Expiry set to ${new Date(expiry + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : '✓ Expiry cleared')
+    } catch { showToast('⚠️ Failed to save expiry date') }
+    finally { setSavingExpiry(false) }
+  }
+
+  const approveVaccineRecord = async (recordId: string) => {
+    setApprovingId(recordId)
+    try {
+      const res = await fetch('/api/admin/vaccines', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setVaccineRecords(prev => prev.filter(r => r.id !== recordId))
+        setVaccineCount(prev => Math.max(0, prev - 1))
+        showToast('✓ Vaccine record approved!')
+      } else {
+        showToast('⚠️ Approval failed')
+      }
+    } catch { showToast('⚠️ Approval error') }
+    finally { setApprovingId(null) }
+  }
+
+  const fetchSettings = useCallback(async () => {
+    setSettingsLoading(true)
+    const [sRes, bRes, staffRes, tagsRes] = await Promise.all([
+      fetch('/api/admin/settings'),
+      fetch('/api/admin/blocked-dates'),
+      fetch('/api/admin/staff'),
+      fetch('/api/admin/tags'),
+    ])
+    const sData = await sRes.json(); const bData = await bRes.json(); const staffData = await staffRes.json()
+    try { const tagsData = await tagsRes.json(); setTags(tagsData.tags || []) } catch {/**/}
+    const s = sData.settings || {}
+    if (s.timezone) setTimezone(s.timezone)
+    if (s.open_days) { try { setOpenDays(JSON.parse(s.open_days)) } catch {/**/} }
+    if (s.open_time) setOpenTime(s.open_time)
+    if (s.close_time) setCloseTime(s.close_time)
+    if (s.appointment_interval) setAppointmentInterval(parseInt(s.appointment_interval) as 15 | 30)
+    if (s.services) {
+      try {
+        const loadedSvcs: ServiceDef[] = JSON.parse(s.services)
+        // Merge tiers from service_pricing if this service doesn't have them yet (old format)
+        let pricingMap: Record<string, { label: string; price: string }[]> = {}
+        if (s.service_pricing) { try { pricingMap = JSON.parse(s.service_pricing) } catch {/**/} }
+        setServices(loadedSvcs.map(svc => ({
+          ...svc,
+          // Normalize visible to explicit boolean so future saves always write true/false
+          visible: svc.visible === false || (svc as {visible?:unknown}).visible === 'false' ? false : true,
+          tiers: svc.tiers ?? pricingMap[svc.id] ?? DEFAULT_TIERS.map(t => ({...t})),
+        })))
+        // Also sync servicePricing state for detail panel compat
+        if (s.service_pricing) {
+          try {
+            const loaded = JSON.parse(s.service_pricing)
+            setServicePricing(prev => ({ ...prev, ...loaded }))
+          } catch {/**/}
+        }
+      } catch {/**/}
+    } else if (s.service_pricing) {
+      try {
+        const loaded = JSON.parse(s.service_pricing)
+        setServicePricing(prev => ({ ...prev, ...loaded }))
+      } catch {/**/}
+    }
+    setStaff(staffData.staff || [])
+    setBlockedDates(bData.blocked_dates || [])
+    setSettingsLoading(false)
+  }, [])
+
+  // Fetch payroll data (staff earnings, etc.)
+  const fetchPayroll = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/staff')
+      const data = await res.json()
+      setStaff(data.staff || [])
+    } catch { /* silent */ }
+  }, [])
+
+  // Generate payroll report based on date range
+  const generatePayrollReport = useCallback(async () => {
+    if (!payrollStartDate || !payrollEndDate) {
+      alert('Please select both start and end dates')
+      return
+    }
+    setActionLoading('payroll')
+    try {
+      // Fetch appointments in the date range
+      const res = await fetch(`/api/admin/appointments?status=all`)
+      const data = await res.json()
+      const allAppts = data.appointments || []
+
+      // Filter appointments by date range
+      const appts = allAppts.filter((a: any) => {
+        const apptDate = a.appointment_date
+        return apptDate >= payrollStartDate && apptDate <= payrollEndDate
+      })
+
+      // Calculate earnings for each staff member
+      const staffEarnings: Record<string, {name: string; role: string; commission: number; tips: number; appts: number}> = {}
+
+      staff.forEach(member => {
+        staffEarnings[member.name] = {
+          name: member.name,
+          role: member.role,
+          commission: 0,
+          tips: 0,
+          appts: 0
+        }
+      })
+
+      // Calculate based on assignments
+      appts.forEach((appt: any) => {
+        if (appt.assigned_groomer && staffEarnings[appt.assigned_groomer]) {
+          const member = staff.find(s => s.name === appt.assigned_groomer)
+          if (member && appt.payment_status === 'paid') {
+            const amount = parseFloat(appt.payment_amount || '0')
+            staffEarnings[appt.assigned_groomer].commission += (amount * member.commission_percent / 100)
+            staffEarnings[appt.assigned_groomer].appts += 1
+          }
+        }
+        if (appt.assigned_groomer && appt.tip_amount && staffEarnings[appt.assigned_groomer]) {
+          const amount = parseFloat(appt.tip_amount || '0')
+          staffEarnings[appt.assigned_groomer].tips += amount
+        }
+      })
+
+      // Create CSV content
+      let csv = 'Name,Role,Commissions,Tips,Appointments\n'
+      Object.values(staffEarnings).forEach(earning => {
+        csv += `${earning.name},${earning.role},$${earning.commission.toFixed(2)},$${earning.tips.toFixed(2)},${earning.appts}\n`
+      })
+
+      // Download CSV
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `payroll-${payrollStartDate}-to-${payrollEndDate}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      alert('Payroll report generated and downloaded!')
+    } catch (e) {
+      console.error(e)
+      alert('Error generating payroll report')
+    } finally {
+      setActionLoading(null)
+    }
+  }, [payrollStartDate, payrollEndDate, staff])
+
+  const fetchReports = useCallback(async (range?: 'week' | 'month' | 'all') => {
+    setReportsLoading(true)
+    try {
+      // Fetch all appointments (no status filter) for reports
+      const res = await fetch('/api/admin/appointments?status=all')
+      const data = await res.json()
+      setReportsAppts(data.appointments || [])
+    } catch { /* silent */ }
+    setReportsLoading(false)
+  }, [])
+
+  // Helper function to get button text based on loading state
+  const getButtonText = (baseText: string, loadingKey: string, isLoading: boolean) => {
+    if (!isLoading) return baseText
+    if (actionLoading === loadingKey) return `⏳ ${baseText}...`
+    return baseText
+  }
+
+  // Helper to check if specific action is loading
+  const isActionLoading = (loadingKey: string) => actionLoading === loadingKey
+
+  // ── Sound helpers ─────────────────────────────────────────────────────────
+  const getCtx = useCallback(async () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      await audioCtxRef.current.resume()
+    }
+    return audioCtxRef.current
+  }, [])
+
+  // 🐶 Real dog bark — plays uploaded audio file
+  const playBark = useCallback(async () => {
+    try {
+      const audio = new Audio('/dog-bark.mp3')
+      audio.volume = 0.8
+      await audio.play()
+    } catch (e) { console.warn('Bark sound error:', e) }
+  }, [])
+
+  // 🔔 Chime — groomer confirmed
+  const playChime = useCallback(async () => {
+    try {
+      const ctx = await getCtx()
+      const notes = [523.25, 659.25, 783.99] // C5 E5 G5
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.15)
+        gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + i * 0.15 + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.6)
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start(ctx.currentTime + i * 0.15)
+        osc.stop(ctx.currentTime + i * 0.15 + 0.65)
+      })
+    } catch (e) { console.warn('Chime sound error:', e) }
+  }, [getCtx])
+
+  const fetchPendingCount = useCallback(async () => {
+    try {
+      // Check new client requests (pending)
+      const res = await fetch('/api/admin/appointments?status=pending')
+      const data = await res.json()
+      const count = (data.appointments || []).length
+      if (prevPendingCountRef.current !== null && count > prevPendingCountRef.current) {
+        playBark()
+      }
+      prevPendingCountRef.current = count
+      setPendingCount(count)
+
+      // Check for new groomer confirmations (confirmed appointments)
+      const res2 = await fetch('/api/admin/appointments?status=upcoming')
+      const data2 = await res2.json()
+      const appts: Appointment[] = data2.appointments || []
+      const nowConfirmed = new Set(appts.filter(a => a.groomer_confirmed).map(a => a.id))
+      const prevConfirmed = confirmedGroomerIdsRef.current
+      const hasNew = [...nowConfirmed].some(id => !prevConfirmed.has(id))
+      if (prevConfirmed.size > 0 && hasNew) playChime()
+      confirmedGroomerIdsRef.current = nowConfirmed
+    } catch { /* silent */ }
+  }, [playBark, playChime])
+
+  useEffect(() => {
+    if (!authed) return
+    if (tab === 'calendar') { fetchCalendar(); fetchSettings() }
+    else if (tab === 'clients') fetchClients()
+    else if (tab === 'vaccines') fetchVaccineRecords()
+    else if (tab === 'payroll') fetchPayroll()
+    else if (tab === 'settings') fetchSettings()
+    else if (tab === 'reviews') {
+      const fetchReviewSettings = async () => {
+        try {
+          const res = await fetch('/api/admin/reviews/settings')
+          const data = await res.json()
+          setReviewSettings(data)
+          setReviewSettingsEdit(data)
+        } catch (error) {
+          console.error('Error fetching review settings:', error)
+        }
+      }
+      fetchReviewSettings()
+      return
+    }
+    else if (tab === 'today') { fetchAppointments('today'); fetchSettings() }
+    else if (tab === 'grooming') {
+      const fetchGrooming = async () => {
+        setGroomingLoading(true)
+        try {
+          const res = await fetch('/api/admin/appointments?status=today')
+          const data = await res.json()
+          setGroomingAppts((data.appointments || []).filter((a: Appointment) => a.status !== 'cancelled'))
+        } catch { setGroomingAppts([]) }
+        setGroomingLoading(false)
+      }
+      fetchGrooming()
+      const iv = setInterval(async () => {
+        try {
+          const res = await fetch('/api/admin/appointments?status=today')
+          const data = await res.json()
+          const fresh = (data.appointments || []).filter((a: Appointment) => a.status !== 'cancelled')
+          setGroomingAppts(fresh)
+          // Also update the open detail panel if it's showing one of these appointments
+          setDetailAppt(prev => {
+            if (!prev) return prev
+            const updated = fresh.find((a: Appointment) => a.id === prev.id)
+            return updated ?? prev
+          })
+        } catch {}
+      }, 20000)
+      return () => clearInterval(iv)
+    }
+    else if (tab === 'requests') {
+      fetchAppointments('requests')
+      const iv = setInterval(() => fetchAppointments('requests'), 20000)
+      return () => clearInterval(iv)
+    }
+    else if (tab === 'intake') fetchAppointments('pending')
+    else if (tab === 'checkout') fetchAppointments('today')
+    else if (tab === 'cashier') {
+      fetchReports()
+      const iv = setInterval(() => fetchReports(), 15000)
+      return () => clearInterval(iv)
+    }
+    else if (tab === 'reports') { fetchReports(); fetchPayroll() }
+  }, [authed, tab, fetchCalendar, fetchClients, fetchVaccineRecords, fetchPayroll, fetchSettings, fetchAppointments, fetchReports, calendarMonth])
+
+  // Poll pending count every 30s so badge always stays current
+  useEffect(() => {
+    if (!authed) return
+    fetchPendingCount()
+    const interval = setInterval(fetchPendingCount, 30_000)
+    return () => clearInterval(interval)
+  }, [authed, fetchPendingCount])
+
+  // Load vaccine count on auth so badge shows immediately
+  useEffect(() => {
+    if (!authed) return
+    fetch('/api/admin/vaccines')
+      .then(r => r.json())
+      .then(d => setVaccineCount((d.records ?? []).length))
+      .catch(() => {})
+  }, [authed])
+
+  // Load staff + service prices on auth so detail panel works from any tab
+  useEffect(() => {
+    if (!authed) return
+    fetch('/api/admin/staff')
+      .then(r => r.json())
+      .then(d => setStaff(d.staff || []))
+      .catch(() => {})
+    // Load services/pricing so tier buttons always show correct prices
+    fetch('/api/admin/settings')
+      .then(r => r.json())
+      .then(d => {
+        const s = d.settings || {}
+        let loadedSvcs = services
+        if (s.services) {
+          try { loadedSvcs = JSON.parse(s.services) } catch {}
+        }
+        let pricingMap: Record<string, {label:string;price:string}[]> = {}
+        if (s.service_pricing) {
+          try { pricingMap = JSON.parse(s.service_pricing) } catch {}
+        }
+        setServices(loadedSvcs.map((svc: ServiceDef) => ({
+          ...svc,
+          visible: svc.visible === false || (svc as {visible?:unknown}).visible === 'false' ? false : true,
+          tiers: svc.tiers ?? pricingMap[svc.id] ?? DEFAULT_TIERS.map(t => ({...t})),
+        })))
+        if (s.open_time) setOpenTime(s.open_time)
+        if (s.close_time) setCloseTime(s.close_time)
+      })
+      .catch(() => {})
+  }, [authed])
+
+  // Keep pending count in sync — only count truly pending (not confirmed) appointments
+  useEffect(() => {
+    if (tab === 'requests') {
+      setPendingCount(appointments.filter(a => a.status === 'pending').length)
+    } else if (tab === 'intake') {
+      setPendingCount(appointments.length)
+    }
+  }, [tab, appointments])
+
+  const handleAction = async (id: string, action: 'confirm'|'decline'|'start'|'complete'|'no-show'|'cancel-today') => {
+    setActionLoading(id+action)
+    try {
+      const res = await fetch(`/api/admin/appointments/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action }) })
+      const data = await res.json()
+      if (data.success) {
+        const msg = action==='confirm' ? 'Confirmed! SMS sent.' : action==='decline' ? 'Declined.' : action==='start' ? 'Checked in!' : action==='no-show' ? 'Marked as no-show.' : action==='cancel-today' ? 'Appointment cancelled.' : 'Marked complete!'
+        showToast(msg)
+        if (tab==='today'||tab==='checkout') fetchAppointments('today')
+        else if (tab==='requests') fetchAppointments('requests')
+        else if (tab==='intake') fetchAppointments('pending')
+      }
+    } catch { showToast('Something went wrong.') }
+    setActionLoading(null)
+  }
+
+  // ── PIN screen ─────────────────────────────────────────────────────────────
+  if (!authed) return (
+    <div className="min-h-screen bg-sky-700 flex items-center justify-center p-6">
+      <div className="w-full max-w-sm">
+        <div className="flex flex-col items-center mb-8">
+          <Image src="/logo.png" alt="Kokoni" width={80} height={80} className="mb-3 rounded-full" />
+          <h1 className="text-xl font-bold text-white">Admin Dashboard</h1>
+          <p className="text-sm text-sky-200">Enter your PIN to continue</p>
+        </div>
+        <div className="bg-white rounded-2xl p-6">
+          <input type="password" inputMode="numeric" placeholder="Enter PIN" value={pin}
+            onChange={e => setPin(e.target.value)} onKeyDown={e => e.key==='Enter' && handlePin()}
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-400 mb-3" />
+          {pinError && <p className="text-red-500 text-sm text-center mb-3">{pinError}</p>}
+          <button onClick={handlePin} disabled={pinLoading||!pin}
+            className="w-full bg-sky-700 hover:bg-sky-800 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+            {pinLoading ? 'Checking...' : 'Enter'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── Dashboard ──────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-gray-100 flex">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white px-5 py-2.5 rounded-full text-sm shadow-lg">{toast}</div>
+      )}
+
+      {/* ── Add Appointment Modal ──────────────────────────────────────────── */}
+      {addingApptSlot && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={clearAddApptForm} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="bg-sky-50 border-b border-sky-100 px-6 py-4 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-bold text-sky-800 text-base">New Appointment</h3>
+                <p className="text-sm text-sky-600 mt-0.5">
+                  {new Date(addingApptSlot.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  {' · '}
+                  {(() => {
+                    const [h, m] = addingApptSlot.time.split(':')
+                    const hour = parseInt(h), period = hour >= 12 ? 'PM' : 'AM'
+                    return `${hour % 12 || 12}:${m} ${period}`
+                  })()}
+                </p>
+              </div>
+              <button onClick={clearAddApptForm}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-sky-100 text-sky-500 text-xl font-light">×</button>
+            </div>
+
+            {/* Body — scrollable */}
+            <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
+
+              {/* ── CLIENT ── */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Client Phone</label>
+                <div className="flex items-center gap-2">
+                  <input type="tel" value={addApptPhone}
+                    onChange={e => {
+                      const val = e.target.value
+                      setAddApptPhone(val)
+                      // Auto-lookup as soon as 10 digits are entered (no need to tab out)
+                      if (val.replace(/\D/g, '').length >= 10) lookupClientByPhone(val)
+                    }}
+                    onBlur={() => { if (addApptPhone.replace(/\D/g,'').length >= 7) lookupClientByPhone(addApptPhone) }}
+                    placeholder="(555) 000-0000" autoFocus
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                  {addApptPhoneLooking && <span className="text-xs text-gray-400">Looking up…</span>}
+                </div>
+                {addApptClientData ? (
+                  <p className="text-sm font-semibold text-emerald-600 mt-1.5">✓ Existing client: {addApptClientData.name}</p>
+                ) : addApptPhone.length >= 10 && !addApptPhoneLooking ? (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-100 rounded-xl space-y-2">
+                    <p className="text-xs font-semibold text-amber-700">🆕 New client — fill in details:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input type="text" value={addApptFirstName} onChange={e => setAddApptFirstName(e.target.value)}
+                        placeholder="First name *"
+                        className="border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                      <input type="text" value={addApptLastName} onChange={e => setAddApptLastName(e.target.value)}
+                        placeholder="Last name"
+                        className="border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                    </div>
+                    <input type="email" value={addApptEmail} onChange={e => setAddApptEmail(e.target.value)}
+                      placeholder="Email address (optional)"
+                      className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                  </div>
+                ) : null}
+              </div>
+
+              {/* ── PET ── */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Pet</label>
+                {addApptClientData && addApptClientData.pets.length > 0 ? (
+                  <>
+                    <select value={addApptPetId}
+                      onChange={e => {
+                        const pet = addApptClientData.pets.find(p => p.id === e.target.value)
+                        setAddApptPetId(e.target.value)
+                        setAddApptPetName(pet?.name || '')
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300">
+                      <option value="">Select a pet…</option>
+                      {addApptClientData.pets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    {/* Option to add a new pet for existing client */}
+                    {!addApptPetId && (
+                      <div className="mt-2 p-3 bg-gray-50 border border-gray-100 rounded-xl space-y-2">
+                        <p className="text-xs text-gray-500 font-medium">Or add a new pet:</p>
+                        <input type="text" value={addApptPetName} onChange={e => setAddApptPetName(e.target.value)}
+                          placeholder="Pet name"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                        {addApptPetName && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <BreedInput value={addApptBreed} onChange={setAddApptBreed}
+                              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 w-full" />
+                            <select value={addApptWeight} onChange={e => setAddApptWeight(e.target.value)}
+                              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                              <option value="">Size / Weight</option>
+                              {WEIGHT_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <input type="text" value={addApptPetName} onChange={e => setAddApptPetName(e.target.value)}
+                      placeholder="Pet name *"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                    {addApptPetName && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <BreedInput value={addApptBreed} onChange={setAddApptBreed}
+                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 w-full" />
+                        <select value={addApptWeight} onChange={e => setAddApptWeight(e.target.value)}
+                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                          <option value="">Size / Weight</option>
+                          {WEIGHT_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── VACCINE RECORDS ── (only when new pet) */}
+              {!addApptPetId && (
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">💉 Vaccine Records</label>
+                  <select value={addApptVaccine} onChange={e => setAddApptVaccine(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300">
+                    <option value="pending">⚠️ Not yet — request at appointment</option>
+                    <option value="text">📱 Will send via text</option>
+                    <option value="email">📧 Will send via email</option>
+                    <option value="verified">✓ Already have on file</option>
+                  </select>
+                  {addApptVaccine === 'pending' && (
+                    <p className="text-xs text-amber-600 mt-1">Pet will appear in Vaccine Records tab as pending.</p>
+                  )}
+                  {(addApptVaccine === 'text' || addApptVaccine === 'email') && (
+                    <p className="text-xs text-sky-600 mt-1">Pet will be flagged — remind client to submit records before appointment.</p>
+                  )}
+                </div>
+              )}
+
+              {/* ── SERVICE ── */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Service</label>
+                <select value={addApptService} onChange={e => setAddApptService(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300">
+                  {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 pb-5 pt-3 border-t border-gray-100 flex gap-3 shrink-0">
+              <button onClick={submitQuickAddAppt}
+                disabled={addApptSaving || !addApptPhone || (!addApptPetId && !addApptPetName)}
+                className="flex-1 bg-sky-500 hover:bg-sky-600 disabled:opacity-40 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">
+                {addApptSaving ? 'Adding…' : 'Add Appointment'}
+              </button>
+              <button onClick={clearAddApptForm}
+                className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 font-medium">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Inline Reschedule Modal (Today tab Late rows) ──────────────────── */}
+      {inlineRescheduleAppt && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setInlineRescheduleAppt(null)} />
+          <div className="relative bg-white rounded-t-3xl w-full max-w-lg px-5 pt-5 pb-8 shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              {inlineRescheduleAppt.pets?.photo_url
+                ? <img src={inlineRescheduleAppt.pets.photo_url} className="w-12 h-12 rounded-2xl object-cover flex-shrink-0" alt="" />
+                : <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-2xl flex-shrink-0">🐶</div>}
+              <div>
+                <p className="font-black text-gray-800">{inlineRescheduleAppt.pets?.name} <span className="text-gray-400 font-normal text-sm">· {inlineRescheduleAppt.clients?.name}</span></p>
+                <p className="text-sm text-gray-500">{serviceMap[inlineRescheduleAppt.service] ?? inlineRescheduleAppt.service} · {inlineRescheduleAppt.appointment_time}</p>
+              </div>
+              <button onClick={() => setInlineRescheduleAppt(null)} className="ml-auto text-gray-300 hover:text-gray-500 text-2xl leading-none">✕</button>
+            </div>
+
+            {/* Date picker */}
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">New Date</p>
+            <input
+              type="date"
+              value={inlineRescheduleDate}
+              min={new Date().toISOString().split('T')[0]}
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:border-amber-400 mb-4"
+              onChange={async e => {
+                const d = e.target.value
+                setInlineRescheduleDate(d)
+                setInlineRescheduleTime('')
+                if (!d) { setInlineRescheduleSlots([]); return }
+                setInlineRescheduleLoading(true)
+                try {
+                  const r = await fetch(`/api/slots?date=${d}&t=${Date.now()}`)
+                  const data = await r.json()
+                  setInlineRescheduleSlots(Array.isArray(data.slots) ? data.slots : [])
+                } catch { setInlineRescheduleSlots([]) }
+                setInlineRescheduleLoading(false)
+              }}
+            />
+
+            {/* Time slots */}
+            {inlineRescheduleDate && (
+              <>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Available Times</p>
+                {inlineRescheduleLoading ? (
+                  <p className="text-sm text-gray-400 text-center py-3">Checking availability…</p>
+                ) : inlineRescheduleSlots.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-3">No available slots for this date.</p>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2 mb-4 max-h-40 overflow-y-auto">
+                    {inlineRescheduleSlots.map(t => (
+                      <button key={t} onClick={() => setInlineRescheduleTime(t)}
+                        className={`py-2 rounded-xl text-xs font-semibold border-2 transition-all ${inlineRescheduleTime === t ? 'bg-amber-500 text-white border-amber-500' : 'border-gray-200 text-gray-700 hover:border-amber-300'}`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Confirm */}
+            <button
+              disabled={!inlineRescheduleDate || !inlineRescheduleTime || inlineRescheduleSaving}
+              onClick={async () => {
+                if (!inlineRescheduleAppt || !inlineRescheduleDate || !inlineRescheduleTime) return
+                setInlineRescheduleSaving(true)
+                try {
+                  const res = await fetch(`/api/admin/appointments/${inlineRescheduleAppt.id}`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'reschedule', appointment_date: inlineRescheduleDate, appointment_time: inlineRescheduleTime }),
+                  })
+                  const d = await res.json()
+                  if (d.success) {
+                    setAppointments(prev => prev.map(a => a.id === inlineRescheduleAppt!.id
+                      ? { ...a, appointment_date: inlineRescheduleDate, appointment_time: inlineRescheduleTime, status: 'pending', groomer_confirmed: false }
+                      : a))
+                    showToast('✓ Rescheduled!')
+                    setInlineRescheduleAppt(null)
+                  } else {
+                    showToast('⚠️ Reschedule failed')
+                  }
+                } catch { showToast('⚠️ Error') }
+                setInlineRescheduleSaving(false)
+              }}
+              className="w-full py-3.5 rounded-2xl font-black text-base text-white shadow-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-40 transition-colors active:scale-95"
+            >
+              {inlineRescheduleSaving ? 'Saving…' : `✓ Confirm Reschedule${inlineRescheduleTime ? ` · ${inlineRescheduleTime}` : ''}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Appointment Detail Slide-Over ─────────────────────────────────── */}
+      {detailAppt && (
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { setDetailAppt(null); setEditingApptWeight(false); setChangingService(false); setShowRescheduleInputs(false) }} />
+          {/* Panel */}
+          <div className="fixed right-0 top-0 bottom-0 w-full md:w-[480px] bg-white z-50 shadow-2xl flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className={`px-5 py-4 border-b border-gray-100 ${
+              detailAppt.service==='simply_cute' ? 'bg-sky-50' :
+              detailAppt.service==='bath_brush'  ? 'bg-teal-50' :
+              detailAppt.service==='asian_fusion'? 'bg-pink-50' : 'bg-gray-50'}`}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-3">
+                  {detailAppt.pets?.photo_url
+                    ? <img src={detailAppt.pets.photo_url} className="w-11 h-11 rounded-full object-cover border-2 border-white shadow" alt="" />
+                    : <div className="w-11 h-11 rounded-full bg-white flex items-center justify-center text-2xl shadow">🐶</div>}
+                  <div>
+                    <p className="font-bold text-gray-800 text-lg leading-tight">{detailAppt.pets?.name}</p>
+                    <p className="text-xs text-gray-500">{detailAppt.pets?.breed} · {detailAppt.clients?.name}</p>
+                  </div>
+                </div>
+                <button onClick={() => { setDetailAppt(null); setEditingApptWeight(false); setChangingService(false); setShowRescheduleInputs(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 text-xl">×</button>
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                  detailAppt.service==='simply_cute' ? 'bg-sky-200 text-sky-800' :
+                  detailAppt.service==='bath_brush'  ? 'bg-teal-200 text-teal-800' :
+                  detailAppt.service==='asian_fusion'? 'bg-pink-200 text-pink-800' : 'bg-indigo-100 text-indigo-700'}`}>
+                  {services.find(s => s.id === detailAppt.service)?.name ?? serviceMap[detailAppt.service] ?? detailAppt.service}
+                </span>
+                <span className="text-xs text-gray-500">{formatDate(detailAppt.appointment_date)} · {detailAppt.appointment_time}</span>
+                <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[detailAppt.status]??'bg-gray-100 text-gray-500'}`}>{detailAppt.status}</span>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-gray-100 bg-white">
+              {([
+                { key: 'appt',     label: '📋 Appointment' },
+                { key: 'customer', label: '👤 Customer' },
+                { key: 'payment',  label: '📖 History' },
+                { key: 'future',   label: '📅 Future' },
+                { key: 'notes',    label: '📝 Notes' },
+              ] as const).map(t => (
+                <button key={t.key} onClick={() => setDetailTab(t.key)}
+                  className={`flex-1 text-xs py-2.5 font-medium border-b-2 transition-colors ${detailTab===t.key ? 'border-sky-500 text-sky-700' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+              {/* ── APPOINTMENT TAB ──────────────────────── */}
+              {detailTab === 'appt' && (
+                <>
+                  {/* ── Appointment confirmation actions (pending only) ── */}
+                  {detailAppt.status === 'pending' && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-3">⏳ Pending Request</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => detailHandleAction('confirm')} disabled={!!detailActionLoading}
+                          className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl disabled:opacity-50">
+                          {detailActionLoading==='confirm' ? '…' : '✓ Confirm'}
+                        </button>
+                        <button onClick={() => detailHandleAction('decline')} disabled={!!detailActionLoading}
+                          className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold rounded-xl disabled:opacity-50">
+                          {detailActionLoading==='decline' ? '…' : '✕ Decline'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Assign Staff ── */}
+                  <div className="bg-gray-50 rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Assign Staff</p>
+                      <button onClick={saveStaffAssignment} disabled={savingStaff}
+                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${savingStaff ? 'bg-gray-200 text-gray-500' : 'bg-sky-600 hover:bg-sky-700 text-white'}`}>
+                        {savingStaff ? 'Saving…' : 'Save Staff'}
+                      </button>
+                    </div>
+                    {(() => {
+                      const apptDate = detailAppt.appointment_date
+                      const activeStaff = staff.filter(s => s.is_active)
+                      const isOff = (s: StaffMember) => s.days_off?.includes(apptDate) ?? false
+
+                      const StaffPicker = ({ icon, label, value, onChange }: { icon: string; label: string; value: string; onChange: (v: string) => void }) => (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-2">{icon} {label}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button onClick={() => onChange('')}
+                              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${!value ? 'bg-gray-200 text-gray-700 border-gray-300 font-semibold' : 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'}`}>
+                              None
+                            </button>
+                            {activeStaff.map(s => {
+                              const off = isOff(s)
+                              const selected = value === s.name
+                              return (
+                                <button key={s.id} onClick={() => onChange(selected ? '' : s.name)}
+                                  className={`text-xs px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1 ${
+                                    selected
+                                      ? off ? 'bg-red-100 text-red-700 border-red-300 font-semibold'
+                                             : 'bg-sky-100 text-sky-700 border-sky-300 font-semibold'
+                                      : off ? 'bg-white text-red-400 border-red-200 hover:bg-red-50'
+                                             : 'bg-white text-gray-600 border-gray-200 hover:bg-sky-50'
+                                  }`}>
+                                  {s.first_name || s.name.split(' ')[0]}
+                                  {off && <span title="Day off">🚫</span>}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+
+                      const offWarnings = [
+                        detailGroomer && isOff(activeStaff.find(s => s.name === detailGroomer)!) ? `✂️ ${firstName(detailGroomer)} is off that day` : null,
+                        detailBather  && isOff(activeStaff.find(s => s.name === detailBather)!)  ? `🛁 ${firstName(detailBather)} is off that day`  : null,
+                      ].filter(Boolean)
+
+                      return (
+                        <div className="space-y-3">
+                          <StaffPicker icon="✂️" label="Groomer" value={detailGroomer} onChange={setDetailGroomer} />
+                          <StaffPicker icon="🛁" label="Bather"  value={detailBather}  onChange={setDetailBather} />
+                          {offWarnings.length > 0 && (
+                            <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 space-y-0.5">
+                              {offWarnings.map(w => <p key={w} className="text-xs font-semibold text-red-600">⚠️ {w}</p>)}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                    {(detailAppt.assigned_groomer || detailAppt.assigned_bather) && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        Saved: {detailAppt.assigned_groomer ? `✂️ ${firstName(detailAppt.assigned_groomer)}` : ''}{detailAppt.assigned_groomer && detailAppt.assigned_bather ? '  ' : ''}{detailAppt.assigned_bather ? `🛁 ${firstName(detailAppt.assigned_bather)}` : ''}
+                      </p>
+                    )}
+                    {staff.filter(s => s.is_active).length === 0 && (
+                      <p className="text-xs text-amber-600 mt-2">⚠️ No active staff — add staff in Settings first</p>
+                    )}
+                  </div>
+
+                  {/* ── Grooming Pipeline (view-only — controlled by kiosk & grooming board) ── */}
+                  {detailAppt.status !== 'pending' && detailAppt.status !== 'cancelled' && (() => {
+                    const gs = detailAppt.grooming_status   // null = not checked in yet
+                    if (!gs) return (
+                      <div className="bg-gray-50 rounded-2xl p-4 flex items-center gap-3">
+                        <span className="text-xl">🚶</span>
+                        <div>
+                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Grooming Status</p>
+                          <p className="text-sm text-gray-400 mt-0.5">Not checked in yet</p>
+                        </div>
+                        <span className="ml-auto text-xs text-gray-400 italic">Updated by kiosk &amp; groomer</span>
+                      </div>
+                    )
+                    const curIdx = GROOMING_STAGE_ORDER.indexOf(gs)
+                    const curStage = GROOMING_STAGES[curIdx] || GROOMING_STAGES[0]
+                    const isDone = gs === 'done'
+                    return (
+                      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Grooming Status</p>
+                          <span className="text-xs text-gray-400 italic">Updated by kiosk &amp; groomer</span>
+                        </div>
+
+                        {/* Stage pills — view only */}
+                        <div className="px-4 pt-4 pb-2 flex items-center gap-1 flex-wrap">
+                          {GROOMING_STAGES.map((s, i) => {
+                            const isPast = curIdx > i
+                            const isCur  = curIdx === i
+                            return (
+                              <div key={s.id} className="flex items-center gap-1">
+                                <div className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 ${
+                                  isCur  ? `${s.bg} ${s.border} ${s.text} shadow-sm scale-105` :
+                                  isPast ? 'bg-gray-100 border-gray-200 text-gray-400' :
+                                           'bg-gray-50 border-gray-100 text-gray-300'
+                                }`}>
+                                  <span>{s.icon}</span>
+                                  <span className="hidden sm:inline">{s.label}</span>
+                                </div>
+                                {i < 4 && <span className="text-gray-200 text-xs">›</span>}
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        {/* Current stage label + time + grooming duration */}
+                        <div className="px-4 pb-4 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-xs font-bold px-2 py-1 rounded-lg ${curStage.bg} ${curStage.text}`}>
+                              {curStage.icon} {curStage.label}
+                            </span>
+                            {detailAppt.grooming_status_updated_at && (
+                              <span className="text-xs text-gray-400">
+                                since {new Date(detailAppt.grooming_status_updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                              </span>
+                            )}
+                            {isDone && (
+                              <span className="text-xs font-bold text-pink-600 ml-auto">🎉 Pet has gone home!</span>
+                            )}
+                          </div>
+                          {/* Grooming duration — shown when groomer has started */}
+                          {detailAppt.grooming_started_at && (
+                            <div className="flex items-center gap-2 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2">
+                              <span className="text-base">✂️</span>
+                              <div>
+                                <p className="text-xs font-semibold text-sky-700">
+                                  Grooming started at {new Date(detailAppt.grooming_started_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                                </p>
+                                {(() => {
+                                  const dur = groomingDuration(detailAppt.grooming_started_at)
+                                  return gs !== 'done' && dur ? (
+                                    <p className="text-xs text-sky-500">Working for {dur}</p>
+                                  ) : gs === 'done' && dur ? (
+                                    <p className="text-xs text-sky-500">Took {dur} total</p>
+                                  ) : null
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* ── Health Check Detail ─────────────────── */}
+                  {detailAppt.health_check && (() => {
+                    const hc = detailAppt.health_check as any
+                    const SECTIONS = [
+                      { key: 'eyes',  emoji: '👁️', label: 'Eyes',         labelZh: '眼睛' },
+                      { key: 'ears',  emoji: '👂', label: 'Ears',         labelZh: '耳朵' },
+                      { key: 'nose',  emoji: '👃', label: 'Nose',         labelZh: '鼻子' },
+                      { key: 'mouth', emoji: '😬', label: 'Mouth / Teeth',labelZh: '嘴巴/牙齒' },
+                      { key: 'paws',  emoji: '🐾', label: 'Paw Pads',     labelZh: '腳掌' },
+                      { key: 'skin',  emoji: '🧴', label: 'Skin & Coat',  labelZh: '皮膚/毛髮' },
+                    ]
+                    const isNewFormat = SECTIONS.some(s => Array.isArray(hc[s.key]))
+                    const cleared: string[] = Array.isArray(hc.cleared_sections) ? hc.cleared_sections : []
+                    const totalIssues = SECTIONS.reduce((sum, s) => {
+                      const val = hc[s.key]
+                      if (isNewFormat) return sum + (Array.isArray(val) ? val.length : 0)
+                      return sum + (val === false ? 1 : 0)
+                    }, 0)
+                    const allNormal = isNewFormat ? (cleared.length === 6 && totalIssues === 0)
+                      : SECTIONS.every(s => hc[s.key] === true)
+                    return (
+                      <div className="bg-sky-50 border border-sky-100 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-sky-700 uppercase tracking-wide">🩺 Initial Health Check</p>
+                          {detailAppt.health_check_completed_at && (
+                            <span className="text-xs text-sky-400">{new Date(detailAppt.health_check_completed_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</span>
+                          )}
+                        </div>
+                        {allNormal ? (
+                          <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+                            <span>✅</span>
+                            <div>
+                              <p className="text-xs font-bold text-green-700">All Normal — No Issues Found</p>
+                              <p className="text-xs text-green-500">一切正常，沒有發現問題</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {SECTIONS.map(s => {
+                              const val = hc[s.key]
+                              const issues: string[] = isNewFormat
+                                ? (Array.isArray(val) ? val : [])
+                                : (val === false ? [s.label] : [])
+                              const isCleared = isNewFormat ? cleared.includes(s.key) : val === true
+                              if (isCleared && issues.length === 0) {
+                                return (
+                                  <div key={s.key} className="flex items-center gap-2 text-xs text-green-600">
+                                    <span>{s.emoji}</span>
+                                    <span className="font-medium">{s.label}</span>
+                                    <span className="text-green-400">· Normal ✓</span>
+                                  </div>
+                                )
+                              }
+                              if (issues.length > 0) {
+                                return (
+                                  <div key={s.key} className="bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">
+                                    <p className="text-xs font-semibold text-rose-700">{s.emoji} {s.label} <span className="text-rose-400">/ {s.labelZh}</span></p>
+                                    <ul className="mt-1 space-y-0.5">
+                                      {issues.map((iss: string) => (
+                                        <li key={iss} className="text-xs text-rose-600">⚠️ {iss.replace(/_/g,' ')}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )
+                              }
+                              return null
+                            })}
+                          </div>
+                        )}
+                        {hc.groomer_notes_english && (
+                          <div className="bg-white border border-sky-100 rounded-xl px-3 py-2 space-y-0.5">
+                            <p className="text-xs font-semibold text-sky-600">📝 Groomer Notes</p>
+                            <p className="text-xs text-gray-600">{hc.groomer_notes_english}</p>
+                            {hc.groomer_notes_chinese && <p className="text-xs text-gray-400">{hc.groomer_notes_chinese}</p>}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* ── Quality Check Detail ─────────────────── */}
+                  {detailAppt.grooming_quality && (() => {
+                    const q = detailAppt.grooming_quality as any
+                    const ITEMS = [
+                      { key: 'nails_trimmed', oldKey: 'nails_trimmed', emoji: '✂️', en: 'Nails Trimmed',  zh: '剪指甲' },
+                      { key: 'ears_cleaned',  oldKey: 'ears_cleaned',  emoji: '👂', en: 'Ears Cleaned',   zh: '清耳朵' },
+                      { key: 'tangles_free',  oldKey: 'coat_brushed',  emoji: '🪮', en: 'Tangles Free',   zh: '無毛結' },
+                      { key: 'sanitary_trim', oldKey: 'bath_completed',emoji: '🧼', en: 'Sanitary Trim',  zh: '衛生修剪' },
+                      { key: 'paw_pad_trim',  oldKey: 'paw_pads_cleared',emoji:'🐾', en: 'Paw Pad Trim', zh: '腳掌修剪' },
+                      { key: 'perfume_spray', oldKey: 'styling_finished',emoji:'🌸', en: 'Perfume Spray', zh: '噴香水' },
+                    ]
+                    const doneCount = ITEMS.filter(i => q[i.key] || q[i.oldKey]).length
+                    const allDone = doneCount === ITEMS.length
+                    return (
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">🎯 Grooming Quality Check</p>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${allDone ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{doneCount}/{ITEMS.length}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {ITEMS.map(item => {
+                            const done = q[item.key] || q[item.oldKey]
+                            return (
+                              <div key={item.key} className={`flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs ${done ? 'bg-white border border-emerald-200 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                                <span>{item.emoji}</span>
+                                <div>
+                                  <p className="font-medium leading-tight">{item.en} {done ? '✓' : ''}</p>
+                                  <p className="text-xs opacity-70">{item.zh}</p>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {(q.groomer_diary || q.customer_note_english) && (
+                          <div className="space-y-2">
+                            {q.groomer_diary && (
+                              <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2">
+                                <p className="text-xs font-semibold text-purple-600">📓 美容師工作日記</p>
+                                <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary}</p>
+                              </div>
+                            )}
+                            {q.customer_note_english && (
+                              <div className="bg-white border border-emerald-100 rounded-xl px-3 py-2 space-y-0.5">
+                                <p className="text-xs font-semibold text-emerald-600">💌 Note to Customer</p>
+                                <p className="text-xs text-gray-600">{q.customer_note_english}</p>
+                                {q.customer_note_traditional && <p className="text-xs text-gray-400">{q.customer_note_traditional}</p>}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* ── Service & Pricing card ───────────────── */}
+                  {(() => {
+                    const svcDef = services.find(s => s.id === detailAppt.service)
+                    const svcName = svcDef?.name ?? serviceMap[detailAppt.service] ?? detailAppt.service
+                    const tiers = (svcDef?.tiers ?? servicePricing[detailAppt.service] ?? []).filter(t => t.label)
+                    const hasPrices = tiers.some(t => t.price)
+                    const addOnTotal = detailAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
+                    const baseAmt = parseFloat(detailBasePrice) || 0
+                    const grandTotal = baseAmt + addOnTotal
+                    const otherServices = services.filter(s => s.id !== detailAppt.service)
+                    return (
+                      <div className={`rounded-2xl p-4 border ${
+                        detailAppt.payment_status === 'paid'
+                          ? 'bg-emerald-50 border-emerald-100'
+                          : 'bg-white border-gray-200'
+                      }`}>
+                        {/* Header */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-bold text-gray-800">{svcName}</p>
+                            {changingService ? (
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  defaultValue=""
+                                  onChange={async e => {
+                                    const newSvcId = e.target.value
+                                    if (!newSvcId || !detailAppt) return
+                                    setSavingServiceChange(true)
+                                    const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ action: 'change-service', service: newSvcId }),
+                                    })
+                                    if (res.ok) {
+                                      setDetailAppt(prev => prev ? { ...prev, service: newSvcId } : prev)
+                                      setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, service: newSvcId } : a))
+                                      setDetailBasePrice('')
+                                      setDetailBaseTier('')
+                                      showToast('✓ Service updated')
+                                    } else {
+                                      showToast('⚠️ Failed to update service')
+                                    }
+                                    setSavingServiceChange(false)
+                                    setChangingService(false)
+                                  }}
+                                  className="text-xs border border-sky-300 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-sky-300">
+                                  <option value="" disabled>Select service…</option>
+                                  {services.filter(s => s.visible !== false).map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                  ))}
+                                </select>
+                                <button onClick={() => setChangingService(false)}
+                                  className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setChangingService(true)}
+                                className="text-xs text-gray-400 hover:text-sky-600 font-medium border border-gray-200 hover:border-sky-300 px-2 py-0.5 rounded-lg transition-colors">
+                                {savingServiceChange ? '…' : '🔄 Change'}
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {detailAppt.payment_status === 'paid'
+                              ? <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1 rounded-full">✓ Paid{detailAppt.payment_amount ? ` · $${detailAppt.payment_amount}` : ''}</span>
+                              : <span className="text-xs bg-amber-100 text-amber-700 font-semibold px-2.5 py-1 rounded-full">Unpaid</span>
+                            }
+                            <button
+                              onClick={() => {
+                                if (!detailEditTiersMode) {
+                                  setDetailEditTiers(tiers.map(t => ({...t})))
+                                  setDetailEditTiersMode(true)
+                                } else {
+                                  setDetailEditTiersMode(false)
+                                }
+                              }}
+                              className="text-xs text-gray-400 hover:text-sky-600 font-medium transition-colors">
+                              {detailEditTiersMode ? 'Cancel' : '✏️ Edit'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Main service tier selector */}
+                        {detailEditTiersMode ? (
+                          /* ── Edit mode: editable price inputs ── */
+                          <>
+                            <p className="text-xs text-gray-400 mb-2">Edit prices for {svcName} ↓</p>
+                            <div className="grid grid-cols-2 gap-1.5 mb-2">
+                              {detailEditTiers.map((tier, i) => (
+                                <div key={i} className="flex items-center justify-between bg-sky-50 border border-sky-200 rounded-xl px-3 py-2.5">
+                                  <span className="text-xs font-medium text-sky-700">{tier.label.split(' ')[0]}</span>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs text-sky-400">$</span>
+                                    <input
+                                      type="number" min="0" step="1"
+                                      value={tier.price}
+                                      onChange={e => setDetailEditTiers(prev => prev.map((t, j) => j === i ? {...t, price: e.target.value} : t))}
+                                      className="w-14 text-sm font-bold text-sky-800 bg-transparent focus:outline-none text-right"
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <button
+                              disabled={savingTiers}
+                              onClick={async () => {
+                                setSavingTiers(true)
+                                const updatedServices = services.map(s =>
+                                  s.id === detailAppt.service
+                                    ? { ...s, tiers: detailEditTiers }
+                                    : s
+                                )
+                                setServices(updatedServices)
+                                // Save to API
+                                await fetch('/api/admin/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ key: 'services', value: JSON.stringify(updatedServices) }) })
+                                const pricingMap: Record<string, {label:string;price:string}[]> = {}
+                                updatedServices.forEach(svc => { if (svc.tiers) pricingMap[svc.id] = svc.tiers })
+                                await fetch('/api/admin/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ key: 'service_pricing', value: JSON.stringify(pricingMap) }) })
+                                setSavingTiers(false)
+                                setDetailEditTiersMode(false)
+                                showToast('✓ Prices saved!')
+                              }}
+                              className={`w-full py-2 rounded-xl text-sm font-bold transition-colors mb-3 ${savingTiers ? 'bg-gray-200 text-gray-500' : 'bg-sky-600 hover:bg-sky-700 text-white'}`}>
+                              {savingTiers ? 'Saving…' : '💾 Save Prices'}
+                            </button>
+                          </>
+                        ) : (
+                          /* ── Normal mode: select tier + custom input ── */
+                          <>
+                            {tiers.length > 0 && (
+                              <>
+                                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Select Size</p>
+                                <div className={`grid gap-2 mb-3 ${tiers.length <= 2 ? 'grid-cols-2' : tiers.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                  {tiers.map((tier, i) => {
+                                    const isSelected = detailBasePrice === tier.price && detailBaseTier === tier.label && !!tier.price
+                                    return (
+                                      <button key={i}
+                                        onClick={() => { if (tier.price) { setDetailBasePrice(isSelected ? '' : tier.price); setDetailBaseTier(isSelected ? '' : tier.label); setTotalSaved(false) } }}
+                                        disabled={!tier.price}
+                                        className={`flex flex-col items-center justify-center rounded-2xl py-3.5 px-2 border-2 transition-all active:scale-95 ${
+                                          isSelected
+                                            ? 'bg-emerald-500 border-emerald-500 shadow-md'
+                                            : tier.price
+                                              ? 'bg-white border-gray-200 hover:border-emerald-300 hover:bg-emerald-50'
+                                              : 'bg-gray-50 border-gray-100 opacity-40 cursor-default'
+                                        }`}>
+                                        <span className={`text-xs font-semibold leading-tight text-center ${isSelected ? 'text-emerald-100' : 'text-gray-500'}`}>
+                                          {tier.label}
+                                        </span>
+                                        <span className={`text-2xl font-black leading-tight mt-0.5 ${isSelected ? 'text-white' : tier.price ? 'text-gray-800' : 'text-gray-300'}`}>
+                                          {tier.price ? `$${tier.price}` : '—'}
+                                        </span>
+                                        {tier.duration && (
+                                          <span className={`text-[10px] leading-none mt-0.5 ${isSelected ? 'text-emerald-100' : 'text-gray-400'}`}>
+                                            ⏱ {tier.duration}
+                                          </span>
+                                        )}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </>
+                            )}
+                            {!hasPrices && tiers.length > 0 && (
+                              <p className="text-xs text-amber-500 mb-2">⚠️ No prices set — tap ✏️ Edit to add prices</p>
+                            )}
+                            {/* Custom price input */}
+                            <div className={`flex items-center rounded-2xl border-2 overflow-hidden mb-3 transition-all ${
+                              detailBasePrice && !detailBaseTier
+                                ? 'border-emerald-400 bg-emerald-50'
+                                : 'border-gray-200 bg-gray-50'
+                            }`}>
+                              <span className={`text-base font-black px-4 py-3 border-r-2 ${
+                                detailBasePrice && !detailBaseTier
+                                  ? 'border-emerald-300 text-emerald-600'
+                                  : 'border-gray-200 text-gray-400'
+                              }`}>$</span>
+                              <input
+                                type="text" inputMode="numeric" pattern="[0-9]*"
+                                placeholder={tiers.length > 0 ? 'or enter custom…' : 'enter price…'}
+                                value={detailBaseTier ? '' : detailBasePrice}
+                                onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setDetailBasePrice(v); setDetailBaseTier(''); setTotalSaved(false) }}
+                                onFocus={() => { if (detailBaseTier) { setDetailBasePrice(''); setDetailBaseTier(''); setTotalSaved(false) } }}
+                                className={`flex-1 text-xl font-black py-3 px-4 bg-transparent focus:outline-none placeholder:text-gray-300 ${
+                                  detailBasePrice && !detailBaseTier ? 'text-emerald-700' : 'text-gray-700'
+                                }`}
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {/* ── Add-on Services ── */}
+                        {(otherServices.length > 0 || detailAddOns.length > 0) && (
+                          <div className="border-t border-gray-100 pt-3 mt-1 mb-3">
+                            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Add-on Services</p>
+
+                            {/* Selected add-ons */}
+                            {detailAddOns.length > 0 && (
+                              <div className="space-y-2 mb-2">
+                                {detailAddOns.map(addon => (
+                                  <div key={addon.id} className="flex items-center gap-2 bg-sky-50 border-2 border-sky-200 rounded-2xl px-4 py-2.5">
+                                    <span className="text-sm font-bold text-sky-800 flex-1">{addon.name}</span>
+                                    <div className="flex items-center rounded-xl border-2 border-sky-300 bg-white overflow-hidden">
+                                      <span className="text-sm font-black px-3 py-1.5 border-r-2 border-sky-200 text-sky-500">$</span>
+                                      <input
+                                        type="number" min="0" step="1"
+                                        value={addon.price}
+                                        onChange={e => setDetailAddOns(prev => prev.map(a => a.id === addon.id ? { ...a, price: e.target.value } : a))}
+                                        className="w-14 text-base font-black text-sky-700 bg-transparent focus:outline-none text-center py-1.5 px-2"
+                                      />
+                                    </div>
+                                    <button onClick={() => setDetailAddOns(prev => prev.filter(a => a.id !== addon.id))}
+                                      className="w-7 h-7 rounded-full bg-rose-100 hover:bg-rose-200 text-rose-400 hover:text-rose-600 flex items-center justify-center text-sm font-bold transition-colors">✕</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Available add-on chips */}
+                            <div className="flex flex-wrap gap-1.5">
+                              {otherServices
+                                .filter(s => !detailAddOns.find(a => a.id === s.id))
+                                .map(s => (
+                                  <button key={s.id}
+                                    onClick={() => {
+                                      const defaultPrice = s.tiers?.find(t => t.price)?.price ?? ''
+                                      setDetailAddOns(prev => [...prev, { id: s.id, name: s.name || serviceMap[s.id] || s.id, price: defaultPrice }])
+                                    }}
+                                    className="text-xs bg-white border-2 border-gray-200 hover:border-sky-300 hover:bg-sky-50 text-gray-600 hover:text-sky-700 px-3 py-1.5 rounded-full font-semibold transition-colors">
+                                    + {s.name || serviceMap[s.id] || s.id}
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Total breakdown */}
+                        {(detailBasePrice || detailAddOns.length > 0) && (
+                          <div className="bg-gray-50 rounded-2xl border border-gray-100 px-4 py-3 mb-3 space-y-1.5">
+                            {detailBasePrice && (
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-gray-500">{svcName}</span>
+                                <span className="font-bold text-gray-700">${detailBasePrice}</span>
+                              </div>
+                            )}
+                            {detailAddOns.map(a => (
+                              <div key={a.id} className="flex justify-between items-center text-sm">
+                                <span className="text-gray-500">{a.name}</span>
+                                <span className="font-bold text-gray-700">${a.price || '0'}</span>
+                              </div>
+                            ))}
+                            <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                              <span className="font-bold text-gray-800">Total</span>
+                              <span className={`text-xl font-black ${totalSaved && grandTotal > 0 ? 'text-emerald-600' : 'text-gray-700'}`}>${grandTotal}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Save Total button */}
+                        <button
+                          disabled={grandTotal <= 0 || savingPayment}
+                          onClick={async () => {
+                            if (!detailAppt || grandTotal <= 0) return
+                            const amount = grandTotal.toString()
+                            setDetailPayAmount(amount)
+                            setSavingPayment(true)
+                            try {
+                              const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'record-payment', payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, addons: detailAddOns }),
+                              })
+                              const data = await res.json()
+                              if (data.success) {
+                                const addonNotes = detailAddOns.map((a: { id: string; name: string; price: string }) => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
+                                const nonAddonNotes = (detailAppt.notes_list ?? []).filter((n: { is_addon?: boolean }) => !n.is_addon)
+                                setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, notes_list: [...nonAddonNotes, ...addonNotes] } : prev)
+                                setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount } : a))
+                                setTotalSaved(true)
+                                showToast('✓ Total saved!')
+                              }
+                            } catch {/**/}
+                            finally { setSavingPayment(false) }
+                          }}
+                          className={`w-full py-2.5 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2 ${totalSaved && grandTotal > 0 ? 'bg-gray-400 hover:bg-emerald-500' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
+                          {savingPayment ? '⏳ Saving…' : grandTotal > 0 ? (totalSaved ? `✓ Total · $${grandTotal}` : `💾 Save Total · $${grandTotal}`) : 'Select a size first'}
+                        </button>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Pet details */}
+                  <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Pet</p>
+                    <div className="flex items-center gap-3">
+                      {detailAppt.pets?.photo_url
+                        ? <img src={detailAppt.pets.photo_url} className="w-14 h-14 rounded-full object-cover border-2 border-white" alt="" />
+                        : <div className="w-14 h-14 rounded-full bg-sky-100 flex items-center justify-center text-3xl">🐶</div>}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-800">{detailAppt.pets?.name}</p>
+                        {/* Breed + editable weight */}
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          {detailAppt.pets?.breed && <span className="text-xs text-gray-500">{detailAppt.pets.breed}</span>}
+                          {detailAppt.pets?.breed && <span className="text-xs text-gray-300">·</span>}
+                          {editingApptWeight ? (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {apptWeightDraft === '__custom__' ? (
+                                <>
+                                  <input autoFocus type="text" value={customWeightText} onChange={e => setCustomWeightText(e.target.value)}
+                                    placeholder="e.g. 52 lbs"
+                                    className="text-xs border border-sky-300 rounded-lg px-2 py-0.5 w-28 bg-white focus:outline-none focus:ring-1 focus:ring-sky-400"
+                                    onKeyDown={e => { if (e.key === 'Enter' && customWeightText.trim() && detailAppt.pets?.id) updatePetWeight(detailAppt.pets.id, customWeightText.trim()) }} />
+                                  <button onClick={() => setApptWeightDraft('')} className="text-xs text-gray-400 hover:text-gray-600">← back</button>
+                                  <button onClick={() => { if (customWeightText.trim() && detailAppt.pets?.id) updatePetWeight(detailAppt.pets.id, customWeightText.trim()) }}
+                                    disabled={!customWeightText.trim() || savingWeightId === detailAppt.pets?.id}
+                                    className="text-xs bg-sky-600 text-white px-2 py-0.5 rounded-lg disabled:opacity-40">
+                                    {savingWeightId === detailAppt.pets?.id ? '…' : 'Save'}
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <select value={apptWeightDraft} onChange={e => { setApptWeightDraft(e.target.value); if (e.target.value === '__custom__') setCustomWeightText('') }}
+                                    className="text-xs border border-sky-300 rounded-lg px-1.5 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-sky-400">
+                                    <option value="">— select —</option>
+                                    {WEIGHT_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
+                                    <option value="__custom__">✏️ Custom…</option>
+                                  </select>
+                                  <button onClick={() => detailAppt.pets?.id && updatePetWeight(detailAppt.pets.id, apptWeightDraft)}
+                                    disabled={!apptWeightDraft || savingWeightId === detailAppt.pets?.id}
+                                    className="text-xs bg-sky-600 text-white px-2 py-0.5 rounded-lg disabled:opacity-40 hover:bg-sky-700">
+                                    {savingWeightId === detailAppt.pets?.id ? '…' : 'Save'}
+                                  </button>
+                                </>
+                              )}
+                              <button onClick={() => { setEditingApptWeight(false); setCustomWeightText('') }} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => { setEditingApptWeight(true); const w = detailAppt.pets?.weight || ''; setApptWeightDraft(WEIGHT_OPTIONS.includes(w) ? w : w ? '__custom__' : ''); setCustomWeightText(!WEIGHT_OPTIONS.includes(w) ? w : '') }}
+                              className="flex items-center gap-1 text-xs text-gray-500 hover:text-sky-600 group">
+                              <span>{detailAppt.pets?.weight || <span className="text-gray-300 italic">no weight</span>}</span>
+                              <span className="opacity-0 group-hover:opacity-100 text-gray-400 text-xs">✏️</span>
+                            </button>
+                          )}
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block ${
+                          detailAppt.pets?.vaccine_status==='verified' ? 'bg-green-100 text-green-700' :
+                          detailAppt.pets?.vaccine_status==='email_sent' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>
+                          {detailAppt.pets?.vaccine_status==='verified'?'✓ Vaccinated':detailAppt.pets?.vaccine_status==='email_sent'?'Records Pending':'No Records'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Appointment info */}
+                  <div className="bg-gray-50 rounded-2xl p-4 grid grid-cols-2 gap-3 text-sm">
+                    <div><span className="text-xs text-gray-400 block">Date</span><p className="font-medium text-gray-700">{formatDate(detailAppt.appointment_date)}</p></div>
+                    <div><span className="text-xs text-gray-400 block">Time</span><p className="font-medium text-gray-700">{detailAppt.appointment_time}</p></div>
+                    <div><span className="text-xs text-gray-400 block">Booked On</span><p className="font-medium text-gray-700">{new Date(detailAppt.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</p></div>
+                    {detailAppt.confirmed_at && <div><span className="text-xs text-gray-400 block">Confirmed</span><p className="font-medium text-gray-700">{new Date(detailAppt.confirmed_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</p></div>}
+                  </div>
+
+                </>
+              )}
+
+              {/* ── CUSTOMER TAB ─────────────────────────── */}
+              {detailTab === 'customer' && (() => {
+                // Use full client record if loaded, fall back to data already on the appointment
+                const clientName  = detailClient?.name  ?? detailAppt.clients?.name  ?? '—'
+                const clientPhone = detailClient?.phone ?? detailAppt.clients?.phone ?? detailAppt.client_phone
+                const clientEmail = detailClient?.email ?? detailAppt.clients?.email ?? null
+                const clientAddr  = detailClient?.address ?? null
+                const clientSince = detailClient?.created_at ?? null
+                const pickups     = detailClient?.authorized_pickups ?? []
+                // Pets: prefer full record, else build a 1-item list from appointment's pets join
+                const pets: { id: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry: string | null; photo_url: string | null }[] =
+                  detailClient?.pets ?? (detailAppt.pets ? [{ id: detailAppt.pet_id ?? '__appt__', ...detailAppt.pets }] : [])
+
+                const vcBadge = (vs: string) => ({
+                  color: vs === 'approved' ? 'bg-emerald-100 text-emerald-700'
+                    : vs === 'expired'   ? 'bg-red-100 text-red-700'
+                    : vs === 'pending'   ? 'bg-amber-100 text-amber-700'
+                    : vs === 'text_only' ? 'bg-sky-100 text-sky-700'
+                    : 'bg-gray-100 text-gray-500',
+                  label: vs === 'approved'  ? '✓ Verified'
+                    : vs === 'expired'   ? '⚠️ Expired'
+                    : vs === 'pending'   ? '⏳ Pending'
+                    : vs === 'text_only' ? '📱 Text only'
+                    : vs || '—',
+                })
+
+                return (
+                  <>
+                    {detailClientLoading && (
+                      <p className="text-xs text-gray-400 text-center py-1">Loading full record…</p>
+                    )}
+
+                    {/* Contact */}
+                    <div className="bg-gray-50 rounded-2xl p-4 space-y-2">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Contact</p>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div><span className="text-xs text-gray-400 block">Name</span><p className="font-medium text-gray-700">{clientName}</p></div>
+                        <div><span className="text-xs text-gray-400 block">Phone</span><p className="font-medium text-gray-700">{clientPhone}</p></div>
+                        <div><span className="text-xs text-gray-400 block">Email</span><p className="font-medium text-gray-700">{clientEmail || '—'}</p></div>
+                        <div><span className="text-xs text-gray-400 block">Address</span><p className="font-medium text-gray-700">{clientAddr || '—'}</p></div>
+                        {clientSince && (
+                          <div className="col-span-2"><span className="text-xs text-gray-400 block">Member Since</span><p className="font-medium text-gray-700">{new Date(clientSince).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p></div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Authorized pickups */}
+                    {pickups.length > 0 && (
+                      <div className="bg-gray-50 rounded-2xl p-4">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Authorized Pickup People</p>
+                        <div className="flex flex-wrap gap-2">
+                          {pickups.map(p => (
+                            <div key={p.id} className="flex items-center gap-1.5 bg-sky-50 border border-sky-100 rounded-full px-3 py-1 text-sm">
+                              <span className="font-medium text-sky-800">{p.name}</span>
+                              {p.relationship && <span className="text-sky-400">· {p.relationship}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Dogs & Vaccines */}
+                    {pets.length > 0 && (
+                      <div className="bg-gray-50 rounded-2xl p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Dogs & Vaccines</p>
+                          <button
+                            onClick={() => { setDetailAppt(null); setTab('vaccines') }}
+                            className="text-xs text-violet-600 hover:text-violet-700 font-semibold flex items-center gap-1">
+                            💉 All Records →
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          {pets.map(p => {
+                            const { color, label } = vcBadge(p.vaccine_status)
+                            return (
+                              <div key={p.id} className="bg-white rounded-xl p-2.5 flex items-center gap-3">
+                                {p.photo_url
+                                  ? <img src={p.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
+                                  : <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center text-base flex-shrink-0">🐶</div>
+                                }
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-semibold text-gray-800">{p.name}</span>
+                                    {p.breed && <span className="text-xs text-gray-400 truncate">{p.breed}</span>}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${color}`}>{label}</span>
+                                    {p.vaccine_expiry && (
+                                      <span className="text-xs text-gray-400">
+                                        Exp: {new Date(p.vaccine_expiry + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {detailClient && (
+                      <p className="text-xs text-gray-400 text-center">{detailClient.appointments.length} total appointment{detailClient.appointments.length!==1?'s':''}</p>
+                    )}
+                  </>
+                )
+              })()}
+
+              {/* ── HISTORY TAB ──────────────────────────── */}
+              {detailTab === 'payment' && (
+                <>
+                  {/* ── This Visit Payment ── */}
+                  <div className="rounded-2xl border border-gray-100 overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-100">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">This Visit — Payment</p>
+                    </div>
+                    {(detailAppt.payment_amount || detailAppt.payment_method || detailAppt.payment_status === 'paid') ? (
+                      <div className="divide-y divide-gray-50">
+                        <div className="flex items-center gap-4 px-4 py-4 bg-white">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0 ${detailAppt.payment_status === 'paid' ? 'bg-emerald-100' : 'bg-amber-100'}`}>
+                            {detailAppt.payment_status === 'paid' ? '✓' : '⏳'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-base font-bold ${detailAppt.payment_status === 'paid' ? 'text-emerald-700' : 'text-amber-600'}`}>
+                              {detailAppt.payment_amount ? `$${detailAppt.payment_amount}` : 'Amount not recorded'}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">{formatDate(detailAppt.appointment_date)}</p>
+                          </div>
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${detailAppt.payment_status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {detailAppt.payment_status === 'paid' ? '✓ Paid' : 'Unpaid'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 divide-x divide-gray-50">
+                          <div className="px-4 py-3 bg-white">
+                            <p className="text-xs text-gray-400 mb-1">Method</p>
+                            <p className="text-sm font-semibold text-gray-700">
+                              {detailAppt.payment_method === 'cash' ? '💵 Cash' : detailAppt.payment_method === 'card' ? '💳 Card' : detailAppt.payment_method === 'venmo' ? '📱 Venmo' : detailAppt.payment_method === 'zelle' ? '🔵 Zelle' : detailAppt.payment_method === 'check' ? '📝 Check' : detailAppt.payment_method || '—'}
+                            </p>
+                          </div>
+                          <div className="px-4 py-3 bg-white">
+                            <p className="text-xs text-gray-400 mb-1">Tip</p>
+                            <p className="text-sm font-semibold text-emerald-700">{detailAppt.tip_amount ? `$${detailAppt.tip_amount}` : '—'}</p>
+                          </div>
+                          <div className="px-4 py-3 bg-white">
+                            <p className="text-xs text-gray-400 mb-1">Service</p>
+                            <p className="text-sm font-semibold text-gray-700 truncate">{services.find(s => s.id === detailAppt.service)?.name ?? serviceMap[detailAppt.service] ?? detailAppt.service}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="px-4 py-5 bg-white text-center">
+                        <p className="text-sm text-gray-400">No payment recorded for this visit</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Service History ── */}
+                  <div className="rounded-2xl border border-gray-100 overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Service History</p>
+                      {detailClient && (
+                        <span className="text-xs text-gray-400">{detailClient.appointments.length} visit{detailClient.appointments.length !== 1 ? 's' : ''} total</span>
+                      )}
+                    </div>
+                    {detailClientLoading ? (
+                      <div className="px-4 py-5 bg-white text-center"><p className="text-sm text-gray-400">Loading…</p></div>
+                    ) : detailClient && detailClient.appointments.length > 0 ? (
+                      <div className="divide-y divide-gray-50">
+                        {[...detailClient.appointments]
+                          .sort((a, b) => new Date(b.appointment_date).getTime() - new Date(a.appointment_date).getTime())
+                          .map(a => (
+                            <div
+                              key={a.id}
+                              className="flex items-center gap-3 px-4 py-3 bg-white hover:bg-sky-50 transition-colors"
+                            >
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${
+                                a.status === 'completed' ? 'bg-emerald-100' : a.status === 'cancelled' ? 'bg-red-50' : 'bg-sky-100'
+                              }`}>
+                                {a.status === 'completed' ? '✓' : a.status === 'cancelled' ? '✕' : '📅'}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-800">{serviceMap[a.service] ?? a.service}</p>
+                                <p className="text-xs text-gray-400">{formatDate(a.appointment_date)} · {a.appointment_time}</p>
+                                {(a.assigned_groomer || a.assigned_bather) && (
+                                  <p className="text-xs text-gray-400 mt-0.5">
+                                    {a.assigned_groomer && `✂️ ${firstName(a.assigned_groomer)}`}{a.assigned_groomer && a.assigned_bather ? ' · ' : ''}{a.assigned_bather && `🛁 ${firstName(a.assigned_bather)}`}
+                                  </p>
+                                )}
+                                {/* Health Check Summary */}
+                                {(a as any).health_check && (() => {
+                                  const hc = (a as any).health_check
+                                  // Detect format: new format has array values; old format has booleans (true=OK, false=issue)
+                                  const isNewFormat = (['eyes','ears','nose','mouth','paws','skin'] as const).some(p => Array.isArray(hc[p]))
+                                  const totalIssues = (['eyes','ears','nose','mouth','paws','skin'] as const)
+                                    .reduce((sum, part) => {
+                                      const val = hc[part]
+                                      if (isNewFormat) return sum + (Array.isArray(val) ? val.length : 0)
+                                      // Old format: false = had an issue
+                                      return sum + (val === false ? 1 : 0)
+                                    }, 0)
+                                  const cleared: string[] = Array.isArray(hc.cleared_sections) ? hc.cleared_sections : []
+                                  // Old format all-clear: all 6 body parts are true
+                                  const oldFormatAllClear = !isNewFormat && (['eyes','ears','nose','mouth','paws','skin'] as const).every(p => hc[p] === true)
+                                  const allClear = oldFormatAllClear || (cleared.length === 6 && totalIssues === 0)
+                                  return (
+                                    <div className="mt-2 flex items-center gap-1.5">
+                                      <span className="text-xs font-medium text-sky-600">Initial check:</span>
+                                      {allClear ? (
+                                        <span className="text-xs bg-green-100 text-green-700 rounded px-1.5 py-0.5">✅ All Normal</span>
+                                      ) : totalIssues > 0 ? (
+                                        <span className="text-xs bg-rose-100 text-rose-700 rounded px-1.5 py-0.5">⚠️ {totalIssues} issue{totalIssues > 1 ? 's' : ''}</span>
+                                      ) : (
+                                        <span className="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">Completed</span>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
+                                {/* Quality Check Summary */}
+                                {(a as any).grooming_quality && (() => {
+                                  const q = (a as any).grooming_quality
+                                  const checks = [
+                                    { key: 'nails_trimmed',  emoji: '✂️', oldKey: 'nails_trimmed' },
+                                    { key: 'ears_cleaned',   emoji: '👂', oldKey: 'ears_cleaned' },
+                                    { key: 'tangles_free',   emoji: '🪮', oldKey: 'coat_brushed' },
+                                    { key: 'sanitary_trim',  emoji: '🧼', oldKey: 'bath_completed' },
+                                    { key: 'paw_pad_trim',   emoji: '🐾', oldKey: 'paw_pads_cleared' },
+                                    { key: 'perfume_spray',  emoji: '🌸', oldKey: 'styling_finished' },
+                                  ]
+                                  const done = checks.filter(c => q[c.key] || q[c.oldKey])
+                                  return (
+                                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                      <span className="text-xs font-medium text-emerald-600">Quality:</span>
+                                      <span className="text-xs text-gray-600 flex items-center gap-0.5">
+                                        {done.length === checks.length ? (
+                                          <span className="text-xs bg-green-100 text-green-700 rounded px-1.5 py-0.5">✅ All Done</span>
+                                        ) : done.length > 0 ? (
+                                          done.map(c => <span key={c.key}>{c.emoji}✓</span>)
+                                        ) : (
+                                          <span className="text-xs text-gray-400">—</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  )
+                                })()}
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                {a.payment_amount && <p className="text-sm font-bold text-gray-700">${a.payment_amount}</p>}
+                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[a.status] ?? 'bg-gray-100 text-gray-500'}`}>{a.status}</span>
+                              </div>
+                              <button
+                                onClick={() => openApptDetail(a)}
+                                className="px-3 py-1 text-xs font-semibold bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-lg flex-shrink-0 transition-colors"
+                              >
+                                View
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <div className="px-4 py-5 bg-white text-center">
+                        <p className="text-sm text-gray-400">No service history found</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* ── FUTURE APPOINTMENTS TAB ──────────────── */}
+              {detailTab === 'future' && (
+                <>
+                  <p className="text-xs text-gray-400">Upcoming confirmed & pending appointments for {detailAppt.clients?.name}</p>
+                  {detailFutureLoading
+                    ? <p className="text-gray-400 text-sm">Loading…</p>
+                    : detailFutureAppts.length === 0
+                      ? <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">No upcoming appointments</div>
+                      : <div className="space-y-2">
+                          {detailFutureAppts.map(a => (
+                            <div key={a.id} className="bg-gray-50 rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-sky-50 transition-colors" onClick={() => openApptDetail(a)}>
+                              {a.pets?.photo_url
+                                ? <img src={a.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
+                                : <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-800">{a.pets?.name}</p>
+                                <p className="text-xs text-gray-500">{serviceMap[a.service]??a.service} · {formatDate(a.appointment_date)} · {a.appointment_time}</p>
+                              </div>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[a.status]??'bg-gray-100 text-gray-500'}`}>{a.status}</span>
+                            </div>
+                          ))}
+                        </div>
+                  }
+                </>
+              )}
+
+              {/* ── NOTES TAB ────────────────────────────── */}
+              {detailTab === 'notes' && (
+                <div className="space-y-3">
+
+                  {editingNotes ? (
+                    /* ── EDIT MODE ── */
+                    <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-gray-700">✏️ {detailAppt.notes ? 'Edit Note' : 'Add Note'}</p>
+                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                          {translatingNotes && <span className="inline-block w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
+                          {translatingNotes ? 'Translating…' : noteTranslations ? '✨ Translated' : 'Type in any language'}
+                        </span>
+                      </div>
+
+                      {/* Staff selector */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-semibold text-gray-500 shrink-0">Staff:</label>
+                        <select
+                          value={noteAuthor}
+                          onChange={e => setNoteAuthor(e.target.value)}
+                          className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white"
+                        >
+                          <option value="">— Select staff —</option>
+                          {staff.filter(s => s.is_active).map(s => (
+                            <option key={s.id} value={s.name}>{s.first_name || s.name.split(' ')[0]}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <textarea
+                        ref={noteInputRef}
+                        onChange={e => {
+                          if (!noteIsComposingRef.current) triggerAutoTranslate(e.target.value)
+                        }}
+                        onCompositionStart={() => { noteIsComposingRef.current = true }}
+                        onCompositionEnd={e => {
+                          noteIsComposingRef.current = false
+                          const val = (e.target as HTMLTextAreaElement).value
+                          triggerAutoTranslate(val)
+                        }}
+                        placeholder="Type in English, 繁體中文, or 简体中文…"
+                        rows={4}
+                        autoFocus
+                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-300 resize-none"
+                      />
+
+                      {noteTranslations && (
+                        <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 space-y-1.5">
+                          <p className="text-xs font-semibold text-violet-500">✨ Will save in all languages</p>
+                          {noteTranslations.detected !== 'english' && noteTranslations.english && (
+                            <div className="text-xs text-gray-600"><span className="font-semibold text-gray-400">🇺🇸 </span>{noteTranslations.english}</div>
+                          )}
+                          {noteTranslations.detected !== 'traditional' && noteTranslations.traditional && (
+                            <div className="text-xs text-gray-600"><span className="font-semibold text-gray-400">🇹🇼 </span>{noteTranslations.traditional}</div>
+                          )}
+                          {noteTranslations.detected !== 'simplified' && noteTranslations.simplified && (
+                            <div className="text-xs text-gray-600"><span className="font-semibold text-gray-400">🇨🇳 </span>{noteTranslations.simplified}</div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button onClick={saveDetailNotes} disabled={savingDetailNotes || !noteAuthor || translatingNotes}
+                          className="flex-1 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
+                          {savingDetailNotes ? 'Saving…' : translatingNotes ? '✨ Translating…' : '💾 Save Note'}
+                        </button>
+                        <button onClick={() => { setEditingNotes(false); setNoteTranslations(null) }}
+                          className="px-4 py-2 text-gray-500 text-sm font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+
+                  ) : (() => {
+                    // Build combined notes list: ALWAYS include both legacy notes + notes_list (don't hide old notes)
+                    const notesList: NoteEntry[] = [
+                      // Legacy note first (if exists)
+                      ...(detailAppt.notes ? [{ id: '__legacy__', text: detailAppt.notes, notes_english: detailAppt.notes_english, notes_chinese: detailAppt.notes_chinese, author: detailAppt.notes_author ?? 'Customer', created_at: detailAppt.notes_updated_at ?? detailAppt.appointment_date }] : []),
+                      // Then all new notes from notes_list (exclude add-on entries — those show in pricing section)
+                      ...(detailAppt.notes_list ?? []).filter(n => !n.is_addon),
+                    ]
+
+                    return notesList.length > 0 ? (
+                      /* ── NOTE CARDS LIST ── */
+                      <div className="space-y-2">
+                        {notesList.map(note => (
+                          <div key={note.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                            {/* Card header */}
+                            <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-6 h-6 rounded-full ${avatarColor(note.author)} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
+                                  {note.author[0].toUpperCase()}
+                                </div>
+                                <span className="text-sm font-semibold text-gray-700">{note.author}</span>
+                                <span className="text-gray-300">·</span>
+                                <span className="text-xs text-gray-400">
+                                  {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {' · '}
+                                  {new Date(note.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => { if (confirm('Delete this note?')) deleteNote(note.id) }}
+                                disabled={savingDetailNotes}
+                                className="text-xs font-semibold text-red-400 hover:text-red-600 px-2.5 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                              >🗑️</button>
+                            </div>
+                            {/* Note body */}
+                            <div className="px-4 py-4 space-y-3">
+                              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap font-medium">{note.text}</p>
+                              {(note.notes_english || note.notes_chinese) && (
+                                <div className="border-t border-gray-100 pt-3 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Translations</p>
+                                    <button
+                                      onClick={() => retranslateNote(note.id, note.text)}
+                                      disabled={savingDetailNotes}
+                                      className="text-xs text-sky-500 hover:text-sky-700 font-medium disabled:opacity-50"
+                                      title="Re-translate this note"
+                                    >🔄 Re-translate</button>
+                                  </div>
+                                  {note.notes_english && (
+                                    <div className="flex gap-2 items-start">
+                                      <span className="text-base leading-tight flex-shrink-0">🇺🇸</span>
+                                      <p className="text-xs text-gray-600 leading-relaxed">{note.notes_english}</p>
+                                    </div>
+                                  )}
+                                  {note.notes_chinese && (
+                                    <div className="flex gap-2 items-start">
+                                      <span className="text-base leading-tight flex-shrink-0">🇹🇼</span>
+                                      <p className="text-xs text-gray-600 leading-relaxed">{note.notes_chinese}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      /* ── EMPTY STATE ── */
+                      <div className="bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 p-8 text-center">
+                        <p className="text-3xl mb-2">📝</p>
+                        <p className="text-sm font-semibold text-gray-500 mb-1">No notes yet</p>
+                        <p className="text-xs text-gray-400 mb-4">Type in English or Chinese — AI will translate automatically</p>
+                        <button
+                          onClick={() => { if (noteTranslateTimerRef.current) clearTimeout(noteTranslateTimerRef.current); noteIsComposingRef.current = false; setEditingNotes(true); setDetailNotes(''); setNoteAuthor(staff.find(s => s.is_active)?.name ?? ''); setNoteTranslations(null) }}
+                          className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold rounded-xl transition-colors"
+                        >+ Add Note</button>
+                      </div>
+                    )
+                  })()}
+
+                  {/* ── ADD NOTE button (always visible when not editing) ── */}
+                  {!editingNotes && (
+                    <button
+                      onClick={() => { setEditingNotes(true); setDetailNotes(''); setNoteAuthor(staff.find(s => s.is_active)?.name ?? ''); setNoteTranslations(null) }}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold border-2 border-dashed border-gray-200 text-gray-400 hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50 transition-colors"
+                    >+ Add Note</button>
+                  )}
+                </div>
+              )}
+
+            </div>
+
+            {/* ── Sticky Footer: Reschedule (left) + Delete (right) — Appointment tab only ── */}
+            {detailTab === 'appt' && <div className="border-t border-gray-100 bg-white px-4 py-3">
+              {showRescheduleInputs ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">New Date</p>
+                      <input type="date" value={detailRescheduleDate}
+                        onChange={e => setDetailRescheduleDate(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">New Time</p>
+                      <select value={detailRescheduleTime}
+                        onChange={e => setDetailRescheduleTime(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white">
+                        {TIME_OPTIONS.filter(t => {
+                          const toMins = (s: string) => {
+                            const upper = s.trim().toUpperCase()
+                            const [time, period] = upper.split(' ')
+                            const [hStr, mStr] = time.split(':')
+                            let h = parseInt(hStr); const m = parseInt(mStr)
+                            if (period === 'PM' && h !== 12) h += 12
+                            if (period === 'AM' && h === 12) h = 0
+                            return h * 60 + m
+                          }
+                          return toMins(t) >= toMins(openTime) && toMins(t) <= toMins(closeTime)
+                        }).map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowRescheduleInputs(false)}
+                      className="flex-1 py-2 text-sm font-semibold rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+                      Cancel
+                    </button>
+                    <button onClick={rescheduleAppointment}
+                      disabled={savingReschedule || (detailRescheduleDate === detailAppt.appointment_date && detailRescheduleTime === detailAppt.appointment_time)}
+                      className="flex-1 py-2 text-sm font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-40 transition-colors">
+                      {savingReschedule ? 'Saving…' : '✓ Confirm'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button onClick={() => { setShowRescheduleInputs(true); setDetailRescheduleDate(detailAppt.appointment_date); setDetailRescheduleTime(detailAppt.appointment_time) }}
+                    className="flex-1 py-2.5 text-sm font-semibold rounded-xl border-2 border-amber-400 text-amber-600 hover:bg-amber-50 transition-colors">
+                    📅 Reschedule
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete ${detailAppt.pets?.name ?? 'this'}'s appointment on ${formatDate(detailAppt.appointment_date)}? This cannot be undone.`)) {
+                        deleteAppointment(detailAppt.id)
+                      }
+                    }}
+                    disabled={!!deletingApptId}
+                    className="flex-1 py-2.5 text-sm font-semibold rounded-xl border-2 border-rose-300 text-rose-500 hover:bg-rose-50 disabled:opacity-50 transition-colors">
+                    {deletingApptId === detailAppt.id ? '⏳…' : '🗑 Delete'}
+                  </button>
+                </div>
+              )}
+            </div>}
+
+          </div>
+        </>
+      )}
+
+      {/* ── Left Sidebar ─────────────────────────────────────────────────── */}
+      {/* Mobile sidebar backdrop */}
+      {!isBookMode && sidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {!isBookMode && <div className={`w-64 bg-sky-700 flex flex-col min-h-screen fixed left-0 top-0 bottom-0 z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        {/* Facility header */}
+        <div className="px-4 py-4 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <Image src="/logo.png" alt="Kokoni" width={40} height={40} className="rounded-full shrink-0" />
+            <div className="min-w-0">
+              <p className="text-white font-bold text-sm leading-tight truncate">Kokoni Pet Grooming Salon</p>
+              <span className="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full font-medium">Active</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+          {NAV.filter(({ key }) => !isBookMode || key === 'calendar').map(({ key, label, icon }) => (
+            key === 'settings' ? (
+              <a key={key} href="/admin/settings"
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left relative text-sky-100 hover:bg-white/5 hover:text-white`}
+              >
+                <span className="text-base leading-none w-5 text-center">{icon}</span>
+                <span>{label}</span>
+              </a>
+            ) : (
+            <button key={key} onClick={() => { setTab(key); setSidebarOpen(false) }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left relative ${
+                tab === key
+                  ? 'bg-white/10 text-white'
+                  : 'text-sky-100 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              {tab === key && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-rose-400 rounded-r-full" />}
+              <span className="text-base leading-none w-5 text-center">{icon}</span>
+              <span className="flex-1">{label}</span>
+              {key === 'requests' && pendingCount > 0 && (
+                <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                  {pendingCount}
+                </span>
+              )}
+              {key === 'vaccines' && vaccineCount > 0 && (
+                <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                  {vaccineCount}
+                </span>
+              )}
+              {key === 'intake' && pendingCount > 0 && (
+                <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+            )
+          ))}
+
+          {/* Divider */}
+          <div className="border-t border-white/10 my-2" />
+
+          {/* Kiosk link */}
+          <a href="/kiosk" target="_blank" rel="noopener noreferrer"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <span className="text-base leading-none w-5 text-center">🖥️</span>
+            <span className="flex-1">Kiosk Screen</span>
+            <span className="text-sky-400 text-xs">↗</span>
+          </a>
+
+          {/* Front Desk launcher */}
+          <a href="/front-desk" target="_blank" rel="noopener noreferrer"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <span className="text-base leading-none w-5 text-center">🏠</span>
+            <span className="flex-1">Front Desk</span>
+            <span className="text-sky-400 text-xs">↗</span>
+          </a>
+
+          {/* Chat — two-way SMS with customers */}
+          <ChatSidebarLink onClick={() => setSidebarOpen(false)} />
+
+          {/* Time Tracking */}
+          <a
+            href="/admin/timesheet"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <span className="text-base leading-none w-5 text-center">🕐</span>
+            <span className="flex-1">Timesheet</span>
+          </a>
+          <a
+            href="/clock"
+            target="_blank"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <span className="text-base leading-none w-5 text-center">⏱️</span>
+            <span className="flex-1">Clock Kiosk</span>
+            <span className="text-sky-400 text-xs">↗</span>
+          </a>
+
+          {/* Income Manager */}
+          <a
+            href="/income-manager.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <span className="text-base leading-none w-5 text-center">💰</span>
+            <span className="flex-1">Income Manager</span>
+            <span className="text-sky-400 text-xs">↗</span>
+          </a>
+
+          {/* Stubs for future features */}
+          {[
+            { label: 'Resources',          icon: '📚' },
+          ].map(({ label, icon }) => (
+            <button key={label}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-200 opacity-50 cursor-not-allowed text-left"
+              title="Coming soon"
+            >
+              <span className="text-base leading-none w-5 text-center">{icon}</span>
+              <span className="flex-1">{label}</span>
+            </button>
+          ))}
+        </nav>
+
+        {/* User footer */}
+        <div className="px-4 py-3 border-t border-white/10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-purple-400 flex items-center justify-center text-white text-sm font-bold">S</div>
+              <span className="text-white text-sm font-medium">Semira Huang</span>
+            </div>
+            <button onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false) }}
+              className="text-sky-200 hover:text-white text-xs">Sign out</button>
+          </div>
+        </div>
+      </div>}
+
+      {/* ── Main content ──────────────────────────────────────────────────── */}
+      <div className={`${isBookMode ? '' : 'md:ml-64'} flex-1 flex flex-col min-h-screen`}>
+        {/* Top bar */}
+        <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-30">
+          <div className="flex items-center gap-3">
+            {/* Hamburger — mobile only, hidden in book mode */}
+            {!isBookMode && (
+              <button
+                className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-600 flex-shrink-0"
+                onClick={() => setSidebarOpen(o => !o)}
+                aria-label="Open menu"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            )}
+            {isBookMode && (
+              <a href="/front-desk" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 font-medium transition-colors">
+                ← Back
+              </a>
+            )}
+            <h1 className="font-bold text-gray-800 text-lg">
+              {isBookMode ? '📅 Calendar' : (NAV.find(n => n.key === tab)?.label ?? tab)}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="hidden md:block text-sm text-gray-400">{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</span>
+            {!isBookMode && <ChatIconButton />}
+            {!isBookMode && (
+              <a href="/admin" className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors font-medium">
+                📱 Mobile View
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 p-3 md:p-6">
+
+          {/* ── TODAY ──────────────────────────────────────────────────── */}
+          {tab === 'today' && (
+            <div>
+              {loading && <p className="text-gray-400 text-sm">Loading...</p>}
+              {!loading && (
+                <div className="space-y-4">
+                  {/* Stats row */}
+                  {(() => {
+                    const nowMs = Date.now()
+                    const isOverdue = (a: Appointment) => !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs - 5 * 60000
+                    const lateCount    = appointments.filter(isOverdue).length
+                    const comingCount  = appointments.filter(a => !a.grooming_status && !isOverdue(a)).length + lateCount
+                    const inSalonCount = appointments.filter(a => a.grooming_status === 'waiting' || a.grooming_status === 'incare' || a.grooming_status === 'ready').length
+                    const doneCount    = appointments.filter(a => a.grooming_status === 'done' || a.status === 'completed').length
+                    return (
+                      <>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                          {[
+                            { label:'Coming',   value: comingCount,  color:'bg-sky-50 text-sky-700 border-sky-100' },
+                            { label:'Late',     value: lateCount,    color: lateCount > 0 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-gray-50 text-gray-400 border-gray-100' },
+                            { label:'In Salon', value: inSalonCount, color:'bg-amber-50 text-amber-700 border-amber-100' },
+                            { label:'Done',     value: doneCount,    color:'bg-emerald-50 text-emerald-700 border-emerald-100' },
+                          ].map(s => (
+                            <div key={s.label} className={`rounded-2xl border p-4 ${s.color}`}>
+                              <p className="text-3xl font-bold">{s.value}</p>
+                              <p className="text-sm font-medium mt-1">{s.label}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* View toggle */}
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs text-gray-400">View by:</span>
+                          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-semibold">
+                            <button onClick={() => setTodayGroupByStaff(false)}
+                              className={`px-3 py-1.5 transition-colors ${!todayGroupByStaff ? 'bg-sky-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                              Time
+                            </button>
+                            <button onClick={() => setTodayGroupByStaff(true)}
+                              className={`px-3 py-1.5 transition-colors ${todayGroupByStaff ? 'bg-sky-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                              Staff
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Appointment table */}
+                        {(() => {
+                          const GRID = '90px 1fr 110px 90px 230px 90px'
+
+                          const fmtTs = (iso: string | null) => {
+                            if (!iso) return null
+                            return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                          }
+
+                          const ApptRow = ({ appt, showNoShow, showReschedule }: { appt: Appointment; showNoShow?: boolean; showReschedule?: boolean }) => {
+                            const gs = appt.grooming_status
+                            const isDone   = gs === 'done' || appt.status === 'completed'
+                            const isInCare = gs === 'incare'
+                            const isReady  = gs === 'ready'
+
+                            const rowBg = isDone
+                              ? 'opacity-60 hover:opacity-90 hover:bg-gray-50/60'
+                              : isInCare ? 'bg-sky-50/30 hover:bg-sky-50/50'
+                              : isReady  ? 'bg-green-50/20 hover:bg-green-50/40'
+                              : 'hover:bg-gray-50/60'
+
+                            const gsPill = gs === 'waiting'
+                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md mt-1">⏳ Waiting</span>
+                              : gs === 'incare'
+                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 border border-sky-200 px-1.5 py-0.5 rounded-md mt-1">✂️ In Care</span>
+                              : gs === 'ready'
+                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-md mt-1">🔔 Ready</span>
+                              : gs === 'done'
+                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-pink-600 bg-pink-50 border border-pink-100 px-1.5 py-0.5 rounded-md mt-1">🎉 Done</span>
+                              : <span className={`text-xs px-1.5 py-0.5 rounded-md mt-1 inline-block ${STATUS_COLORS[appt.status] ?? 'bg-gray-100 text-gray-500'}`}>{appt.status.replace('_',' ')}</span>
+
+                            let lateBadge: ReactNode = null
+                            if (appt.checked_in_at) {
+                              const scheduled = parseApptTime(appt.appointment_date, appt.appointment_time)
+                              const actual    = new Date(appt.checked_in_at)
+                              const diff      = Math.round((actual.getTime() - scheduled.getTime()) / 60000)
+                              lateBadge = diff > 5
+                                ? <span className="text-xs font-bold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md">Late: {diff} min</span>
+                                : <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">On time ✓</span>
+                            }
+
+                            let groomTime: ReactNode = <span className="text-xs text-gray-300 italic">—</span>
+                            if (appt.grooming_started_at && appt.grooming_finished_at) {
+                              const mins = Math.round((new Date(appt.grooming_finished_at).getTime() - new Date(appt.grooming_started_at).getTime()) / 60000)
+                              const h = Math.floor(mins / 60); const m = mins % 60
+                              const label = h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m} min`
+                              groomTime = <div><p className="text-sm font-bold text-green-600">{label}</p><p className="text-xs text-green-400">total groom</p></div>
+                            } else if (appt.grooming_started_at && isInCare) {
+                              const mins = Math.round((Date.now() - new Date(appt.grooming_started_at).getTime()) / 60000)
+                              groomTime = <div><p className="text-sm font-bold text-sky-600">{mins} min</p><p className="text-xs text-sky-400">in progress</p></div>
+                            }
+
+                            const hasNotes = !!(appt.notes_list?.length || appt.notes || appt.notes_english)
+
+                            const TimeLine = ({ label, time, colorClass, suffix, fallback }: { label: string; time: string | null; colorClass?: string; suffix?: string; fallback?: string }) => (
+                              <div className="flex items-center gap-2">
+                                <span className="w-20 text-xs text-gray-400 flex-shrink-0">{label}</span>
+                                {time
+                                  ? <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${colorClass ?? (isDone ? 'text-gray-500 bg-gray-100' : 'text-gray-700 bg-gray-100')}`}>{time}{suffix ?? ''}</span>
+                                  : <span className="text-xs text-gray-300 italic">— {fallback ?? 'not yet'}</span>}
+                              </div>
+                            )
+
+                            return (
+                              <div
+                                onClick={() => openApptDetail(appt)}
+                                className={`px-5 py-4 border-b border-gray-50 grid items-start gap-3 cursor-pointer transition-all ${rowBg}`}
+                                style={{ gridTemplateColumns: GRID }}
+                              >
+                                {/* Appt time + status */}
+                                <div>
+                                  <p className={`text-sm font-bold ${isDone ? 'text-gray-400' : isInCare ? 'text-sky-700' : 'text-gray-800'}`}>
+                                    {appt.appointment_time}
+                                  </p>
+                                  {gsPill}
+                                </div>
+
+                                {/* Pet / Owner */}
+                                <div className="flex items-center gap-2">
+                                  {appt.pets?.photo_url
+                                    ? <img src={appt.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
+                                    : <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base flex-shrink-0">🐶</div>}
+                                  <div>
+                                    <p className="text-sm font-semibold text-gray-800">
+                                      {appt.pets?.name ?? '—'}
+                                      {hasNotes && <span className="ml-1.5 text-xs bg-amber-100 text-amber-700 font-semibold px-1.5 py-0.5 rounded-md">📝</span>}
+                                    </p>
+                                    <p className="text-xs text-gray-400">{firstName(appt.clients?.name)} · {appt.client_phone}</p>
+                                  </div>
+                                </div>
+
+                                {/* Service */}
+                                <span className={`text-sm ${isDone ? 'text-gray-400' : 'text-gray-600'}`}>
+                                  {serviceMap[appt.service] ?? appt.service}
+                                </span>
+
+                                {/* Staff */}
+                                <div className={`text-xs space-y-0.5 ${isDone ? 'text-gray-400' : 'text-gray-500'}`}>
+                                  {appt.assigned_groomer && <p>✂️ {firstName(appt.assigned_groomer)}</p>}
+                                  {appt.assigned_bather  && <p>🛁 {firstName(appt.assigned_bather)}</p>}
+                                  {!appt.assigned_groomer && !appt.assigned_bather && <p className="text-gray-300">—</p>}
+                                </div>
+
+                                {/* Timeline */}
+                                <div className="flex flex-col gap-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-20 text-xs text-gray-400 flex-shrink-0">Check-in</span>
+                                    {appt.checked_in_at
+                                      ? <><span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${isDone ? 'text-gray-500 bg-gray-100' : 'text-gray-700 bg-gray-100'}`}>{fmtTs(appt.checked_in_at)}</span>{lateBadge}</>
+                                      : <span className="text-xs text-gray-300 italic">— not yet</span>}
+                                  </div>
+                                  <TimeLine label="Started"     time={fmtTs(appt.grooming_started_at)}  colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-sky-700 bg-sky-50'} />
+                                  <TimeLine label="Finished"    time={fmtTs(appt.grooming_finished_at)} colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-green-700 bg-green-50'} fallback={isInCare ? 'in progress' : 'not yet'} />
+                                  <TimeLine label="Msg sent"    time={fmtTs(appt.owner_notified_at)}    colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-emerald-700 bg-emerald-50'} suffix=" ✓" />
+                                  <TimeLine label="Checked out" time={fmtTs(appt.checked_out_at)}       colorClass="text-pink-500 bg-pink-50" suffix=" ✓" fallback={isReady ? 'waiting' : 'not yet'} />
+                                </div>
+
+                                {/* Groom Time / No-Show / Reschedule actions */}
+                                <div>
+                                  {groomTime}
+                                  {(showNoShow || showReschedule) && (
+                                    <div className="flex flex-wrap gap-1.5 mt-2" onClick={e => e.stopPropagation()}>
+                                      {showReschedule && (
+                                        <button
+                                          onClick={() => { setInlineRescheduleAppt(appt); setInlineRescheduleDate(''); setInlineRescheduleTime(''); setInlineRescheduleSlots([]) }}
+                                          className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+                                        >
+                                          🔄 Reschedule
+                                        </button>
+                                      )}
+                                      {showNoShow && (
+                                        <>
+                                          <button
+                                            onClick={() => handleAction(appt.id, 'cancel-today')}
+                                            disabled={actionLoading !== null}
+                                            className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 text-gray-600 border border-gray-200 disabled:opacity-50 hover:bg-gray-200 transition-colors"
+                                          >
+                                            ✕ Cancel
+                                          </button>
+                                          <button
+                                            onClick={() => handleAction(appt.id, 'no-show')}
+                                            disabled={actionLoading !== null}
+                                            className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 text-rose-600 border border-rose-200 disabled:opacity-50 hover:bg-rose-100 transition-colors"
+                                          >
+                                            👻 No Show
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          }
+
+                          const tableHeader = (
+                            <div
+                              className="px-5 py-3 border-b border-gray-100 bg-gray-50 grid text-xs font-semibold text-gray-500 uppercase tracking-wide gap-3"
+                              style={{ gridTemplateColumns: GRID }}
+                            >
+                              <span>Appt</span><span>Pet / Owner</span><span>Service</span><span>Staff</span><span>Timeline</span><span>Groom Time</span>
+                            </div>
+                          )
+
+                          if (!todayGroupByStaff) {
+                            // Section dividers
+                            const nowMs2 = Date.now()
+                            const isOverdue2 = (a: Appointment) =>
+                              !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs2 - 5 * 60000
+                            const isVeryOverdue2 = (a: Appointment) =>
+                              !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs2 - 15 * 60000
+                            const byTime = (a: Appointment, b: Appointment) =>
+                              parseApptTime(a.appointment_date, a.appointment_time).getTime() -
+                              parseApptTime(b.appointment_date, b.appointment_time).getTime()
+
+                            const sectionedGroups: { label: string; emoji: string; color: string; items: Appointment[] }[] = [
+                              {
+                                label: 'Late',
+                                emoji: '🔴',
+                                color: 'bg-red-50 border-red-100 text-red-700',
+                                items: appointments.filter(a => isOverdue2(a)).sort(byTime),
+                              },
+                              {
+                                label: 'Checked In',
+                                emoji: '⏳',
+                                color: 'bg-amber-50 border-amber-100 text-amber-700',
+                                items: appointments.filter(a => a.grooming_status === 'waiting').sort(byTime),
+                              },
+                              {
+                                label: 'Working',
+                                emoji: '✂️',
+                                color: 'bg-sky-50 border-sky-100 text-sky-700',
+                                items: appointments.filter(a => a.grooming_status === 'incare').sort(byTime),
+                              },
+                              {
+                                label: 'Ready',
+                                emoji: '🔔',
+                                color: 'bg-green-50 border-green-100 text-green-700',
+                                items: appointments.filter(a => a.grooming_status === 'ready').sort(byTime),
+                              },
+                              {
+                                label: 'Coming Up',
+                                emoji: '📅',
+                                color: 'bg-gray-50 border-gray-100 text-gray-500',
+                                items: appointments.filter(a => !a.grooming_status && !isOverdue2(a)).sort(byTime),
+                              },
+                              {
+                                label: 'Done',
+                                emoji: '🎉',
+                                color: 'bg-emerald-50 border-emerald-100 text-emerald-700',
+                                items: appointments.filter(a => a.grooming_status === 'done' || (!a.grooming_status && a.status === 'completed')).sort(byTime),
+                              },
+                            ].filter(g => g.items.length > 0)
+
+                            if (appointments.length === 0) {
+                              return (
+                                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                                  <div className="py-16 text-center text-gray-400">No appointments today</div>
+                                </div>
+                              )
+                            }
+
+                            return (
+                              <div className="space-y-4">
+                                {sectionedGroups.map(group => (
+                                  <div key={group.label} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                                    <div className={`px-5 py-2.5 border-b flex items-center gap-2 ${group.color}`}>
+                                      <span className="text-sm font-bold">{group.emoji} {group.label}</span>
+                                      <span className="text-xs font-medium opacity-70">{group.items.length} appt{group.items.length !== 1 ? 's' : ''}</span>
+                                    </div>
+                                    <div className="overflow-x-auto"><div className="min-w-[600px]">
+                                      {tableHeader}
+                                      {group.items.map(appt => <ApptRow key={appt.id} appt={appt} showNoShow={group.label === 'Late' && isVeryOverdue2(appt)} showReschedule={group.label === 'Late'} />)}
+                                    </div></div>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          }
+
+                          // Group by staff
+                          const staffMap: Record<string, Appointment[]> = {}
+                          appointments.forEach(a => {
+                            const key = a.assigned_groomer || a.assigned_bather || '— Unassigned'
+                            if (!staffMap[key]) staffMap[key] = []
+                            staffMap[key].push(a)
+                          })
+                          const staffKeys = Object.keys(staffMap).sort((a, b) =>
+                            a === '— Unassigned' ? 1 : b === '— Unassigned' ? -1 : a.localeCompare(b)
+                          )
+                          return (
+                            <div className="space-y-4">
+                              {staffKeys.map(staff => (
+                                <div key={staff} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                                  <div className="px-5 py-2.5 bg-sky-50 border-b border-sky-100 flex items-center gap-2">
+                                    <span className="text-sm font-bold text-sky-700">
+                                      {staff === '— Unassigned' ? '— Unassigned' : `✂️ ${firstName(staff)}`}
+                                    </span>
+                                    <span className="text-xs text-sky-400 font-medium">{staffMap[staff].length} appt{staffMap[staff].length !== 1 ? 's' : ''}</span>
+                                  </div>
+                                  <div className="overflow-x-auto"><div className="min-w-[600px]">
+                                    {tableHeader}
+                                    {staffMap[staff].sort(byTime).map(appt => <ApptRow key={appt.id} appt={appt} />)}
+                                  </div></div>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                      </>
+                    )
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── GROOMING BOARD ─────────────────────────────────────────── */}
+          {tab === 'grooming' && (() => {
+            const GSTAGES = [
+              { id: 'waiting', label: 'Waiting',          icon: '⏳', bg: 'bg-amber-50',  border: 'border-amber-200', text: 'text-amber-700',  badge: 'bg-amber-400',  btn: 'bg-amber-500 hover:bg-amber-600',  next: 'Start Grooming →' },
+              { id: 'incare',  label: 'In Good Hands 🐾', icon: '✂️', bg: 'bg-sky-50',    border: 'border-sky-200',   text: 'text-sky-700',    badge: 'bg-sky-500',    btn: 'bg-sky-500 hover:bg-sky-600',      next: 'Mark Ready →' },
+              { id: 'ready',   label: 'Ready to Pick Up', icon: '🔔', bg: 'bg-green-50',  border: 'border-green-200', text: 'text-green-700',  badge: 'bg-green-500',  btn: 'bg-green-500 hover:bg-green-600',  next: 'Check Out' },
+              { id: 'done',    label: 'Checked Out',      icon: '🎉', bg: 'bg-pink-50',   border: 'border-pink-200',  text: 'text-pink-700',   badge: 'bg-pink-500',   btn: '',                                 next: '' },
+            ]
+            const stageOrder = ['waiting','incare','ready','done']
+
+            const advanceGrooming = async (appt: Appointment) => {
+              const cur = appt.grooming_status || 'waiting'
+              const idx = stageOrder.indexOf(cur)
+              if (idx >= 3) return
+              const next = stageOrder[idx + 1]
+              setGroomingUpdating(appt.id)
+              try {
+                await fetch(`/api/admin/appointments/${appt.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'grooming-status', grooming_status: next }),
+                })
+                setGroomingAppts(prev => prev.map(a => a.id === appt.id ? { ...a, grooming_status: next, grooming_status_updated_at: new Date().toISOString() } : a))
+                if (next === 'ready') {
+                  setGroomingSmsAlert(`📱 Text sent — ${appt.pets?.name ?? 'Pet'} is ready!`)
+                  setTimeout(() => setGroomingSmsAlert(null), 4000)
+                }
+                if (next === 'done') {
+                  setGroomingCelebrate({ ...appt, grooming_status: 'done' })
+                  setTimeout(() => setGroomingCelebrate(null), 7000)
+                }
+              } catch { showToast('Update failed') }
+              setGroomingUpdating(null)
+            }
+
+            const undoGrooming = async (appt: Appointment) => {
+              const cur = appt.grooming_status || 'waiting'
+              const idx = stageOrder.indexOf(cur)
+              if (idx <= 0) return
+              const prev = stageOrder[idx - 1]
+              setGroomingUpdating(appt.id)
+              try {
+                await fetch(`/api/admin/appointments/${appt.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'grooming-status', grooming_status: prev }),
+                })
+                setGroomingAppts(p => p.map(a => a.id === appt.id ? { ...a, grooming_status: prev } : a))
+              } catch { showToast('Update failed') }
+              setGroomingUpdating(null)
+            }
+
+            // Group by stage
+            const byStage: Record<string, Appointment[]> = {}
+            stageOrder.forEach(s => { byStage[s] = [] })
+            groomingAppts.forEach(a => {
+              const s = a.grooming_status || 'waiting'
+              if (byStage[s]) byStage[s].push(a)
+            })
+
+            return (
+              <div>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-lg font-bold text-gray-800">Grooming Board</h2>
+                    <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-full px-2.5 py-1">
+                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse inline-block" />
+                      <span className="text-xs font-bold text-green-700">Live · auto-refresh</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+                      {(['list','board'] as const).map(v => (
+                        <button key={v} onClick={() => setGroomingView(v)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${groomingView===v ? 'bg-white shadow text-violet-700' : 'text-gray-400 hover:text-gray-600'}`}>
+                          {v === 'list' ? '📋 List' : '📊 Board'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* SMS toast */}
+                {groomingSmsAlert && (
+                  <div className="mb-3 bg-green-600 text-white rounded-2xl px-4 py-3 flex items-center gap-3 text-sm font-semibold shadow-lg">
+                    <span className="text-xl">📱</span>{groomingSmsAlert}
+                  </div>
+                )}
+
+                {/* Celebration overlay */}
+                {groomingCelebrate && (
+                  <div className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden"
+                    style={{background:'linear-gradient(135deg,#ec4899,#8b5cf6,#3b82f6,#ec4899)',backgroundSize:'300% 300%',animation:'gradShift 3s ease infinite'}}
+                    onClick={() => setGroomingCelebrate(null)}>
+                    <style>{`@keyframes gradShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}`}</style>
+                    <div className="text-center px-8">
+                      {groomingCelebrate.pets?.photo_url
+                        ? <img src={groomingCelebrate.pets.photo_url} className="w-36 h-36 rounded-[32px] object-cover border-4 border-white shadow-2xl mx-auto mb-6" alt="" />
+                        : <div className="w-36 h-36 rounded-[32px] bg-white/20 flex items-center justify-center text-7xl mx-auto mb-6">🐾</div>
+                      }
+                      <h1 className="text-7xl font-black text-white mb-2 drop-shadow-2xl">{groomingCelebrate.pets?.name ?? 'Done!'}</h1>
+                      <p className="text-2xl font-bold text-white/90 mb-2">is going home! 🏠</p>
+                      <p className="text-base text-white/60">See you next time, {groomingCelebrate.clients?.name}! 💜</p>
+                    </div>
+                    <p className="absolute bottom-8 text-white/50 text-sm">Tap anywhere to close</p>
+                  </div>
+                )}
+
+                {/* Stage summary pills */}
+                <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1 flex-wrap">
+                  {GSTAGES.map((s, i) => (
+                    <div key={s.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${s.bg} border ${s.border} whitespace-nowrap`}>
+                      <span className="text-sm">{s.icon}</span>
+                      <span className={`text-xs font-bold ${s.text}`}>{s.label}</span>
+                      <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center text-white ${s.badge}`}>
+                        {byStage[s.id]?.length ?? 0}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {groomingLoading && <p className="text-gray-400 text-sm">Loading...</p>}
+
+                {/* ── LIST VIEW ── */}
+                {!groomingLoading && groomingView === 'list' && (
+                  <div className="space-y-3">
+                    {groomingAppts.length === 0 && (
+                      <p className="text-gray-400 text-sm text-center py-8">No appointments today</p>
+                    )}
+                    {groomingAppts.map(appt => {
+                      const gs = appt.grooming_status || 'waiting'
+                      const si = stageOrder.indexOf(gs)
+                      const stage = GSTAGES[si] || GSTAGES[0]
+                      const isDone = gs === 'done'
+                      const isUpdating = groomingUpdating === appt.id
+                      return (
+                        <div key={appt.id} className={`bg-white rounded-2xl border-2 ${stage.border} shadow-sm overflow-hidden`}>
+                          <div className="flex items-start gap-3 p-4">
+                            {/* Pet photo */}
+                            <div className="relative flex-shrink-0">
+                              {appt.pets?.photo_url
+                                ? <img src={appt.pets.photo_url} className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow" alt="" />
+                                : <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl ${stage.bg}`}>🐾</div>
+                              }
+                              <span className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full ${stage.badge} flex items-center justify-center text-xs border-2 border-white`}>
+                                {stage.icon.replace(/\uFE0F/g,'')}
+                              </span>
+                            </div>
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                <span className="text-lg font-black text-gray-800">{appt.pets?.name ?? '—'}</span>
+                                <span className="text-sm text-gray-400">{appt.clients?.name}</span>
+                              </div>
+                              <p className="text-xs text-gray-500 mb-2">{serviceMap[appt.service] ?? appt.service} · {appt.appointment_time}</p>
+                              <div className="flex gap-1.5 flex-wrap mb-2">
+                                {appt.assigned_groomer && (
+                                  <span className="text-xs font-bold bg-violet-50 border border-violet-100 text-violet-700 px-2 py-0.5 rounded-lg">✂️ {firstName(appt.assigned_groomer)}</span>
+                                )}
+                                {appt.assigned_bather && (
+                                  <span className="text-xs font-bold bg-sky-50 border border-sky-100 text-sky-700 px-2 py-0.5 rounded-lg">🛁 {firstName(appt.assigned_bather)}</span>
+                                )}
+                              </div>
+                              {/* Stage + grooming duration */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${stage.bg} border ${stage.border} ${stage.text}`}>
+                                  {stage.icon} {stage.label}
+                                  {appt.grooming_status_updated_at && (
+                                    <span className="text-xs opacity-60 ml-1">
+                                      since {new Date(appt.grooming_status_updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                                    </span>
+                                  )}
+                                </div>
+                                {appt.grooming_started_at && (() => {
+                                  const dur = groomingDuration(appt.grooming_started_at)
+                                  return dur ? (
+                                    <span className="text-xs font-semibold text-sky-600 bg-sky-50 border border-sky-100 px-2 py-0.5 rounded-lg">
+                                      ✂️ {gs === 'done' ? `took ${dur}` : `${dur}`}
+                                    </span>
+                                  ) : null
+                                })()}
+                              </div>
+                            </div>
+                            {/* Actions */}
+                            <div className="flex flex-col gap-1.5 flex-shrink-0 items-end">
+                              {isDone ? (
+                                <span className="text-xs font-bold text-pink-600 px-3 py-2 bg-pink-50 border border-pink-200 rounded-xl">🎉 Gone home!</span>
+                              ) : (
+                                <button
+                                  disabled={isUpdating}
+                                  onClick={() => advanceGrooming(appt)}
+                                  className={`${stage.btn} text-white font-bold px-3 py-2 rounded-xl text-xs shadow-sm disabled:opacity-50 whitespace-nowrap`}>
+                                  {isUpdating ? '…' : stage.next}
+                                </button>
+                              )}
+                              {si > 0 && !isDone && (
+                                <button disabled={isUpdating} onClick={() => undoGrooming(appt)}
+                                  className="text-xs text-gray-400 font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
+                                  ← Undo
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {/* Progress bar */}
+                          <div className="h-1.5 bg-gray-100">
+                            <div className={`h-full ${stage.badge} transition-all duration-700`} style={{width:`${((si+1)/4)*100}%`}} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* ── BOARD VIEW ── */}
+                {!groomingLoading && groomingView === 'board' && (
+                  <div className="overflow-x-auto -mx-2">
+                    <div className="flex gap-3 min-w-max px-2 pb-4">
+                      {GSTAGES.map((stage, si) => {
+                        const stageDogs = byStage[stage.id] || []
+                        return (
+                          <div key={stage.id} className="w-52 flex-shrink-0">
+                            <div className={`rounded-2xl px-3 py-2.5 mb-2 border-2 ${stage.bg} ${stage.border}`}>
+                              <div className="flex items-center justify-between">
+                                <span className="text-base">{stage.icon}</span>
+                                <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center text-white ${stage.badge}`}>{stageDogs.length}</span>
+                              </div>
+                              <p className={`text-xs font-black mt-0.5 ${stage.text}`}>{stage.label}</p>
+                            </div>
+                            <div className="space-y-2">
+                              {stageDogs.map(appt => (
+                                <div key={appt.id} className={`bg-white rounded-2xl border-2 ${stage.border} p-3 shadow-sm`}>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    {appt.pets?.photo_url
+                                      ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" alt="" />
+                                      : <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${stage.bg} flex-shrink-0`}>🐾</div>
+                                    }
+                                    <div className="min-w-0">
+                                      <p className="font-black text-sm text-gray-800 truncate">{appt.pets?.name ?? '—'}</p>
+                                      <p className="text-xs text-gray-400 truncate">{appt.appointment_time} · {appt.clients?.name}</p>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded-lg mb-2">{serviceMap[appt.service] ?? appt.service}</p>
+                                  {(appt.assigned_groomer || appt.assigned_bather) && (
+                                    <div className="flex gap-1 mb-2 flex-wrap">
+                                      {appt.assigned_groomer && <span className="text-xs font-bold text-violet-600">✂️{firstName(appt.assigned_groomer)}</span>}
+                                      {appt.assigned_bather && <span className="text-xs font-bold text-sky-600 ml-1">🛁{firstName(appt.assigned_bather)}</span>}
+                                    </div>
+                                  )}
+                                  {si < 4 ? (
+                                    <div className="flex gap-1">
+                                      {si > 0 && (
+                                        <button disabled={groomingUpdating===appt.id} onClick={() => undoGrooming(appt)}
+                                          className="flex-none text-xs text-gray-400 font-bold py-1.5 px-2 rounded-lg border border-gray-200 hover:bg-gray-50">←</button>
+                                      )}
+                                      <button disabled={groomingUpdating===appt.id} onClick={() => advanceGrooming(appt)}
+                                        className={`flex-1 ${stage.btn} text-white text-xs font-bold py-2 rounded-xl shadow-sm disabled:opacity-50`}>
+                                        {groomingUpdating===appt.id ? '…' : si===3 ? 'Check Out' : 'Next →'}
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="text-center text-xs font-bold text-pink-600 py-1.5 bg-pink-50 rounded-xl border border-pink-200">🎉 Gone home!</div>
+                                  )}
+                                </div>
+                              ))}
+                              {stageDogs.length === 0 && (
+                                <div className={`border-2 border-dashed ${stage.border} rounded-2xl py-8 text-center`}>
+                                  <p className="text-xs text-gray-300">Empty</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* ── CHECK OUT ─────────────────────────────────────────────────── */}
+          {tab === 'checkout' && (
+            <div>
+              <p className="text-sm text-gray-500 mb-4">Mark appointments complete and record payment for today&apos;s finished appointments.</p>
+              {loading && <p className="text-gray-400 text-sm">Loading...</p>}
+              {!loading && (
+                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                  <div className="overflow-x-auto"><div className="min-w-[500px]">
+                  <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 grid grid-cols-5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <span>Pet</span><span>Owner</span><span>Service</span><span>Time</span><span>Action</span>
+                  </div>
+                  {appointments.filter(a => a.status==='in_progress'||a.status==='completed').length === 0 && (
+                    <div className="py-12 text-center text-gray-400 text-sm">No appointments ready for checkout</div>
+                  )}
+                  {appointments.filter(a => a.status==='in_progress'||a.status==='completed').map(appt => (
+                    <div key={appt.id} className="px-5 py-3 border-b border-gray-50 grid grid-cols-5 items-center">
+                      <div className="flex items-center gap-2">
+                        {appt.pets?.photo_url
+                          ? <img src={appt.pets.photo_url} className="w-8 h-8 rounded-full object-cover" alt="" />
+                          : <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm">🐶</div>}
+                        <span className="text-sm font-medium">{appt.pets?.name}</span>
+                      </div>
+                      <span className="text-sm text-gray-600">{appt.clients?.name}</span>
+                      <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
+                      <span className="text-sm text-gray-500">{appt.appointment_time}</span>
+                      <div>
+                        {appt.status==='in_progress' ? (
+                          <button onClick={() => handleAction(appt.id,'complete')} disabled={actionLoading!==null}
+                            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all text-white ${isActionLoading(appt.id+'complete') ? 'bg-emerald-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
+                            {getButtonText('✓ Check Out', appt.id+'complete', actionLoading!==null)}
+                          </button>
+                        ) : (
+                          <span className="text-xs bg-gray-100 text-gray-500 px-3 py-1.5 rounded-lg font-medium">Checked Out ✓</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  </div></div>{/* end min-w / overflow-x-auto */}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── SCHEDULE REQUESTS ─────────────────────────────────────────── */}
+          {tab === 'requests' && (() => {
+            const pendingAppts = appointments.filter(a => a.status === 'pending')
+            const rescheduledAppts = appointments.filter(a => a.status === 'rescheduled')
+            // Confirmed but no groomer/bather assigned yet
+            const needsGroomerAppts = appointments.filter(a => a.status === 'confirmed' && !a.assigned_groomer && !a.assigned_bather)
+            // Confirmed + staff assigned + groomer NOT yet confirmed → needs groomer to confirm
+            const awaitingGroomerAppts = appointments.filter(a =>
+              a.status === 'confirmed' && (a.assigned_groomer || a.assigned_bather) && !a.groomer_confirmed
+            )
+            // Confirmed + groomer confirmed → show only within 48 hrs of appointment
+            const fullyConfirmedAppts = appointments.filter(a => {
+              if (a.status !== 'confirmed') return false
+              if (!a.assigned_groomer && !a.assigned_bather) return false
+              if (!a.groomer_confirmed) return false
+              const apptTime = parseApptTime(a.appointment_date, a.appointment_time)
+              const hoursUntil = (apptTime.getTime() - Date.now()) / 3600000
+              return hoursUntil <= 48
+            })
+            const alertCount = pendingAppts.length + rescheduledAppts.length + needsGroomerAppts.length + awaitingGroomerAppts.length
+            return (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-500">
+                  {alertCount > 0
+                    ? `${alertCount} item${alertCount !== 1 ? 's' : ''} need your attention`
+                    : 'All upcoming appointments'}
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={() => playBark()} title="Test bark sound"
+                    className="text-xs bg-white border border-gray-200 hover:bg-amber-50 hover:border-amber-300 text-gray-500 hover:text-amber-700 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                    🐶 Test
+                  </button>
+                  <button onClick={() => playChime()} title="Test chime sound"
+                    className="text-xs bg-white border border-gray-200 hover:bg-violet-50 hover:border-violet-300 text-gray-500 hover:text-violet-700 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                    🔔 Test
+                  </button>
+                  <button onClick={() => fetchAppointments('requests')} disabled={loading}
+                    className="text-xs bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 px-3 py-1.5 rounded-lg font-medium disabled:opacity-50 transition-colors">
+                    {loading ? '⏳' : '↻'} Refresh
+                  </button>
+                </div>
+              </div>
+              {loading && <p className="text-gray-400 text-sm">Loading...</p>}
+              {!loading && appointments.length === 0 && (
+                <div className="bg-white rounded-2xl border border-gray-200 py-16 text-center text-gray-400">No upcoming appointments</div>
+              )}
+
+              {/* Pending — need confirmation */}
+              {!loading && pendingAppts.length > 0 && (
+                <>
+                  <p className="text-xs font-bold uppercase tracking-widest text-amber-500 mb-2">Needs Confirmation</p>
+                  <div className="bg-white rounded-2xl border border-amber-100 overflow-hidden mb-5">
+                    <div className="overflow-x-auto"><div className="min-w-[520px]">
+                    <div className="px-5 py-3 border-b border-gray-100 bg-amber-50 grid grid-cols-6 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Actions</span>
+                    </div>
+                    {pendingAppts.map(appt => (
+                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-amber-50/60 cursor-pointer">
+                        <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
+                        <span className="text-sm text-gray-600">{appt.appointment_time}</span>
+                        <div className="flex items-center gap-2">
+                          {appt.pets?.photo_url
+                            ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
+                            : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
+                          <span className="text-sm">{appt.pets?.name}</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
+                          <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
+                        </div>
+                        <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
+                        <div className="flex gap-2" onClick={e => e.stopPropagation()}>
+                          <button onClick={() => handleAction(appt.id,'confirm')} disabled={actionLoading!==null}
+                            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all text-white disabled:opacity-50 ${isActionLoading(appt.id+'confirm') ? 'bg-emerald-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
+                            {getButtonText('✓ Confirm', appt.id+'confirm', actionLoading!==null)}
+                          </button>
+                          <button onClick={() => handleAction(appt.id,'decline')} disabled={actionLoading!==null}
+                            className={`text-xs font-bold px-3 py-1.5 rounded-lg border border-red-200 transition-all ${isActionLoading(appt.id+'decline') ? 'bg-red-200 text-red-700' : 'bg-red-50 hover:bg-red-100 text-red-500'}`}>
+                            {getButtonText('Decline', appt.id+'decline', actionLoading!==null)}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    </div></div>
+                  </div>
+                </>
+              )}
+
+              {/* Rescheduled — awaiting groomer re-acceptance */}
+              {!loading && rescheduledAppts.length > 0 && (
+                <>
+                  <p className="text-xs font-bold uppercase tracking-widest text-orange-500 mb-2">🔄 Rescheduled — Awaiting Groomer</p>
+                  <div className="bg-white rounded-2xl border border-orange-100 overflow-hidden mb-5">
+                    <div className="overflow-x-auto"><div className="min-w-[520px]">
+                    <div className="px-5 py-3 border-b border-gray-100 bg-orange-50 grid grid-cols-6 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Status</span>
+                    </div>
+                    {rescheduledAppts.map(appt => (
+                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-orange-50/60 cursor-pointer">
+                        <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
+                        <span className="text-sm text-gray-600">{appt.appointment_time}</span>
+                        <div className="flex items-center gap-2">
+                          {appt.pets?.photo_url
+                            ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
+                            : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
+                          <span className="text-sm">{appt.pets?.name}</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
+                          <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
+                        </div>
+                        <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-orange-700 bg-orange-100 px-2 py-1 rounded-full w-fit">
+                          🔄 Rescheduled
+                        </span>
+                      </div>
+                    ))}
+                    </div></div>
+                  </div>
+                </>
+              )}
+
+              {/* Confirmed — needs groomer assignment */}
+              {!loading && needsGroomerAppts.length > 0 && (
+                <>
+                  <p className="text-xs font-bold uppercase tracking-widest text-amber-500 mb-2">Confirmed — Assign Staff</p>
+                  <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden mb-5">
+                    <div className="overflow-x-auto"><div className="min-w-[520px]">
+                    <div className="px-5 py-3 border-b border-gray-100 bg-amber-50 grid grid-cols-6 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Action</span>
+                    </div>
+                    {needsGroomerAppts.map(appt => (
+                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-amber-50/40 cursor-pointer">
+                        <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
+                        <span className="text-sm text-gray-600">{appt.appointment_time}</span>
+                        <div className="flex items-center gap-2">
+                          {appt.pets?.photo_url
+                            ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
+                            : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
+                          <span className="text-sm">{appt.pets?.name}</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
+                          <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
+                        </div>
+                        <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full w-fit">
+                          Assign Staff →
+                        </span>
+                      </div>
+                    ))}
+                    </div></div>
+                  </div>
+                </>
+              )}
+
+              {/* Pending groomer confirmation */}
+              {!loading && awaitingGroomerAppts.length > 0 && (
+                <>
+                  <p className="text-xs font-bold uppercase tracking-widest text-violet-500 mb-2">⏳ Pending Groomer Confirmation</p>
+                  <div className="bg-white rounded-2xl border border-violet-200 overflow-hidden mb-5">
+                    <div className="overflow-x-auto"><div className="min-w-[520px]">
+                    <div className="px-5 py-3 border-b border-gray-100 bg-violet-50 grid grid-cols-6 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Assigned To</span>
+                    </div>
+                    {awaitingGroomerAppts.map(appt => (
+                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-violet-50/40 cursor-pointer">
+                        <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
+                        <span className="text-sm text-gray-600">{appt.appointment_time}</span>
+                        <div className="flex items-center gap-2">
+                          {appt.pets?.photo_url
+                            ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
+                            : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
+                          <span className="text-sm">{appt.pets?.name}</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
+                          <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
+                        </div>
+                        <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
+                        <div className="flex flex-col gap-1">
+                          {appt.assigned_groomer && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-1 rounded-full w-fit">✂️ {firstName(appt.assigned_groomer)}</span>}
+                          {appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                    </div></div>
+                  </div>
+                </>
+              )}
+
+              {/* Fully confirmed — ready, show within 48 hrs */}
+              {!loading && fullyConfirmedAppts.length > 0 && (
+                <>
+                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Confirmed &amp; Scheduled</p>
+                  <div className="bg-white rounded-2xl border border-emerald-100 overflow-hidden">
+                    <div className="overflow-x-auto"><div className="min-w-[520px]">
+                    <div className="px-5 py-3 border-b border-gray-100 bg-emerald-50 grid grid-cols-6 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Status</span>
+                    </div>
+                    {fullyConfirmedAppts.map(appt => (
+                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-emerald-50/50 cursor-pointer">
+                        <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
+                        <span className="text-sm text-gray-600">{appt.appointment_time}</span>
+                        <div className="flex items-center gap-2">
+                          {appt.pets?.photo_url
+                            ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
+                            : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
+                          <span className="text-sm">{appt.pets?.name}</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
+                          <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
+                        </div>
+                        <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
+                        <div className="flex flex-col gap-1">
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full w-fit">✓ Confirmed</span>
+                          {appt.assigned_groomer && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">✂️ {firstName(appt.assigned_groomer)} ✓</span>}
+                          {appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)} ✓</span>}
+                        </div>
+                      </div>
+                    ))}
+                    </div></div>
+                  </div>
+                </>
+              )}
+            </div>
+            )
+          })()}
+
+          {/* ── INTAKE FORM SUBMISSIONS ───────────────────────────────────── */}
+          {tab === 'intake' && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-500">New booking requests — review profile &amp; confirm.</p>
+                {appointments.length > 0 && <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">{appointments.length} pending</span>}
+              </div>
+              {loading && <p className="text-gray-400 text-sm">Loading...</p>}
+              {!loading && appointments.length === 0 && (
+                <div className="bg-white rounded-2xl border border-gray-200 py-16 text-center text-gray-400">No new client submissions</div>
+              )}
+              {!loading && appointments.length > 0 && (
+                <div className="grid gap-4">
+                  {appointments.map(appt => {
+                    const vaccineStatus = appt.pets?.vaccine_status
+                    const vaccineLabel =
+                      vaccineStatus === 'verified' ? '✓ Verified'
+                      : vaccineStatus === 'uploaded' ? '📎 Uploaded — pending review'
+                      : vaccineStatus === 'email_sent' || vaccineStatus === 'email' ? '📧 Sent via email'
+                      : vaccineStatus === 'text' ? '💬 Sent via text'
+                      : '⚠️ No records yet'
+                    const vaccineColor =
+                      vaccineStatus === 'verified' ? 'bg-green-100 text-green-700 border-green-200'
+                      : vaccineStatus === 'uploaded' ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200 cursor-pointer'
+                      : vaccineStatus === 'email_sent' || vaccineStatus === 'email' || vaccineStatus === 'text' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200 cursor-pointer'
+                      : 'bg-red-50 text-red-600 border-red-200'
+                    const isEditOpen = intakeEditId === appt.id
+                    const missingEmail = !appt.clients?.email
+                    const missingBreed = !appt.pets?.breed
+                    const missingWeight = !appt.pets?.weight
+                    const profileIncomplete = missingEmail || missingBreed || missingWeight || vaccineStatus === 'pending'
+                    return (
+                      <div key={appt.id} className={`bg-white rounded-2xl border overflow-hidden ${profileIncomplete ? 'border-amber-200' : 'border-gray-200'}`}>
+                        {/* Header */}
+                        <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">🆕 New Client</span>
+                            {profileIncomplete && <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⚠️ Profile Incomplete</span>}
+                            <span className="text-xs text-gray-400">{new Date(appt.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-gray-600">📅 {formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
+                            <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{serviceMap[appt.service] ?? appt.service}</span>
+                          </div>
+                        </div>
+
+                        {/* Info row */}
+                        <div className="px-5 py-4 grid grid-cols-2 gap-6">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Owner</p>
+                            <p className="font-semibold text-gray-800">{appt.clients?.name || '—'}</p>
+                            <p className="text-sm text-gray-500 mt-0.5">{appt.clients?.phone}</p>
+                            {appt.clients?.email
+                              ? <p className="text-sm text-gray-400">{appt.clients.email}</p>
+                              : <p className="text-xs text-amber-500 mt-0.5">No email on file</p>}
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Pet</p>
+                            <div className="flex items-center gap-3">
+                              {appt.pets?.photo_url
+                                ? <img src={appt.pets.photo_url} className="w-12 h-12 rounded-full object-cover border-2 border-gray-200 flex-shrink-0" alt="" />
+                                : <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
+                              <div>
+                                <p className="font-semibold text-gray-800">{appt.pets?.name || '—'}</p>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  {appt.pets?.breed ? <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{appt.pets.breed}</span> : <span className="text-xs text-amber-500">No breed</span>}
+                                  {appt.pets?.weight ? <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">⚖️ {appt.pets.weight}</span> : <span className="text-xs text-amber-500">No weight</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Vaccine + actions row */}
+                        <div className="px-5 pb-3 border-t border-gray-100 pt-3 flex items-center justify-between gap-4 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Vaccine:</p>
+                            <button onClick={() => setTab('vaccines')}
+                              className={`text-xs font-semibold px-3 py-1 rounded-full border transition-colors ${vaccineColor} hover:opacity-80`}>
+                              {vaccineLabel}
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                if (isEditOpen) { setIntakeEditId(null) } else {
+                                  setIntakeEditId(appt.id)
+                                  const nameParts = (appt.clients?.name || '').trim().split(' ')
+                                  setIntakeFirstName(nameParts[0] || '')
+                                  setIntakeLastName(nameParts.slice(1).join(' ') || '')
+                                  setIntakeEmail(appt.clients?.email || '')
+                                  setIntakeBreed(appt.pets?.breed || '')
+                                  setIntakeWeight(appt.pets?.weight || '')
+                                  setIntakeVaccine(appt.pets?.vaccine_status || 'pending')
+                                  setIntakeNotes('')
+                                }
+                              }}
+                              className="text-xs font-semibold text-sky-600 hover:text-sky-700 px-3 py-1.5 rounded-full border border-sky-200 hover:bg-sky-50 transition-colors">
+                              {isEditOpen ? '✕ Close' : '✏️ Complete Profile'}
+                            </button>
+                            <button
+                              onClick={() => handleAction(appt.id, 'confirm')}
+                              disabled={actionLoading !== null}
+                              className="text-xs font-semibold text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 px-3 py-1.5 rounded-full transition-colors">
+                              {isActionLoading(appt.id+'confirm') ? '…' : '✓ Confirm'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* ── Inline profile editor ── */}
+                        {isEditOpen && (
+                          <div className="border-t border-amber-100 bg-amber-50 px-5 py-4 space-y-3">
+                            <p className="text-xs font-bold text-amber-700 uppercase tracking-wide">Complete Client Profile</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">First Name</label>
+                                <input type="text" value={intakeFirstName} onChange={e => setIntakeFirstName(e.target.value)}
+                                  placeholder="First name"
+                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">Last Name</label>
+                                <input type="text" value={intakeLastName} onChange={e => setIntakeLastName(e.target.value)}
+                                  placeholder="Last name"
+                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">Owner Email</label>
+                                <input type="email" value={intakeEmail} onChange={e => setIntakeEmail(e.target.value)}
+                                  placeholder="email@example.com"
+                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">Pet Breed</label>
+                                <BreedInput value={intakeBreed} onChange={setIntakeBreed}
+                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">Size / Weight</label>
+                                <select value={intakeWeight} onChange={e => setIntakeWeight(e.target.value)}
+                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                                  <option value="">Select size…</option>
+                                  {WEIGHT_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 font-medium block mb-1">Vaccine Records</label>
+                                <select value={intakeVaccine} onChange={e => setIntakeVaccine(e.target.value)}
+                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                                  <option value="pending">⚠️ Not yet</option>
+                                  <option value="text">📱 Sent via text</option>
+                                  <option value="email">📧 Sent via email</option>
+                                  <option value="uploaded">📎 Uploaded</option>
+                                  <option value="verified">✓ Verified</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 font-medium block mb-1">Notes (grooming preferences, allergies, etc.)</label>
+                              <textarea value={intakeNotes} onChange={e => setIntakeNotes(e.target.value)}
+                                placeholder="e.g. Nervous around other dogs, prefers bandana..."
+                                rows={2}
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white resize-none" />
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                disabled={intakeSaving}
+                                onClick={async () => {
+                                  setIntakeSaving(true)
+                                  try {
+                                    // Update client name and/or email
+                                    const fullName = `${intakeFirstName.trim()} ${intakeLastName.trim()}`.trim()
+                                    const nameChanged = fullName && fullName !== appt.clients?.name
+                                    const emailChanged = intakeEmail !== appt.clients?.email
+                                    if (nameChanged || emailChanged) {
+                                      await fetch('/api/admin/clients', {
+                                        method: 'PATCH',
+                                        headers: {'Content-Type':'application/json'},
+                                        body: JSON.stringify({ phone: appt.client_phone, ...(nameChanged && { name: fullName }), ...(emailChanged && { email: intakeEmail }) })
+                                      })
+                                    }
+                                    // Update pet details
+                                    if (appt.pets?.id) {
+                                      await fetch(`/api/admin/pets/${appt.pets.id}`, {
+                                        method: 'PATCH',
+                                        headers: {'Content-Type':'application/json'},
+                                        body: JSON.stringify({ breed: intakeBreed, weight: intakeWeight, vaccine_status: intakeVaccine })
+                                      })
+                                    }
+                                    // Add note if provided
+                                    if (intakeNotes.trim()) {
+                                      await fetch(`/api/admin/appointments/${appt.id}`, {
+                                        method: 'PATCH',
+                                        headers: {'Content-Type':'application/json'},
+                                        body: JSON.stringify({ action: 'add-note', note: { id: Date.now().toString(), text: intakeNotes, author: 'Admin', created_at: new Date().toISOString() } })
+                                      })
+                                    }
+                                    showToast('✓ Profile saved!')
+                                    setIntakeEditId(null)
+                                    fetchAppointments('pending')
+                                  } catch { showToast('⚠️ Save failed') }
+                                  finally { setIntakeSaving(false) }
+                                }}
+                                className="flex-1 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl transition-colors">
+                                {intakeSaving ? 'Saving…' : '💾 Save Profile'}
+                              </button>
+                              <button
+                                disabled={intakeSaving || actionLoading !== null}
+                                onClick={async () => {
+                                  setIntakeSaving(true)
+                                  try {
+                                    // Save profile first
+                                    if (intakeEmail !== appt.clients?.email) {
+                                      await fetch('/api/admin/clients', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ phone: appt.client_phone, email: intakeEmail }) })
+                                    }
+                                    if (appt.pets?.id) {
+                                      await fetch(`/api/admin/pets/${appt.pets.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ breed: intakeBreed, weight: intakeWeight, vaccine_status: intakeVaccine }) })
+                                    }
+                                    if (intakeNotes.trim()) {
+                                      await fetch(`/api/admin/appointments/${appt.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'add-note', note: { id: Date.now().toString(), text: intakeNotes, author: 'Admin', created_at: new Date().toISOString() } }) })
+                                    }
+                                    // Then confirm
+                                    const res = await fetch(`/api/admin/appointments/${appt.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'confirm' }) })
+                                    if (res.ok) {
+                                      showToast('✓ Profile saved & appointment confirmed!')
+                                      setIntakeEditId(null)
+                                      fetchAppointments('pending')
+                                    } else { showToast('⚠️ Confirm failed') }
+                                  } catch { showToast('⚠️ Error') }
+                                  finally { setIntakeSaving(false) }
+                                }}
+                                className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl transition-colors">
+                                {intakeSaving ? '…' : '✓ Save & Confirm'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── PET PARENTS ───────────────────────────────────────────────── */}
+          {tab === 'clients' && (
+            <div>
+              {/* ── Search bar ──────────────────────────────── */}
+              <div className="flex items-center gap-4 mb-3">
+                <div className="relative flex-1 max-w-sm">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                  <input type="text" placeholder="Search by name or phone..."
+                    value={clientSearch} onChange={e => setClientSearch(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white shadow-sm" />
+                </div>
+                <span className="text-sm text-gray-400 font-medium">{clients.length} clients</span>
+              </div>
+
+              {/* ── Tag filter chips ────────────────── */}
+              {tags.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap mb-5">
+                  <span className="text-xs text-gray-500 font-medium">🏷️ Filter:</span>
+                  <button
+                    onClick={() => setClientTagFilter([])}
+                    className={`px-2.5 py-0.5 rounded-full border text-xs font-medium ${clientTagFilter.length === 0 ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}`}>
+                    All
+                  </button>
+                  {tags.map(t => {
+                    const active = clientTagFilter.includes(t.id)
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => setClientTagFilter(prev => active ? prev.filter(id => id !== t.id) : [...prev, t.id])}
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${tagClasses(t.color)} ${active ? 'ring-2 ring-offset-1 ring-gray-400' : 'opacity-70 hover:opacity-100'}`}>
+                        {t.name}
+                      </button>
+                    )
+                  })}
+                  {clientTagFilter.length > 0 && (
+                    <button onClick={() => setClientTagFilter([])} className="text-xs text-gray-400 hover:text-gray-700 underline ml-1">clear</button>
+                  )}
+                </div>
+              )}
+
+              {clientsLoading && <p className="text-gray-400 text-sm">Loading...</p>}
+
+              {!clientsLoading && (
+                <div className="space-y-3">
+                  {clients
+                    .filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()) || c.phone.includes(clientSearch))
+                    .filter(c => clientTagFilter.length === 0 || c.pets.some(p => (p.tags || []).some(t => clientTagFilter.includes(t.id))))
+                    .map(client => {
+                      const isOpen = expandedClient === client.phone
+                      // Determine overall vaccine health for color accent
+                      const hasExpired = client.pets.some(p => {
+                        if (!p.vaccine_expiry) return false
+                        const exp = new Date(p.vaccine_expiry + 'T00:00:00')
+                        return exp < new Date()
+                      })
+                      const hasUnverified = client.pets.some(p => p.vaccine_status !== 'verified')
+                      const accentColor = hasExpired ? 'border-l-red-400' : hasUnverified ? 'border-l-amber-400' : 'border-l-green-400'
+
+                      return (
+                        <div key={client.phone} className={`bg-white rounded-2xl border border-gray-200 border-l-4 ${accentColor} shadow-sm overflow-hidden`}>
+
+                          {/* ── Collapsed row ─────────────────────────── */}
+                          <button
+                            onClick={() => setExpandedClient(isOpen ? null : client.phone)}
+                            className="w-full px-5 py-4 flex items-center gap-4 hover:bg-gray-50/80 transition-colors text-left"
+                          >
+                            {/* Name + contact — no avatar, just clear text */}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-gray-800 text-base leading-tight">{client.name || <span className="text-gray-400 italic">No name</span>}</p>
+                              <p className="text-sm text-gray-400 mt-0.5">
+                                <span>{client.phone}</span>
+                                {client.email && <span className="ml-3 text-gray-400">{client.email}</span>}
+                              </p>
+                            </div>
+                            {/* Pets preview — show up to 3 with names, then overflow as overlapping avatars + "+N" */}
+                            <div className="flex items-center gap-2 flex-shrink-0" title={client.pets.map(p => p.name).join(', ')}>
+                              {client.pets.slice(0, 3).map(p => (
+                                <div key={p.id} className="flex items-center gap-1.5">
+                                  {p.photo_url
+                                    ? <img src={p.photo_url} className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-gray-200" alt={p.name} />
+                                    : <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sm border-2 border-white shadow-sm">🐶</div>}
+                                  <span className="text-sm text-gray-700 font-medium truncate max-w-[80px]">{p.name}</span>
+                                </div>
+                              ))}
+                              {client.pets.length > 3 && (
+                                <div className="flex items-center -space-x-2">
+                                  {client.pets.slice(3, 6).map(p => (
+                                    p.photo_url
+                                      ? <img key={p.id} src={p.photo_url} className="w-7 h-7 rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-gray-200" alt={p.name} />
+                                      : <div key={p.id} className="w-7 h-7 rounded-full bg-sky-100 flex items-center justify-center text-xs border-2 border-white shadow-sm">🐶</div>
+                                  ))}
+                                  {client.pets.length > 6 && (
+                                    <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-600 border-2 border-white shadow-sm">
+                                      +{client.pets.length - 6}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {/* Stats */}
+                            <div className="flex items-center gap-4 flex-shrink-0 text-sm text-gray-400">
+                              <div className="text-center">
+                                <p className="font-semibold text-gray-700 text-base">{client.appointments.length}</p>
+                                <p className="text-xs">appts</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="font-semibold text-gray-700 text-base">{new Date(client.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'})}</p>
+                                <p className="text-xs">member since</p>
+                              </div>
+                              <span className={`text-gray-400 text-lg transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>⌄</span>
+                            </div>
+                          </button>
+
+                          {/* ── Expanded panel ────────────────────────── */}
+                          {isOpen && (
+                            <div className="border-t border-gray-100 bg-gray-50/60 px-5 py-5">
+                              <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+                                {/* LEFT: Owner info (2 cols) */}
+                                <div className="lg:col-span-2 space-y-4">
+
+                                  {/* Contact Info */}
+                                  <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                                    <div className="flex items-center justify-between px-4 py-3 bg-sky-50 border-b border-sky-100">
+                                      <p className="text-xs font-bold text-sky-700 uppercase tracking-wide">👤 Owner Info</p>
+                                      {editingClient === client.phone
+                                        ? <div className="flex gap-2">
+                                            <button onClick={() => { setEditingClient(null); setClientEditData(null) }}
+                                              className="text-xs px-3 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">Cancel</button>
+                                            <button onClick={() => saveClientEdit(client.phone)} disabled={savingClient}
+                                              className="text-xs px-3 py-1 rounded-lg bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50">
+                                              {savingClient ? 'Saving…' : 'Save'}
+                                            </button>
+                                          </div>
+                                        : <button onClick={() => {
+                                              setEditingClient(client.phone)
+                                              setClientEditData({ firstName: client.name?.split(' ')[0] || '', lastName: client.name?.split(' ').slice(1).join(' ') || '', email: client.email||'', address: client.address||'' })
+                                            }}
+                                            className="text-xs px-3 py-1 rounded-lg border border-sky-200 text-sky-600 hover:bg-sky-100">✏️ Edit</button>
+                                      }
+                                    </div>
+                                    {editingClient === client.phone && clientEditData ? (
+                                      <div className="px-4 py-4 space-y-3">
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div>
+                                            <label className="text-xs text-gray-400 block mb-1">First Name</label>
+                                            <input value={clientEditData.firstName} onChange={e => setClientEditData(d => d ? {...d, firstName: e.target.value} : d)}
+                                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                                          </div>
+                                          <div>
+                                            <label className="text-xs text-gray-400 block mb-1">Last Name</label>
+                                            <input value={clientEditData.lastName} onChange={e => setClientEditData(d => d ? {...d, lastName: e.target.value} : d)}
+                                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                                          </div>
+                                        </div>
+                                        {[
+                                          { label: 'Email', key: 'email' as const },
+                                          { label: 'Address', key: 'address' as const },
+                                        ].map(f => (
+                                          <div key={f.key}>
+                                            <label className="text-xs text-gray-400 block mb-1">{f.label}</label>
+                                            <input value={clientEditData[f.key]} onChange={e => setClientEditData(d => d ? {...d, [f.key]: e.target.value} : d)}
+                                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="px-4 py-4 space-y-3">
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-gray-400 mt-0.5">📞</span>
+                                          <div>
+                                            <p className="text-xs text-gray-400">Phone</p>
+                                            <p className="text-sm font-semibold text-gray-700">{client.phone}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-gray-400 mt-0.5">✉️</span>
+                                          <div>
+                                            <p className="text-xs text-gray-400">Email</p>
+                                            <p className="text-sm text-gray-700">{client.email || <span className="text-gray-300 italic">—</span>}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-gray-400 mt-0.5">📍</span>
+                                          <div>
+                                            <p className="text-xs text-gray-400">Address</p>
+                                            <p className="text-sm text-gray-700">{client.address || <span className="text-gray-300 italic">—</span>}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                          <span className="text-gray-400 mt-0.5">🗓</span>
+                                          <div>
+                                            <p className="text-xs text-gray-400">Member Since</p>
+                                            <p className="text-sm text-gray-700">{new Date(client.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Authorized Pickups */}
+                                  <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                                    <div className="flex items-center justify-between px-4 py-3 bg-violet-50 border-b border-violet-100">
+                                      <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">🚗 Authorized Pickups</p>
+                                      <button onClick={() => setAddingPickupFor(addingPickupFor===client.phone ? null : client.phone)}
+                                        className="text-xs px-3 py-1 rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-100">+ Add</button>
+                                    </div>
+                                    <div className="px-4 py-3">
+                                      {(client.authorized_pickups || []).length === 0 && addingPickupFor !== client.phone
+                                        ? <p className="text-xs text-gray-400 italic py-1">No authorized pickup people on file</p>
+                                        : <div className="flex flex-wrap gap-2 mb-2">
+                                            {(client.authorized_pickups || []).map(p => (
+                                              <div key={p.id} className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-full px-3 py-1">
+                                                <span className="text-sm text-violet-800 font-medium">{p.name}</span>
+                                                {p.relationship && <span className="text-xs text-violet-500">· {p.relationship}</span>}
+                                                <button onClick={() => removePickup(client.phone, p.id)}
+                                                  className="text-violet-400 hover:text-red-500 ml-1 leading-none text-base">×</button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                      }
+                                      {addingPickupFor === client.phone && (
+                                        <div className="space-y-2 mt-2 pt-2 border-t border-gray-100">
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                              <label className="text-xs text-gray-400 block mb-1">Name *</label>
+                                              <input value={newPickupName} onChange={e => setNewPickupName(e.target.value)}
+                                                placeholder="Full name"
+                                                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                            <div>
+                                              <label className="text-xs text-gray-400 block mb-1">Relationship</label>
+                                              <input value={newPickupRel} onChange={e => setNewPickupRel(e.target.value)}
+                                                placeholder="e.g. Spouse"
+                                                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                                            </div>
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <button onClick={() => addPickup(client.phone)} disabled={!newPickupName.trim()}
+                                              className="flex-1 py-1.5 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-40">Add</button>
+                                            <button onClick={() => { setAddingPickupFor(null); setNewPickupName(''); setNewPickupRel('') }}
+                                              className="px-3 py-1.5 border border-gray-200 text-gray-500 text-sm rounded-lg hover:bg-gray-50">Cancel</button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* RIGHT: Pets (3 cols) */}
+                                <div className="lg:col-span-3 space-y-4">
+                                  {client.pets.length === 0 && (
+                                    <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center text-gray-400">
+                                      <div className="text-4xl mb-2">🐾</div>
+                                      <p className="text-sm">No pets on file</p>
+                                    </div>
+                                  )}
+                                  {client.pets.map(pet => {
+                                    const petAppts = client.appointments
+                                      .filter(a => a.pet_id === pet.id)
+                                      .sort((a,b) => b.appointment_date.localeCompare(a.appointment_date))
+
+                                    // Vaccine expiry info
+                                    let expiryEl: ReactNode = null
+                                    if (pet.vaccine_expiry) {
+                                      const today = new Date(); today.setHours(0,0,0,0)
+                                      const exp = new Date(pet.vaccine_expiry + 'T00:00:00')
+                                      const daysLeft = Math.ceil((exp.getTime() - today.getTime()) / 86400000)
+                                      const expired = daysLeft < 0
+                                      const expiringSoon = !expired && daysLeft <= 30
+                                      expiryEl = (
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="text-xs text-gray-400">Expires {exp.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>
+                                          {expired && <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">⚠️ EXPIRED</span>}
+                                          {expiringSoon && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">⚠️ {daysLeft}d left</span>}
+                                        </div>
+                                      )
+                                    }
+
+                                    const vaccineAccent =
+                                      pet.vaccine_status === 'verified' ? 'border-l-green-400 bg-green-50/40' :
+                                      pet.vaccine_status === 'email_sent' ? 'border-l-amber-400 bg-amber-50/30' :
+                                      'border-l-red-400 bg-red-50/20'
+
+                                    return (
+                                      <div key={pet.id} className={`bg-white rounded-2xl border border-gray-100 border-l-4 ${vaccineAccent} overflow-hidden shadow-sm`}>
+
+                                        {/* Pet header */}
+                                        <div className="px-4 pt-4 pb-3 flex items-start gap-4">
+                                          {/* Photo */}
+                                          <div className="relative group flex-shrink-0">
+                                            {pet.photo_url
+                                              ? <img src={pet.photo_url} className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md" alt={pet.name} />
+                                              : <div className="w-16 h-16 rounded-2xl bg-sky-100 flex items-center justify-center text-3xl border-2 border-white shadow-md">🐶</div>}
+                                            <label className={`absolute inset-0 rounded-2xl flex items-center justify-center cursor-pointer transition-all
+                                              ${uploadingPetId===pet.id ? 'bg-black/50' : uploadDonePetId===pet.id ? 'bg-green-500/80' : 'bg-black/0 group-hover:bg-black/40'}`}>
+                                              <input type="file" accept="image/*" className="hidden"
+                                                onChange={e => { const f=e.target.files?.[0]; if(f) uploadPetPhoto(pet.id, f) }} />
+                                              {uploadingPetId===pet.id
+                                                ? <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                                                : uploadDonePetId===pet.id
+                                                  ? <span className="text-white text-xl font-bold">✓</span>
+                                                  : <span className="text-white text-sm opacity-0 group-hover:opacity-100">📷</span>}
+                                            </label>
+                                          </div>
+
+                                          {/* Info */}
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-start justify-between gap-2">
+                                              <p className="font-bold text-gray-800 text-lg leading-tight">{pet.name}</p>
+                                              <button
+                                                onClick={() => { if (confirm(`Delete ${pet.name}'s profile? This cannot be undone.`)) deletePet(client.phone, pet.id) }}
+                                                disabled={deletingPetId === pet.id}
+                                                className="text-xs text-rose-400 hover:text-rose-600 font-medium disabled:opacity-50 flex-shrink-0">
+                                                {deletingPetId === pet.id ? '⏳' : '🗑'}
+                                              </button>
+                                            </div>
+
+                                            {/* Breed row */}
+                                            {pet.breed && <p className="text-sm text-gray-500 mt-0.5">{pet.breed}</p>}
+
+                                            {/* Tags */}
+                                            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                                              {(pet.tags ?? []).map(t => (
+                                                <TagPill
+                                                  key={t.id}
+                                                  tag={t as PetTag}
+                                                  onRemove={async () => {
+                                                    await fetch('/api/admin/pet-tags', {
+                                                      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                                                      body: JSON.stringify({ pet_id: pet.id, tag_id: t.id }),
+                                                    })
+                                                    setClients(prev => prev.map(c => c.phone === client.phone
+                                                      ? { ...c, pets: c.pets.map(p => p.id === pet.id ? { ...p, tags: (p.tags ?? []).filter(x => x.id !== t.id) } : p) }
+                                                      : c))
+                                                  }}
+                                                />
+                                              ))}
+                                              <TagPicker
+                                                petId={pet.id}
+                                                currentTags={(pet.tags ?? []) as PetTag[]}
+                                                onChange={(newTags) => {
+                                                  setClients(prev => prev.map(c => c.phone === client.phone
+                                                    ? { ...c, pets: c.pets.map(p => p.id === pet.id ? { ...p, tags: newTags } : p) }
+                                                    : c))
+                                                }}
+                                              />
+                                            </div>
+
+                                            {/* Weight (editable) */}
+                                            <div className="flex items-center gap-1 mt-1">
+                                              <span className="text-xs text-gray-400">⚖️</span>
+                                              {editingWeightId === pet.id ? (
+                                                <div className="flex items-center gap-1 flex-wrap">
+                                                  {editingWeightValue === '__custom__' ? (
+                                                    <>
+                                                      <input
+                                                        autoFocus
+                                                        type="text"
+                                                        value={customWeightText}
+                                                        onChange={e => setCustomWeightText(e.target.value)}
+                                                        placeholder="e.g. 52 lbs"
+                                                        className="text-xs border border-sky-300 rounded-lg px-2 py-0.5 w-28 bg-white focus:outline-none focus:ring-1 focus:ring-sky-400"
+                                                        onKeyDown={e => { if (e.key === 'Enter' && customWeightText.trim()) updatePetWeight(pet.id, customWeightText.trim(), client.phone) }}
+                                                      />
+                                                      <button onClick={() => setEditingWeightValue('')} className="text-xs text-gray-400 hover:text-gray-600">← back</button>
+                                                    </>
+                                                  ) : (
+                                                    <select value={editingWeightValue} onChange={e => { setEditingWeightValue(e.target.value); if (e.target.value === '__custom__') setCustomWeightText('') }}
+                                                      className="text-xs border border-sky-300 rounded-lg px-1.5 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-sky-400">
+                                                      <option value="">— select —</option>
+                                                      {WEIGHT_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
+                                                      <option value="__custom__">✏️ Custom…</option>
+                                                    </select>
+                                                  )}
+                                                  {editingWeightValue !== '__custom__' && (
+                                                    <button onClick={() => updatePetWeight(pet.id, editingWeightValue, client.phone)}
+                                                      disabled={!editingWeightValue || savingWeightId === pet.id}
+                                                      className="text-xs bg-sky-600 text-white px-2 py-0.5 rounded-lg disabled:opacity-40">
+                                                      {savingWeightId === pet.id ? '…' : 'Save'}
+                                                    </button>
+                                                  )}
+                                                  {editingWeightValue === '__custom__' && (
+                                                    <button onClick={() => { if (customWeightText.trim()) updatePetWeight(pet.id, customWeightText.trim(), client.phone) }}
+                                                      disabled={!customWeightText.trim() || savingWeightId === pet.id}
+                                                      className="text-xs bg-sky-600 text-white px-2 py-0.5 rounded-lg disabled:opacity-40">
+                                                      {savingWeightId === pet.id ? '…' : 'Save'}
+                                                    </button>
+                                                  )}
+                                                  <button onClick={() => { setEditingWeightId(null); setCustomWeightText('') }} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                                                </div>
+                                              ) : (
+                                                <button onClick={() => { setEditingWeightId(pet.id); setEditingWeightValue(pet.weight && WEIGHT_OPTIONS.includes(pet.weight) ? pet.weight : pet.weight ? '__custom__' : ''); setCustomWeightText(pet.weight && !WEIGHT_OPTIONS.includes(pet.weight) ? pet.weight : '') }}
+                                                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-sky-600 group">
+                                                  <span>{pet.weight || <span className="text-gray-300 italic">set weight</span>}</span>
+                                                  <span className="opacity-0 group-hover:opacity-100 text-gray-400 ml-0.5">✏️</span>
+                                                </button>
+                                              )}
+                                            </div>
+
+                                            {/* Vaccine status (editable) */}
+                                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                              {editingVaccineId === pet.id ? (
+                                                <>
+                                                  {(['verified','email_sent','pending'] as const).map(s => (
+                                                    <button key={s} onClick={() => updateVaccineStatus(client.phone, pet.id, s)}
+                                                      disabled={savingVaccineId === pet.id}
+                                                      className={`text-xs px-2.5 py-1 rounded-full font-medium border transition-all disabled:opacity-50 ${
+                                                        pet.vaccine_status === s
+                                                          ? s==='verified' ? 'bg-green-500 text-white border-green-500'
+                                                            : s==='email_sent' ? 'bg-amber-500 text-white border-amber-500'
+                                                            : 'bg-red-500 text-white border-red-500'
+                                                          : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                                                      }`}>
+                                                      {s==='verified'?'✓ Vaccinated':s==='email_sent'?'Pending':'No Records'}
+                                                    </button>
+                                                  ))}
+                                                  <button onClick={() => setEditingVaccineId(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                                                </>
+                                              ) : (
+                                                <button onClick={() => setEditingVaccineId(pet.id)}
+                                                  className={`text-xs px-2.5 py-1 rounded-full font-semibold hover:opacity-80 transition-opacity ${
+                                                    pet.vaccine_status==='verified' ? 'bg-green-100 text-green-700' :
+                                                    pet.vaccine_status==='email_sent' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'
+                                                  }`}>
+                                                  {pet.vaccine_status==='verified'?'✓ Vaccinated':pet.vaccine_status==='email_sent'?'⏳ Records Pending':'✕ No Records'} ✏️
+                                                </button>
+                                              )}
+                                              {expiryEl}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Appointment history — collapsible */}
+                                        <div className="border-t border-gray-100 mx-4 mb-3 pt-2">
+                                          {petAppts.length === 0 ? (
+                                            <p className="text-xs text-gray-400 italic py-2">No appointments yet</p>
+                                          ) : (() => {
+                                            const histOpen = expandedPetHistoryIds.has(pet.id)
+                                            const lastAppt = petAppts[0]
+                                            const lastHC = lastAppt?.health_check as any
+                                            const lastQC = lastAppt?.grooming_quality as any
+                                            const lastHCIssues = lastHC ? (() => {
+                                              const isNew = ['eyes','ears','nose','mouth','paws','skin'].some(k => Array.isArray(lastHC[k]))
+                                              return ['eyes','ears','nose','mouth','paws','skin'].reduce((sum: number, k: string) => {
+                                                const v = lastHC[k]
+                                                return sum + (isNew ? (Array.isArray(v) ? v.length : 0) : (v === false ? 1 : 0))
+                                              }, 0)
+                                            })() : null
+                                            return (
+                                              <>
+                                                {/* Toggle row */}
+                                                <button
+                                                  onClick={() => setExpandedPetHistoryIds(prev => {
+                                                    const next = new Set(prev)
+                                                    next.has(pet.id) ? next.delete(pet.id) : next.add(pet.id)
+                                                    return next
+                                                  })}
+                                                  className="w-full flex items-center justify-between py-1.5 text-left group"
+                                                >
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-semibold text-gray-500 group-hover:text-gray-700">📋 History · {petAppts.length} visit{petAppts.length !== 1 ? 's' : ''}</span>
+                                                    {/* Last visit quick badges */}
+                                                    {!histOpen && lastAppt && (
+                                                      <span className="text-xs text-gray-400">{formatDate(lastAppt.appointment_date)}</span>
+                                                    )}
+                                                    {!histOpen && lastHCIssues !== null && (
+                                                      lastHCIssues === 0
+                                                        ? <span className="text-[10px] bg-green-100 text-green-700 rounded-full px-1.5 py-0.5">✅ Normal</span>
+                                                        : <span className="text-[10px] bg-rose-100 text-rose-700 rounded-full px-1.5 py-0.5">⚠️ {lastHCIssues} issue{lastHCIssues > 1 ? 's' : ''}</span>
+                                                    )}
+                                                    {!histOpen && lastQC && (
+                                                      <span className="text-[10px] bg-emerald-100 text-emerald-700 rounded-full px-1.5 py-0.5">🎯 Quality</span>
+                                                    )}
+                                                  </div>
+                                                  <span className={`text-gray-400 text-sm transition-transform duration-200 ${histOpen ? 'rotate-180' : ''}`}>⌄</span>
+                                                </button>
+
+                                                {/* Scrollable history */}
+                                                {histOpen && (
+                                                  <div className="max-h-[480px] overflow-y-auto space-y-1.5 pb-1 pr-1 -mr-1">
+                                                    {petAppts.map(appt => {
+                                                      const groomerNotes = (appt.notes_list ?? []).filter(n => !n.is_addon)
+                                                      const hasCustomerReq = !!(appt.notes && appt.notes.trim())
+                                                      return (
+                                                        <div key={appt.id} className="rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors overflow-hidden">
+                                                          <div className="flex items-center justify-between gap-2 py-1.5 px-3">
+                                                            <div className="min-w-0">
+                                                              <p className="text-sm font-medium text-gray-700">{serviceMap[appt.service]??appt.service}</p>
+                                                              <p className="text-xs text-gray-400">{formatDate(appt.appointment_date)} · {appt.appointment_time}
+                                                                {appt.assigned_groomer && <span className="ml-1">· ✂️ {firstName(appt.assigned_groomer)}</span>}
+                                                                {appt.assigned_bather && <span className="ml-1">· 🛁 {firstName(appt.assigned_bather)}</span>}
+                                                              </p>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                              {appt.payment_amount
+                                                                ? <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full">💵 ${appt.payment_amount}</span>
+                                                                : <span className="text-xs text-gray-300 italic">unpaid</span>
+                                                              }
+                                                              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${STATUS_COLORS[appt.status]??'bg-gray-100 text-gray-500'}`}>
+                                                                {appt.status}
+                                                              </span>
+                                                            </div>
+                                                          </div>
+                                                          {(hasCustomerReq || groomerNotes.length > 0 || appt.health_check || appt.grooming_quality) && (
+                                                            <div className="px-3 pb-2 space-y-1.5">
+                                                              {hasCustomerReq && (
+                                                                <div className="bg-amber-50/80 border border-amber-100 rounded-lg px-2.5 py-1.5">
+                                                                  <p className="text-[10px] font-bold uppercase tracking-wide text-amber-600 mb-0.5">📋 Customer Request</p>
+                                                                  <p className="text-xs text-gray-700 leading-snug whitespace-pre-wrap">{appt.notes}</p>
+                                                                  {(appt.notes_english || appt.notes_chinese) && (
+                                                                    <div className="mt-1 space-y-0.5">
+                                                                      {appt.notes_english && <p className="text-[11px] text-gray-500"><span className="opacity-60">🇺🇸</span> {appt.notes_english}</p>}
+                                                                      {appt.notes_chinese && <p className="text-[11px] text-gray-500"><span className="opacity-60">🇹🇼</span> {appt.notes_chinese}</p>}
+                                                                    </div>
+                                                                  )}
+                                                                </div>
+                                                              )}
+                                                              {groomerNotes.length > 0 && (
+                                                                <div className="bg-violet-50/60 border border-violet-100 rounded-lg px-2.5 py-1.5">
+                                                                  <p className="text-[10px] font-bold uppercase tracking-wide text-violet-600 mb-1">📝 Groomer Notes ({groomerNotes.length})</p>
+                                                                  <div className="space-y-1.5">
+                                                                    {groomerNotes.map(n => (
+                                                                      <div key={n.id} className="border-l-2 border-violet-200 pl-2">
+                                                                        <p className="text-[10px] text-gray-400 font-medium">
+                                                                          {n.author} · {new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})} {new Date(n.created_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                                                                        </p>
+                                                                        <p className="text-xs text-gray-700 leading-snug whitespace-pre-wrap">{n.text}</p>
+                                                                        {(n.notes_english || n.notes_chinese) && (
+                                                                          <div className="mt-0.5 space-y-0.5">
+                                                                            {n.notes_english && <p className="text-[11px] text-gray-500"><span className="opacity-60">🇺🇸</span> {n.notes_english}</p>}
+                                                                            {n.notes_chinese && <p className="text-[11px] text-gray-500"><span className="opacity-60">🇹🇼</span> {n.notes_chinese}</p>}
+                                                                          </div>
+                                                                        )}
+                                                                      </div>
+                                                                    ))}
+                                                                  </div>
+                                                                </div>
+                                                              )}
+                                                              {/* Health Check */}
+                                                              {appt.health_check && (() => {
+                                                                const hc = appt.health_check as any
+                                                                const HC_SECTIONS = [
+                                                                  { key: 'eyes',  emoji: '👁️', label: 'Eyes' },
+                                                                  { key: 'ears',  emoji: '👂', label: 'Ears' },
+                                                                  { key: 'nose',  emoji: '👃', label: 'Nose' },
+                                                                  { key: 'mouth', emoji: '😬', label: 'Mouth' },
+                                                                  { key: 'paws',  emoji: '🐾', label: 'Paws' },
+                                                                  { key: 'skin',  emoji: '🧴', label: 'Skin' },
+                                                                ]
+                                                                const isNew = HC_SECTIONS.some(s => Array.isArray(hc[s.key]))
+                                                                const cleared: string[] = Array.isArray(hc.cleared_sections) ? hc.cleared_sections : []
+                                                                const totalIssues = HC_SECTIONS.reduce((sum, s) => {
+                                                                  const v = hc[s.key]
+                                                                  return sum + (isNew ? (Array.isArray(v) ? v.length : 0) : (v === false ? 1 : 0))
+                                                                }, 0)
+                                                                const allNormal = isNew ? (cleared.length === 6 && totalIssues === 0) : HC_SECTIONS.every(s => hc[s.key] === true)
+                                                                const issuesSections = HC_SECTIONS.filter(s => {
+                                                                  const v = hc[s.key]
+                                                                  return isNew ? (Array.isArray(v) && v.length > 0) : v === false
+                                                                })
+                                                                return (
+                                                                  <div className="bg-sky-50/70 border border-sky-100 rounded-lg px-2.5 py-1.5">
+                                                                    <p className="text-[10px] font-bold uppercase tracking-wide text-sky-600 mb-1">🩺 Health Check</p>
+                                                                    {allNormal ? (
+                                                                      <p className="text-xs text-green-600 font-medium">✅ All Normal — 一切正常</p>
+                                                                    ) : (
+                                                                      <div className="space-y-1">
+                                                                        {issuesSections.map(s => {
+                                                                          const v = hc[s.key]
+                                                                          const issues: string[] = isNew ? (Array.isArray(v) ? v : []) : [s.label]
+                                                                          return (
+                                                                            <div key={s.key}>
+                                                                              <span className="text-xs font-semibold text-rose-600">{s.emoji} {s.label}: </span>
+                                                                              <span className="text-xs text-rose-500">{issues.map(i => i.replace(/_/g,' ')).join(', ')}</span>
+                                                                            </div>
+                                                                          )
+                                                                        })}
+                                                                        {issuesSections.length === 0 && <p className="text-xs text-gray-400">Completed</p>}
+                                                                      </div>
+                                                                    )}
+                                                                    {hc.groomer_notes_english && (
+                                                                      <p className="text-[11px] text-gray-500 mt-1 border-t border-sky-100 pt-1">📝 {hc.groomer_notes_english}</p>
+                                                                    )}
+                                                                  </div>
+                                                                )
+                                                              })()}
+                                                              {/* Quality Check */}
+                                                              {appt.grooming_quality && (() => {
+                                                                const q = appt.grooming_quality as any
+                                                                const QC_ITEMS = [
+                                                                  { key: 'nails_trimmed', old: 'nails_trimmed', emoji: '✂️', label: 'Nails' },
+                                                                  { key: 'ears_cleaned',  old: 'ears_cleaned',  emoji: '👂', label: 'Ears' },
+                                                                  { key: 'tangles_free',  old: 'coat_brushed',  emoji: '🪮', label: 'Tangles' },
+                                                                  { key: 'sanitary_trim', old: 'bath_completed',emoji: '🧼', label: 'Sanitary' },
+                                                                  { key: 'paw_pad_trim',  old: 'paw_pads_cleared',emoji:'🐾',label: 'Paw Pad' },
+                                                                  { key: 'perfume_spray', old: 'styling_finished',emoji:'🌸',label: 'Perfume' },
+                                                                ]
+                                                                const done = QC_ITEMS.filter(i => q[i.key] || q[i.old])
+                                                                const allDone = done.length === QC_ITEMS.length
+                                                                return (
+                                                                  <div className="bg-emerald-50/70 border border-emerald-100 rounded-lg px-2.5 py-1.5">
+                                                                    <div className="flex items-center justify-between mb-1">
+                                                                      <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">🎯 Quality Check</p>
+                                                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${allDone ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{done.length}/{QC_ITEMS.length}</span>
+                                                                    </div>
+                                                                    {allDone ? (
+                                                                      <p className="text-xs text-emerald-600 font-medium">✅ All Done</p>
+                                                                    ) : (
+                                                                      <p className="text-xs text-gray-600">{done.map(i => `${i.emoji} ${i.label}`).join(' · ') || '—'}</p>
+                                                                    )}
+                                                                    {q.groomer_diary && (
+                                                                      <p className="text-[11px] text-purple-600 mt-1 border-t border-emerald-100 pt-1">📓 {q.groomer_diary}</p>
+                                                                    )}
+                                                                    {q.customer_note_english && (
+                                                                      <p className="text-[11px] text-gray-500 mt-1">💌 {q.customer_note_english}</p>
+                                                                    )}
+                                                                  </div>
+                                                                )
+                                                              })()}
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      )
+                                                    })}
+                                                  </div>
+                                                )}
+                                              </>
+                                            )
+                                          })()}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+
+                              </div>
+
+                              {/* Delete client */}
+                              <div className="mt-4 pt-3 border-t border-gray-200 flex justify-end">
+                                {confirmDeleteClient === client.phone ? (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-red-600 font-medium">Delete this client and all their data?</span>
+                                    <button onClick={() => handleDeleteClient(client.phone)} disabled={deletingClient === client.phone}
+                                      className="text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                                      {deletingClient === client.phone ? 'Deleting…' : 'Yes, Delete'}
+                                    </button>
+                                    <button onClick={() => setConfirmDeleteClient(null)}
+                                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">Cancel</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => setConfirmDeleteClient(client.phone)}
+                                    className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50">🗑 Delete Client</button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── VACCINE RECORDS ───────────────────────────────────────── */}
+          {tab === 'vaccines' && (
+            <div>
+              {/* Header + filter */}
+              <div className="flex flex-wrap items-center gap-2 mb-5">
+                {/* Status toggle */}
+                <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                  <button onClick={() => { setVaccineShowAll(false); fetchVaccineRecords(false) }}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${!vaccineShowAll ? 'bg-white text-sky-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                    ⏳ Pending
+                    {vaccineRecords.filter(r => !r.verified).length > 0 && (
+                      <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full font-bold ${!vaccineShowAll ? 'bg-sky-100 text-sky-600' : 'bg-gray-200 text-gray-500'}`}>
+                        {vaccineRecords.filter(r => !r.verified).length}
+                      </span>
+                    )}
+                  </button>
+                  <button onClick={() => { setVaccineShowAll(true); fetchVaccineRecords(true) }}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${vaccineShowAll ? 'bg-white text-sky-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                    📋 All
+                    {vaccineRecords.length > 0 && (
+                      <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full font-bold ${vaccineShowAll ? 'bg-sky-100 text-sky-600' : 'bg-gray-200 text-gray-500'}`}>
+                        {vaccineRecords.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Divider */}
+                <div className="w-px h-6 bg-gray-200" />
+
+                {/* Method filter (no redundant "All" — deselect by clicking active) */}
+                <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                  {([
+                    { key: 'uploaded', label: '📎 Uploaded' },
+                    { key: 'email',    label: '📧 Email' },
+                    { key: 'text',     label: '📱 Text' },
+                  ] as const).map(f => {
+                    const base = vaccineShowAll ? vaccineRecords : vaccineRecords.filter(r => !r.verified)
+                    const count = base.filter(r =>
+                      f.key === 'uploaded' ? !!r.file_url :
+                      f.key === 'email' ? (r.is_email_only && !r.file_url) :
+                      false
+                    ).length
+                    return (
+                      <button key={f.key}
+                        onClick={() => setVaccineFilter(vaccineFilter === f.key ? 'all' : f.key)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${vaccineFilter===f.key ? 'bg-white text-sky-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                        {f.label}
+                        {count > 0 && <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${vaccineFilter===f.key ? 'bg-sky-100 text-sky-600' : 'bg-gray-200 text-gray-500'}`}>{count}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <button onClick={() => fetchVaccineRecords()}
+                  className="ml-auto text-sm px-3 py-1.5 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50">
+                  ↻ Refresh
+                </button>
+              </div>
+
+              {vaccineLoading && <p className="text-gray-400 text-sm">Loading…</p>}
+
+              {!vaccineLoading && vaccineError && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
+                  <div className="text-3xl mb-2">⚠️</div>
+                  <p className="font-semibold text-red-700 mb-1">Could not load vaccine records</p>
+                  <p className="text-xs text-red-500 font-mono">{vaccineError}</p>
+                  <button onClick={() => fetchVaccineRecords()} className="mt-3 text-sm px-4 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200">Try again</button>
+                </div>
+              )}
+
+              {!vaccineLoading && !vaccineError && vaccineRecords.length === 0 && (
+                <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+                  <div className="text-5xl mb-3">{vaccineShowAll ? '📋' : '✅'}</div>
+                  <h2 className="font-bold text-gray-800 text-lg mb-1">{vaccineShowAll ? 'No records yet' : 'All caught up!'}</h2>
+                  <p className="text-gray-400 text-sm">{vaccineShowAll ? 'No vaccination records have been submitted.' : 'No pending vaccine records to review.'}</p>
+                </div>
+              )}
+
+              {!vaccineLoading && !vaccineError && vaccineRecords.length > 0 && (() => {
+                const base = vaccineShowAll ? vaccineRecords : vaccineRecords.filter(r => !r.verified)
+                const filtered = base.filter(r => {
+                  if (vaccineFilter === 'all') return true
+                  if (vaccineFilter === 'uploaded') return !!r.file_url
+                  if (vaccineFilter === 'email') return r.is_email_only && !r.file_url
+                  if (vaccineFilter === 'text') return false
+                  return true
+                })
+                return (
+                  <div className="space-y-3">
+                    {filtered.length === 0
+                      ? <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-sm text-gray-400">No records match this filter.</div>
+                      : filtered.map(rec => {
+                          const pet = rec.pets
+                          const client = pet?.clients
+                          const isUploaded = !!rec.file_url
+                          const isApproving = approvingId === rec.id
+                          const isExpired = pet?.vaccine_expiry && new Date(pet.vaccine_expiry + 'T12:00:00') < new Date()
+                          return (
+                            <div key={rec.id} className={`bg-white rounded-2xl border overflow-hidden ${rec.verified ? 'border-gray-100' : 'border-gray-200'}`}>
+                              {/* Card header */}
+                              <div className={`px-5 py-2.5 flex items-center justify-between ${rec.verified ? 'bg-emerald-50 border-b border-emerald-100' : 'bg-gray-50 border-b border-gray-100'}`}>
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                                    rec.verified ? 'bg-emerald-100 text-emerald-700' :
+                                    pet?.vaccine_status==='email_sent' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-50 text-red-600'
+                                  }`}>
+                                    {rec.verified ? '✓ Verified' : pet?.vaccine_status==='email_sent' ? 'Pending Email' : 'Pending'}
+                                  </span>
+                                  {isExpired && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full">⚠️ Expired</span>}
+                                </div>
+                                <span className="text-xs text-gray-400">
+                                  Submitted {new Date(rec.submitted_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} · {new Date(rec.submitted_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                                </span>
+                              </div>
+
+                              {/* Card body */}
+                              <div className="px-5 py-4 flex items-start gap-6">
+                                {/* Pet + owner */}
+                                <div className="flex items-center gap-3 min-w-0 w-52 flex-shrink-0">
+                                  {pet?.photo_url
+                                    ? <img src={pet.photo_url} className="w-12 h-12 rounded-full object-cover border-2 border-gray-100 flex-shrink-0" alt={pet.name} />
+                                    : <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center text-2xl flex-shrink-0">🐶</div>}
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-gray-800">{pet?.name ?? '—'}</p>
+                                    {pet?.breed && <p className="text-xs text-gray-400 truncate">{pet.breed}</p>}
+                                    <p className="text-xs text-gray-500 mt-0.5 truncate">{client?.name}</p>
+                                    <p className="text-xs text-gray-400 truncate">{client?.phone}</p>
+                                  </div>
+                                </div>
+
+                                {/* Method */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Vaccine Record</p>
+                                  {isUploaded ? (
+                                    <div className="flex flex-col gap-1">
+                                      <span className="text-xs bg-sky-50 text-sky-700 border border-sky-100 px-2.5 py-1 rounded-lg font-medium w-fit">📎 File Uploaded</span>
+                                      {rec.signedUrl && (
+                                        <a href={rec.signedUrl} target="_blank" rel="noopener noreferrer"
+                                          className="text-xs text-sky-600 hover:underline font-medium">View document →</a>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col gap-1">
+                                      <span className="text-xs bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-1 rounded-lg font-medium w-fit">📧 Sent via Email</span>
+                                      <p className="text-xs text-gray-400">Check: kokonipets@gmail.com</p>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Expiry date */}
+                                <div className="flex-shrink-0 w-40">
+                                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Vaccine Expiry</p>
+                                  <input
+                                    type="date"
+                                    value={pet?.id ? (rowExpiryValues[pet.id] ?? pet.vaccine_expiry ?? '') : ''}
+                                    onChange={e => {
+                                      if (!pet?.id) return
+                                      setRowExpiryValues(prev => ({ ...prev, [pet.id]: e.target.value }))
+                                    }}
+                                    onBlur={async e => {
+                                      if (!pet?.id) return
+                                      const val = e.target.value
+                                      if (val !== (pet.vaccine_expiry || '')) {
+                                        await saveVaccineExpiry(pet.id, val)
+                                      }
+                                    }}
+                                    className={`text-sm border rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-sky-300 w-full ${
+                                      isExpired ? 'border-red-300 text-red-600' : 'border-gray-200 text-gray-700'
+                                    }`}
+                                  />
+                                </div>
+
+                                {/* Action */}
+                                <div className="flex-shrink-0 flex flex-col items-end justify-center self-center">
+                                  {rec.verified ? (
+                                    <div className="text-center">
+                                      <div className="text-2xl mb-0.5">✅</div>
+                                      <p className="text-xs text-emerald-600 font-semibold">Verified</p>
+                                      {rec.verified_at && <p className="text-xs text-gray-400">{new Date(rec.verified_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</p>}
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={async () => {
+                                        if (pet?.id) {
+                                          const rowVal = rowExpiryValues[pet.id] ?? ''
+                                          if (rowVal && rowVal !== (pet.vaccine_expiry || '')) {
+                                            await saveVaccineExpiry(pet.id, rowVal)
+                                          }
+                                        }
+                                        approveVaccineRecord(rec.id)
+                                      }}
+                                      disabled={isApproving}
+                                      className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors shadow-sm">
+                                      {isApproving
+                                        ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                                        : '✓'} {isApproving ? 'Saving…' : 'Mark Verified'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+          {/* ── PAYROLL ───────────────────────────────────────────────────── */}
+          {tab === 'payroll' && (
+            <div className="space-y-6">
+              {/* Staff Earnings Summary */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                <p className="text-sm font-semibold text-gray-700 mb-3">👥 Staff Earnings Summary</p>
+                {staff.length === 0 ? (
+                  <p className="text-sm text-gray-500">No staff members to display</p>
+                ) : (
+                  <div className="space-y-2">
+                    {staff.map(member => (
+                      <div key={member.id} className="bg-gray-50 p-3 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-semibold text-gray-800">{member.name}</p>
+                          <span className="text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded font-medium">{member.role}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
+                          <div>Commission: <span className="font-semibold text-gray-800">{member.commission_percent}%</span></div>
+                          <div>Tips: <span className="font-semibold text-gray-800">{member.tip_percent}%</span></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Payroll Period */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                <h2 className="text-lg font-bold text-gray-800 mb-4">📅 Payroll Period</h2>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      value={payrollStartDate}
+                      onChange={e => setPayrollStartDate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1">End Date</label>
+                    <input
+                      type="date"
+                      value={payrollEndDate}
+                      onChange={e => setPayrollEndDate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                <h2 className="text-lg font-bold text-gray-800 mb-4">⚡ Quick Actions</h2>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={generatePayrollReport} disabled={actionLoading === 'payroll'} className="px-4 py-2 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-50 text-emerald-700 text-sm font-semibold rounded-lg transition-colors">
+                    {actionLoading === 'payroll' ? '⏳ Generating…' : '📊 Generate Payroll Report'}
+                  </button>
+                  <button onClick={() => {
+                    if (!payrollStartDate || !payrollEndDate) { alert('Please select dates'); return }
+                    alert('CSV export coming soon!')
+                  }} className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-semibold rounded-lg transition-colors">
+                    💾 Export to CSV
+                  </button>
+                  <button onClick={() => alert('Payroll send feature coming soon!')} className="px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-700 text-sm font-semibold rounded-lg transition-colors">
+                    📧 Send Payroll
+                  </button>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                <label className="text-sm font-semibold text-gray-700 block mb-2">📝 Payroll Notes</label>
+                <textarea
+                  placeholder="Add any special notes for this payroll period..."
+                  value={payrollNotes}
+                  onChange={e => setPayrollNotes(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"
+                  rows={4}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── WAITLIST ──────────────────────────────────────────────────── */}
+          {tab === 'waitlist' && (
+            <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+              <div className="text-5xl mb-3">⏳</div>
+              <h2 className="font-bold text-gray-800 text-lg mb-2">Waitlist</h2>
+              <p className="text-gray-400 text-sm">Clients who requested dates that were fully booked will appear here.</p>
+              <p className="text-gray-300 text-xs mt-2">Coming soon — needs a waitlist database table</p>
+            </div>
+          )}
+
+          {/* ── CASHIER ───────────────────────────────────────────────────── */}
+          {tab === 'cashier' && (() => {
+            const now = new Date(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
+            const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+            const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6)
+            const weekAgoStr = `${weekAgo.getFullYear()}-${String(weekAgo.getMonth()+1).padStart(2,'0')}-${String(weekAgo.getDate()).padStart(2,'0')}`
+            const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
+
+            const cashierAppts = reportsAppts.filter(a => {
+              if (a.status === 'cancelled') return false
+              if (cashierRange === 'today') return a.appointment_date === todayStr
+              if (cashierRange === 'week') return a.appointment_date >= weekAgoStr
+              return a.appointment_date >= monthStart
+            }).sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
+
+            const unpaid = cashierAppts.filter(a => a.payment_status !== 'paid')
+            const paid = cashierAppts.filter(a => a.payment_status === 'paid')
+            const totalPaid = paid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
+            const totalTips = paid.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
+            const totalUnpaid = unpaid.length
+            const methodLabels: Record<string, string> = { cash: '💵 Cash', card: '💳 Card', zelle: '🔵 Zelle', venmo: '📱 Venmo', check: '📝 Check' }
+            const methodBreakdown = (['cash', 'card', 'zelle', 'venmo'] as const).map(m => ({
+              key: m,
+              label: methodLabels[m],
+              amount: paid.filter(a => a.payment_method === m).reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0),
+              tips: paid.filter(a => a.payment_method === m).reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0),
+              count: paid.filter(a => a.payment_method === m).length,
+              color: m === 'cash' ? 'border-green-200 bg-green-50 text-green-700' : m === 'card' ? 'border-sky-200 bg-sky-50 text-sky-700' : m === 'zelle' ? 'border-purple-200 bg-purple-50 text-purple-700' : 'border-blue-200 bg-blue-50 text-blue-700',
+            }))
+
+            const savePayment = async (appt: Appointment, method: string) => {
+              if (!cashierAmount) return
+              setCashierSavingId(appt.id)
+              try {
+                const res = await fetch(`/api/admin/appointments/${appt.id}`, {
+                  method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'record-payment', payment_amount: cashierAmount, tip_amount: cashierTip || '0', payment_method: method, payment_status: 'paid' }),
+                })
+                if ((await res.json()).success) {
+                  setReportsAppts(prev => prev.map(x => x.id === appt.id
+                    ? { ...x, payment_amount: cashierAmount, tip_amount: cashierTip || '0', payment_method: method, payment_status: 'paid' }
+                    : x))
+                  setCashierExpandedId(null); setCashierMode(null)
+                  showToast('✓ Payment recorded!')
+                }
+              } catch {/**/}
+              finally { setCashierSavingId(null) }
+            }
+
+            const saveEdit = async (appt: Appointment) => {
+              setCashierSavingId(appt.id)
+              try {
+                const updates: Record<string, string> = { action: 'record-payment', payment_amount: cashierAmount, tip_amount: cashierTip || '0', payment_status: appt.payment_status || 'paid' }
+                if (appt.payment_method) updates.payment_method = appt.payment_method
+                const res = await fetch(`/api/admin/appointments/${appt.id}`, {
+                  method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(updates),
+                })
+                const svcRes = cashierService && cashierService !== appt.service
+                  ? await fetch(`/api/admin/appointments/${appt.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'change-service', service: cashierService }) })
+                  : null
+                if ((await res.json()).success) {
+                  setReportsAppts(prev => prev.map(x => x.id === appt.id
+                    ? { ...x, payment_amount: cashierAmount, tip_amount: cashierTip || '0', service: cashierService || x.service }
+                    : x))
+                  setCashierExpandedId(null); setCashierMode(null)
+                  showToast('✓ Updated!')
+                }
+                void svcRes
+              } catch {/**/}
+              finally { setCashierSavingId(null) }
+            }
+
+            const openPay = (appt: Appointment) => {
+              setCashierExpandedId(appt.id); setCashierMode('pay')
+              setCashierAmount(appt.payment_amount || ''); setCashierTip(''); setCashierService(appt.service)
+            }
+            const openEdit = (appt: Appointment) => {
+              setCashierExpandedId(appt.id); setCashierMode('edit')
+              setCashierAmount(appt.payment_amount || ''); setCashierTip(appt.tip_amount || ''); setCashierService(appt.service)
+            }
+            const closeExpanded = () => { setCashierExpandedId(null); setCashierMode(null) }
+
+            const ApptRow = ({ appt }: { appt: Appointment }) => {
+              const isExpanded = cashierExpandedId === appt.id
+              const isPaid = appt.payment_status === 'paid'
+              const timeStr = (() => {
+                const t = appt.appointment_time
+                if (t.toUpperCase().includes('AM') || t.toUpperCase().includes('PM')) return t.trim()
+                const [h, m] = t.split(':'); const hr = parseInt(h)
+                return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`
+              })()
+              return (
+                <div className={`border-b border-gray-50 last:border-0 ${isExpanded ? 'bg-gray-50/60' : ''}`}>
+                  <div className={`flex items-center gap-3 px-4 py-2.5 group hover:bg-gray-50/80 transition-colors`}>
+                    {cashierRange !== 'today' && (
+                      <span className="text-[10px] text-gray-400 w-10 shrink-0 font-medium">
+                        {new Date(appt.appointment_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400 w-16 shrink-0 tabular-nums">{timeStr}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-semibold text-gray-800">{appt.pets?.name}</span>
+                      <span className="text-xs text-gray-400 ml-2">{appt.clients?.name} · {serviceMap[appt.service] ?? appt.service}</span>
+                      {appt.assigned_groomer && <span className="text-xs text-gray-300 ml-2">✂️ {firstName(appt.assigned_groomer)}</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {isPaid ? (
+                        <>
+                          <span className="text-xs font-semibold text-emerald-600">
+                            {appt.payment_method ? (methodLabels[appt.payment_method] ?? appt.payment_method) : ''} ${parseFloat(appt.payment_amount || '0').toFixed(2)}
+                          </span>
+                          {parseFloat(appt.tip_amount || '0') > 0 && (
+                            <span className="text-xs text-emerald-400">+${parseFloat(appt.tip_amount || '0').toFixed(2)} tip</span>
+                          )}
+                          <button onClick={() => isExpanded ? closeExpanded() : openEdit(appt)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-sky-500 text-xs px-1">✏️</button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-xs font-semibold text-rose-400 bg-rose-50 px-2 py-0.5 rounded-full">Unpaid</span>
+                          <button onClick={() => isExpanded && cashierMode === 'pay' ? closeExpanded() : openPay(appt)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-xs bg-emerald-500 hover:bg-emerald-600 text-white px-2.5 py-1 rounded-lg font-semibold">
+                            Pay
+                          </button>
+                          <button onClick={() => isExpanded && cashierMode === 'edit' ? closeExpanded() : openEdit(appt)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-sky-500 text-xs px-1">✏️</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Expanded: Pay row */}
+                  {isExpanded && cashierMode === 'pay' && (
+                    <div className="flex items-center gap-2 px-4 pb-3 flex-wrap">
+                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+                        <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">$</span>
+                        <input type="number" min="0" step="0.01" placeholder="Amount"
+                          value={cashierAmount} onChange={e => setCashierAmount(e.target.value)} autoFocus
+                          className="w-20 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
+                      </div>
+                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+                        <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">Tip $</span>
+                        <input type="number" min="0" step="0.01" placeholder="0"
+                          value={cashierTip} onChange={e => setCashierTip(e.target.value)}
+                          className="w-16 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
+                      </div>
+                      {(['cash', 'card', 'zelle', 'venmo'] as const).map(m => (
+                        <button key={m} disabled={!cashierAmount || cashierSavingId === appt.id}
+                          onClick={() => savePayment(appt, m)}
+                          className={`text-xs px-3 py-1.5 rounded-lg font-semibold border disabled:opacity-40 transition-colors ${
+                            m === 'cash'  ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' :
+                            m === 'card'  ? 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100' :
+                            m === 'zelle' ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100' :
+                                            'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
+                          }`}>
+                          {cashierSavingId === appt.id ? '…' : methodLabels[m]}
+                        </button>
+                      ))}
+                      <button onClick={closeExpanded} className="text-xs text-gray-300 hover:text-gray-500 px-1">✕</button>
+                    </div>
+                  )}
+
+                  {/* Expanded: Edit row */}
+                  {isExpanded && cashierMode === 'edit' && (
+                    <div className="flex items-center gap-2 px-4 pb-3 flex-wrap">
+                      <select value={cashierService} onChange={e => setCashierService(e.target.value)}
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-sky-200">
+                        {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+                        <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">$</span>
+                        <input type="number" min="0" step="0.01" placeholder="Amount"
+                          value={cashierAmount} onChange={e => setCashierAmount(e.target.value)} autoFocus
+                          className="w-20 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
+                      </div>
+                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+                        <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">Tip $</span>
+                        <input type="number" min="0" step="0.01" placeholder="0"
+                          value={cashierTip} onChange={e => setCashierTip(e.target.value)}
+                          className="w-16 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
+                      </div>
+                      <button onClick={() => saveEdit(appt)} disabled={cashierSavingId === appt.id}
+                        className="text-xs bg-sky-500 hover:bg-sky-600 text-white px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50">
+                        {cashierSavingId === appt.id ? '…' : '✓ Save'}
+                      </button>
+                      <button onClick={closeExpanded} className="text-xs text-gray-300 hover:text-gray-500 px-1">✕</button>
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            return (
+              <div className="max-w-3xl space-y-4">
+                {/* Range tabs */}
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-1.5">
+                    {(['today', 'week', 'month'] as const).map(r => (
+                      <button key={r} onClick={() => setCashierRange(r)}
+                        className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
+                          cashierRange === r ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'
+                        }`}>
+                        {r === 'today' ? 'Today' : r === 'week' ? 'This Week' : 'This Month'}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => fetchReports()} className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5">⟳ Refresh</button>
+                </div>
+
+                {/* Summary — end of day breakdown */}
+                <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+                  {/* Top row: Grand total + unpaid */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-3xl font-black text-gray-800">${(totalPaid + totalTips).toFixed(2)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        ${totalPaid.toFixed(2)} services
+                        {totalTips > 0 && <span className="ml-1 text-emerald-500">+ ${totalTips.toFixed(2)} tips</span>}
+                        {' · '}{paid.length} paid · {cashierAppts.length} total
+                      </p>
+                    </div>
+                    {totalUnpaid > 0 && (
+                      <span className="text-xs font-bold text-rose-500 bg-rose-50 border border-rose-100 px-3 py-1.5 rounded-xl">
+                        {totalUnpaid} unpaid
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div className="border-t border-gray-100" />
+
+                  {/* Payment method breakdown */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {methodBreakdown.map(m => (
+                      <div key={m.key} className={`rounded-xl border px-3 py-2.5 ${m.count > 0 ? m.color : 'bg-gray-50 border-gray-100 text-gray-300'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold">{m.label}</span>
+                          <span className="text-sm font-black">{m.count > 0 ? `$${m.amount.toFixed(2)}` : '—'}</span>
+                        </div>
+                        {m.count > 0 && (
+                          <p className="text-[11px] mt-0.5 opacity-70">
+                            {m.count} payment{m.count !== 1 ? 's' : ''}
+                            {m.tips > 0 && ` · +$${m.tips.toFixed(2)} tip`}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {reportsLoading ? (
+                  <div className="text-center py-16 text-gray-400 text-sm">Loading…</div>
+                ) : cashierAppts.length === 0 ? (
+                  <div className="text-center py-16 text-gray-400 text-sm">No appointments for this period.</div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                    {/* Unpaid section */}
+                    {unpaid.length > 0 && (
+                      <>
+                        <div className="px-4 py-2 bg-rose-50/60 border-b border-rose-100/60">
+                          <span className="text-[11px] font-bold uppercase tracking-widest text-rose-400">
+                            Unpaid · {unpaid.length} appointment{unpaid.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        {unpaid.map(a => <ApptRow key={a.id} appt={a} />)}
+                      </>
+                    )}
+                    {/* Paid section */}
+                    {paid.length > 0 && (
+                      <>
+                        <div className={`px-4 py-2 bg-emerald-50/60 border-b border-emerald-100/60 ${unpaid.length > 0 ? 'border-t border-gray-100' : ''}`}>
+                          <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-500">
+                            Paid · ${totalPaid.toFixed(2)}
+                          </span>
+                        </div>
+                        {paid.map(a => <ApptRow key={a.id} appt={a} />)}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* ── SMS REVIEWS ───────────────────────────────────────────────────── */}
+          {tab === 'reviews' && (
+            <div>
+              <div className="mb-6 flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800 mb-2">SMS Review System</h2>
+                  <p className="text-gray-500">Automated review collection & response management</p>
+                </div>
+                {reviewSettingsMode === 'view' && (
+                  <button
+                    onClick={() => setReviewSettingsMode('edit')}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                  >
+                    ⚙️ Edit Settings
+                  </button>
+                )}
+              </div>
+
+              {reviewSettingsMode === 'view' ? (
+                <>
+                  {/* View Mode - Status & Info */}
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <p className="font-medium text-green-900">✅ System Active</p>
+                    <p className="text-sm text-green-800 mt-1">SMS Review System is fully configured and ready to use.</p>
+                  </div>
+
+                  {/* Current Settings Display */}
+                  {reviewSettings && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Templates */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-800 mb-3">📱 Review Request Message</h3>
+                        <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3 max-h-24 overflow-y-auto">
+                          {reviewSettings.review_request_template}
+                        </div>
+                        <p className="text-xs text-gray-500">Sent to customers asking for rating</p>
+                      </div>
+
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-800 mb-3">⭐ Positive Review Message</h3>
+                        <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3 max-h-24 overflow-y-auto">
+                          {reviewSettings.positive_response_template}
+                        </div>
+                        <p className="text-xs text-gray-500">Sent when customer rates 4-5 stars</p>
+                      </div>
+
+                      {/* Review Links */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-800 mb-3">🔗 Google Review Link</h3>
+                        <div className="bg-gray-50 p-3 rounded text-sm text-blue-600 mb-3 truncate">
+                          {reviewSettings.google_review_url || 'Not set'}
+                        </div>
+                        <p className="text-xs text-gray-500">Sent in positive review message</p>
+                      </div>
+
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-800 mb-3">🔗 Yelp Review Link</h3>
+                        <div className="bg-gray-50 p-3 rounded text-sm text-blue-600 mb-3 truncate">
+                          {reviewSettings.yelp_business_url || 'Not set'}
+                        </div>
+                        <p className="text-xs text-gray-500">Sent in positive review message</p>
+                      </div>
+
+                      {/* Schedule */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-800 mb-3">⏰ Review Request Time</h3>
+                        <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3">
+                          {String(reviewSettings.review_request_hour).padStart(2, '0')}:{String(reviewSettings.review_request_minute).padStart(2, '0')} daily
+                        </div>
+                        <p className="text-xs text-gray-500">When SMS is sent to customers</p>
+                      </div>
+
+                      {/* Alert Phone */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-800 mb-3">📞 Admin Alert Phone</h3>
+                        <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3">
+                          {reviewSettings.admin_alert_phone || 'Not set'}
+                        </div>
+                        <p className="text-xs text-gray-500">Alerts for negative reviews</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Edit Mode */}
+                  {reviewSettingsEdit && (
+                    <div className="space-y-6">
+                      {/* Review Request Template */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <label className="block font-bold text-gray-800 mb-2">📱 Review Request Message</label>
+                        <textarea
+                          value={reviewSettingsEdit.review_request_template || ''}
+                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, review_request_template: e.target.value })}
+                          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows={3}
+                        />
+                        <p className="text-xs text-gray-500 mt-2">Message sent to customers asking for rating (1-5)</p>
+                      </div>
+
+                      {/* Positive Response Template */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <label className="block font-bold text-gray-800 mb-2">⭐ Positive Review Message</label>
+                        <textarea
+                          value={reviewSettingsEdit.positive_response_template || ''}
+                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, positive_response_template: e.target.value })}
+                          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows={4}
+                        />
+                        <p className="text-xs text-gray-500 mt-2">Use {'{google_url}'} and {'{yelp_url}'} as placeholders for review links</p>
+                      </div>
+
+                      {/* Google Review URL */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <label className="block font-bold text-gray-800 mb-2">🔗 Google Review Link</label>
+                        <input
+                          type="text"
+                          value={reviewSettingsEdit.google_review_url || ''}
+                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, google_review_url: e.target.value })}
+                          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="https://g.page/r/..."
+                        />
+                      </div>
+
+                      {/* Yelp Review URL */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <label className="block font-bold text-gray-800 mb-2">🔗 Yelp Review Link</label>
+                        <input
+                          type="text"
+                          value={reviewSettingsEdit.yelp_business_url || ''}
+                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, yelp_business_url: e.target.value })}
+                          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="https://www.yelp.com/biz/..."
+                        />
+                      </div>
+
+                      {/* Admin Alert Phone */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <label className="block font-bold text-gray-800 mb-2">📞 Admin Alert Phone</label>
+                        <input
+                          type="text"
+                          value={reviewSettingsEdit.admin_alert_phone || ''}
+                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, admin_alert_phone: e.target.value })}
+                          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="+1949..."
+                        />
+                        <p className="text-xs text-gray-500 mt-2">Where negative review alerts are sent</p>
+                      </div>
+
+                      {/* Review Request Time */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <label className="block font-bold text-gray-800 mb-2">⏰ Review Request Time (Daily)</label>
+                        <div className="flex gap-3">
+                          <div className="flex-1">
+                            <label className="text-xs text-gray-600">Hour</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="23"
+                              value={reviewSettingsEdit.review_request_hour || 18}
+                              onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, review_request_hour: parseInt(e.target.value) })}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-xs text-gray-600">Minute</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="59"
+                              value={reviewSettingsEdit.review_request_minute || 0}
+                              onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, review_request_minute: parseInt(e.target.value) })}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Save/Cancel Buttons */}
+                      <div className="flex gap-3">
+                        <button
+                          onClick={async () => {
+                            setReviewSettingsSaving(true)
+                            try {
+                              const res = await fetch('/api/admin/reviews/settings', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(reviewSettingsEdit)
+                              })
+                              if (!res.ok) {
+                                const error = await res.json()
+                                throw new Error(error.error || 'Failed to update settings')
+                              }
+                              const updated = await res.json()
+                              setReviewSettings(updated)
+                              setReviewSettingsMode('view')
+                              setToast('Settings saved successfully!')
+                            } catch (error) {
+                              console.error('Settings save error:', error)
+                              setToast(`Failed to save settings: ${error instanceof Error ? error.message : 'Unknown error'}`)
+                            }
+                            setReviewSettingsSaving(false)
+                          }}
+                          disabled={reviewSettingsSaving}
+                          className="flex-1 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
+                        >
+                          {reviewSettingsSaving ? '💾 Saving...' : '💾 Save Settings'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setReviewSettingsEdit(reviewSettings)
+                            setReviewSettingsMode('view')
+                          }}
+                          className="flex-1 px-4 py-3 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg font-medium transition-colors"
+                        >
+                          ❌ Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── REPORTS ───────────────────────────────────────────────────── */}
+          {tab === 'reports' && (() => {
+            // Filter appointments by date range
+            const now = new Date(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
+            const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+            const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6)
+            const weekAgoStr = `${weekAgo.getFullYear()}-${String(weekAgo.getMonth()+1).padStart(2,'0')}-${String(weekAgo.getDate()).padStart(2,'0')}`
+            const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
+
+            const rangeAppts = reportsAppts.filter(a => {
+              if (a.payment_status !== 'paid') return false
+              if (reportsRange === 'week') return a.appointment_date >= weekAgoStr
+              if (reportsRange === 'month') return a.appointment_date >= monthStart
+              return true
+            })
+
+            // Group by assigned_groomer name
+            const groomerMap: Record<string, { name: string; appts: Appointment[] }> = {}
+            rangeAppts.forEach(a => {
+              const key = a.assigned_groomer || '(Unassigned)'
+              if (!groomerMap[key]) groomerMap[key] = { name: key, appts: [] }
+              groomerMap[key].appts.push(a)
+            })
+
+            // Build rows
+            const rows = Object.values(groomerMap).map(g => {
+              const revenue = g.appts.reduce((sum, a) => sum + parseFloat(a.payment_amount || '0'), 0)
+              const tips = g.appts.reduce((sum, a) => sum + parseFloat(a.tip_amount || '0'), 0)
+              // Find matching staff member for commission %
+              const staffMatch = staff.find(s => {
+                const fullName = s.first_name ? `${s.first_name} ${s.last_name || ''}`.trim() : s.name
+                return fullName === g.name || s.name === g.name
+              })
+              const commissionPct = staffMatch?.commission_percent ?? 0
+              const tipPct = staffMatch?.tip_percent ?? 0
+              const commission = revenue * commissionPct / 100
+              const tipEarned = tips * tipPct / 100
+              return { name: g.name, count: g.appts.length, revenue, tips, commissionPct, tipPct, commission, tipEarned }
+            }).sort((a, b) => b.revenue - a.revenue)
+
+            const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0)
+            const totalTips = rows.reduce((s, r) => s + r.tips, 0)
+            const totalAppts = rows.reduce((s, r) => s + r.count, 0)
+
+            const rangeLabelMap = { week: 'This Week', month: 'This Month', all: 'All Time' }
+
+            // ── Range payment breakdown ──────────────────────────────────────
+            // All appointments in range (paid + unpaid/completed) for full picture
+            const allRangeAppts = reportsAppts.filter(a => {
+              if (reportsRange === 'week') return a.appointment_date >= weekAgoStr
+              if (reportsRange === 'month') return a.appointment_date >= monthStart
+              return true
+            })
+            const rangeMethodTotals: Record<string, { count: number; amount: number; tips: number }> = {
+              cash: { count: 0, amount: 0, tips: 0 }, card: { count: 0, amount: 0, tips: 0 },
+              zelle: { count: 0, amount: 0, tips: 0 }, venmo: { count: 0, amount: 0, tips: 0 },
+              check: { count: 0, amount: 0, tips: 0 }, unpaid: { count: 0, amount: 0, tips: 0 },
+            }
+            allRangeAppts.forEach(a => {
+              const key = (a.payment_status === 'paid' && a.payment_method) ? a.payment_method : 'unpaid'
+              if (!rangeMethodTotals[key]) rangeMethodTotals[key] = { count: 0, amount: 0, tips: 0 }
+              rangeMethodTotals[key].count += 1
+              rangeMethodTotals[key].amount += parseFloat(a.payment_amount || '0')
+              rangeMethodTotals[key].tips += parseFloat(a.tip_amount || '0')
+            })
+            // Per-groomer range detail (all appointments, not just paid)
+            const rangeGroomerDetail: Record<string, Appointment[]> = {}
+            allRangeAppts.forEach(a => {
+              const key = a.assigned_groomer || '(Unassigned)'
+              if (!rangeGroomerDetail[key]) rangeGroomerDetail[key] = []
+              rangeGroomerDetail[key].push(a)
+            })
+
+            // ── Daily Report data ───────────────────────────────────────────
+            const todayAppts = reportsAppts.filter(a => a.appointment_date === todayStr)
+            const methodOrder = ['cash', 'card', 'zelle', 'venmo', 'check'] as const
+            const methodLabels: Record<string, string> = { cash: 'Cash', card: 'Credit Card', zelle: 'Zelle', venmo: 'Venmo', check: 'Check' }
+            const methodColors: Record<string, string> = {
+              cash:  'bg-emerald-50 border-emerald-100 text-emerald-700',
+              card:  'bg-sky-50 border-sky-100 text-sky-700',
+              zelle: 'bg-violet-50 border-violet-100 text-violet-700',
+              venmo: 'bg-blue-50 border-blue-100 text-blue-700',
+              check: 'bg-gray-50 border-gray-100 text-gray-700',
+            }
+            type MethodKey = 'cash' | 'card' | 'zelle' | 'venmo' | 'check'
+            const methodTotals: Record<string, { count: number; amount: number; tips: number }> = {}
+            methodOrder.forEach(m => { methodTotals[m] = { count: 0, amount: 0, tips: 0 } })
+            methodTotals['unpaid'] = { count: 0, amount: 0, tips: 0 }
+            todayAppts.forEach(a => {
+              const key = (a.payment_status === 'paid' && a.payment_method) ? a.payment_method : 'unpaid'
+              if (!methodTotals[key]) methodTotals[key] = { count: 0, amount: 0, tips: 0 }
+              methodTotals[key].count += 1
+              methodTotals[key].amount += parseFloat(a.payment_amount || '0')
+              methodTotals[key].tips += parseFloat(a.tip_amount || '0')
+            })
+            // Daily groomer breakdown
+            const dailyGroomerMap: Record<string, Appointment[]> = {}
+            todayAppts.forEach(a => {
+              const key = a.assigned_groomer || '(Unassigned)'
+              if (!dailyGroomerMap[key]) dailyGroomerMap[key] = []
+              dailyGroomerMap[key].push(a)
+            })
+
+            return (
+              <div className="space-y-5">
+                {/* ── DAILY REPORT ────────────────────────────────────────────── */}
+                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 bg-amber-50 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-800 text-base">Daily Report</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {new Date(todayStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                        <span className="ml-2 font-semibold text-amber-600">{todayAppts.length} appointment{todayAppts.length !== 1 ? 's' : ''}</span>
+                      </p>
+                    </div>
+                    <button onClick={() => fetchReports()} className="text-sm text-sky-600 hover:text-sky-800 font-medium">↻</button>
+                  </div>
+
+                  {/* Payment method tiles */}
+                  <div className="px-5 pt-4 pb-3">
+                    <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Payment Breakdown</p>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
+                      {methodOrder.filter(m => methodTotals[m]?.count > 0 || true).map(m => (
+                        <div key={m} className={`rounded-xl border px-3 py-2.5 ${methodColors[m as MethodKey]} ${methodTotals[m]?.count === 0 ? 'opacity-30' : ''}`}>
+                          <p className="text-base font-bold">${(methodTotals[m]?.amount ?? 0).toFixed(0)}</p>
+                          <p className="text-[11px] font-semibold mt-0.5">{methodLabels[m]}</p>
+                          <p className="text-[10px] opacity-70">{methodTotals[m]?.count ?? 0} appt{(methodTotals[m]?.count ?? 0) !== 1 ? 's' : ''}</p>
+                        </div>
+                      ))}
+                      {/* Unpaid tile */}
+                      <div className={`rounded-xl border px-3 py-2.5 bg-rose-50 border-rose-100 text-rose-700 ${methodTotals['unpaid']?.count === 0 ? 'opacity-30' : ''}`}>
+                        <p className="text-base font-bold">{methodTotals['unpaid']?.count ?? 0}</p>
+                        <p className="text-[11px] font-semibold mt-0.5">Unpaid</p>
+                        <p className="text-[10px] opacity-70">appt{(methodTotals['unpaid']?.count ?? 0) !== 1 ? 's' : ''}</p>
+                      </div>
+                    </div>
+
+                    {/* Tips breakdown */}
+                    {todayAppts.some(a => parseFloat(a.tip_amount || '0') > 0) && (
+                      <div className="flex gap-2 mb-5 flex-wrap">
+                        {methodOrder.filter(m => methodTotals[m]?.tips > 0).map(m => (
+                          <span key={m} className="text-xs bg-emerald-50 border border-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-semibold">
+                            {methodLabels[m]} tip: ${methodTotals[m].tips.toFixed(2)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Per-groomer daily detail */}
+                    <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">By Groomer</p>
+                    {Object.keys(dailyGroomerMap).length === 0 ? (
+                      <p className="text-sm text-gray-400 py-3 text-center">No appointments today</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {Object.entries(dailyGroomerMap).sort(([a],[b]) => a.localeCompare(b)).map(([groomer, appts]) => {
+                          const groomerPaid = appts.filter(a => a.payment_status === 'paid')
+                          const groomerRevenue = groomerPaid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
+                          const groomerTips = groomerPaid.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
+                          const staffMatch = staff.find(s => {
+                            const fullName = s.first_name ? `${s.first_name} ${s.last_name || ''}`.trim() : s.name
+                            return fullName === groomer || s.name === groomer
+                          })
+                          const commissionPct = staffMatch?.commission_percent ?? 0
+                          return (
+                            <div key={groomer} className="border border-gray-100 rounded-xl overflow-hidden">
+                              {/* Groomer header */}
+                              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                                <span className="font-semibold text-sm text-gray-800">✂️ {groomer}</span>
+                                <div className="flex items-center gap-3 text-xs text-gray-500">
+                                  <span>{appts.length} appt{appts.length !== 1 ? 's' : ''}</span>
+                                  <span className="font-semibold text-gray-800">${groomerRevenue.toFixed(2)}</span>
+                                  {groomerTips > 0 && <span className="text-emerald-600 font-semibold">+${groomerTips.toFixed(2)} tips</span>}
+                                  {commissionPct > 0 && <span className="text-violet-600 font-semibold">Commission: ${(groomerRevenue * commissionPct / 100).toFixed(2)} ({commissionPct}%)</span>}
+                                </div>
+                              </div>
+                              {/* Appointment rows */}
+                              <div className="divide-y divide-gray-50">
+                                {appts.sort((a,b) => a.appointment_time.localeCompare(b.appointment_time)).map(a => {
+                                  const [h, m] = a.appointment_time.split(':')
+                                  const hour = parseInt(h), period = hour >= 12 ? 'PM' : 'AM'
+                                  const timeStr = `${hour % 12 || 12}:${m} ${period}`
+                                  const isPaid = a.payment_status === 'paid'
+                                  const methodIcon: Record<string, string> = { cash: '💵', card: '💳', zelle: '🔵', venmo: '📱', check: '📝' }
+                                  return (
+                                    <div key={a.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 group/row">
+                                      <span className="text-xs font-bold text-gray-500 tabular-nums w-16 shrink-0">{timeStr}</span>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-gray-800 leading-tight">{a.pets?.name}</p>
+                                        <p className="text-xs text-gray-400 truncate">{a.clients?.name} · {serviceMap[a.service] ?? a.service}</p>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        {reportEditingId === a.id ? (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-xs text-gray-400">$</span>
+                                            <input
+                                              type="number" min="0" step="0.01"
+                                              value={reportEditAmount}
+                                              onChange={e => setReportEditAmount(e.target.value)}
+                                              onKeyDown={async e => {
+                                                if (e.key === 'Escape') { setReportEditingId(null); return }
+                                                if (e.key === 'Enter') {
+                                                  setReportSavingId(a.id)
+                                                  const res = await fetch(`/api/admin/appointments/${a.id}`, {
+                                                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ action: 'record-payment', payment_amount: reportEditAmount, payment_status: 'paid' }),
+                                                  })
+                                                  if ((await res.json()).success) {
+                                                    setReportsAppts(prev => prev.map(x => x.id === a.id ? { ...x, payment_amount: reportEditAmount, payment_status: 'paid' } : x))
+                                                  }
+                                                  setReportSavingId(null)
+                                                  setReportEditingId(null)
+                                                }
+                                              }}
+                                              autoFocus
+                                              className="w-20 text-sm font-bold text-gray-800 border border-sky-300 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                            />
+                                            <button
+                                              disabled={reportSavingId === a.id}
+                                              onClick={async () => {
+                                                setReportSavingId(a.id)
+                                                const res = await fetch(`/api/admin/appointments/${a.id}`, {
+                                                  method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                                  body: JSON.stringify({ action: 'record-payment', payment_amount: reportEditAmount, payment_status: 'paid' }),
+                                                })
+                                                if ((await res.json()).success) {
+                                                  setReportsAppts(prev => prev.map(x => x.id === a.id ? { ...x, payment_amount: reportEditAmount, payment_status: 'paid' } : x))
+                                                }
+                                                setReportSavingId(null)
+                                                setReportEditingId(null)
+                                              }}
+                                              className="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-lg font-semibold disabled:opacity-50">
+                                              {reportSavingId === a.id ? '…' : '✓'}
+                                            </button>
+                                            <button onClick={() => setReportEditingId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">✕</button>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            {isPaid ? (
+                                              <span className="text-xs font-semibold text-gray-700">
+                                                {a.payment_method ? (methodIcon[a.payment_method] ?? '') : ''} ${parseFloat(a.payment_amount || '0').toFixed(2)}
+                                                {' '}
+                                                <span className="text-[10px] font-semibold text-gray-500 capitalize">{methodLabels[a.payment_method || ''] || a.payment_method || ''}</span>
+                                              </span>
+                                            ) : (
+                                              <span className="text-xs font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">Unpaid</span>
+                                            )}
+                                            <button
+                                              onClick={() => { setReportEditingId(a.id); setReportEditAmount(a.payment_amount || '') }}
+                                              className="opacity-0 group-hover/row:opacity-100 transition-opacity text-gray-300 hover:text-sky-500 text-xs px-1"
+                                              title="Edit amount">
+                                              ✏️
+                                            </button>
+                                          </>
+                                        )}
+                                        {parseFloat(a.tip_amount || '0') > 0 && (
+                                          <span className="text-xs text-emerald-600 font-semibold">+${parseFloat(a.tip_amount || '0').toFixed(2)} tip</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Date range selector */}
+                <div className="flex items-center gap-2">
+                  {(['week', 'month', 'all'] as const).map(r => (
+                    <button
+                      key={r}
+                      onClick={() => setReportsRange(r)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${reportsRange === r ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}`}
+                    >
+                      {rangeLabelMap[r]}
+                    </button>
+                  ))}
+                  <button onClick={() => fetchReports()} className="ml-auto text-sm text-sky-600 hover:text-sky-800 font-medium">↻ Refresh</button>
+                </div>
+
+                {reportsLoading ? (
+                  <div className="text-center py-12 text-gray-400">Loading reports…</div>
+                ) : (
+                  <>
+                    {/* Summary cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="bg-sky-50 rounded-2xl p-5 border border-sky-100">
+                        <p className="text-3xl font-bold text-sky-700">${totalRevenue.toFixed(2)}</p>
+                        <p className="text-sm text-sky-600 font-medium mt-1">Total Revenue</p>
+                        <p className="text-xs text-sky-400 mt-0.5">{rangeLabelMap[reportsRange]}</p>
+                      </div>
+                      <div className="bg-emerald-50 rounded-2xl p-5 border border-emerald-100">
+                        <p className="text-3xl font-bold text-emerald-700">${totalTips.toFixed(2)}</p>
+                        <p className="text-sm text-emerald-600 font-medium mt-1">Total Tips</p>
+                        <p className="text-xs text-emerald-400 mt-0.5">{rangeLabelMap[reportsRange]}</p>
+                      </div>
+                      <div className="bg-violet-50 rounded-2xl p-5 border border-violet-100">
+                        <p className="text-3xl font-bold text-violet-700">{totalAppts}</p>
+                        <p className="text-sm text-violet-600 font-medium mt-1">Paid Appointments</p>
+                        <p className="text-xs text-violet-400 mt-0.5">{rangeLabelMap[reportsRange]}</p>
+                      </div>
+                    </div>
+
+                    {/* ── PET COUNT SUMMARY ──────────────────────────────────── */}
+                    {(() => {
+                      const allPetsInRange = allRangeAppts.length
+                      const paidPetsInRange = allRangeAppts.filter(a => a.payment_status === 'paid').length
+                      const unpaidPetsInRange = allRangeAppts.filter(a => a.payment_status !== 'paid').length
+                      const uniqueClients = new Set(allRangeAppts.map(a => a.client_phone)).size
+                      const uniquePets = new Set(allRangeAppts.filter(a => a.pets?.name).map(a => a.pet_id || a.pets?.name)).size
+                      const avgSpend = paidPetsInRange > 0 ? totalRevenue / paidPetsInRange : 0
+                      // New vs returning clients
+                      const clientFirstAppt: Record<string, string> = {}
+                      reportsAppts.forEach(a => {
+                        if (!clientFirstAppt[a.client_phone] || a.appointment_date < clientFirstAppt[a.client_phone]) {
+                          clientFirstAppt[a.client_phone] = a.appointment_date
+                        }
+                      })
+                      const rangeStart = reportsRange === 'week' ? weekAgoStr : reportsRange === 'month' ? monthStart : '2000-01-01'
+                      const newClients = allRangeAppts.filter(a => clientFirstAppt[a.client_phone] >= rangeStart)
+                      const newClientCount = new Set(newClients.map(a => a.client_phone)).size
+
+                      return (
+                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                          <div className="px-5 py-4 border-b border-gray-100 bg-amber-50/60">
+                            <h3 className="font-bold text-gray-800">🐾 Pet Count Summary</h3>
+                            <p className="text-xs text-gray-400 mt-0.5">{rangeLabelMap[reportsRange]}</p>
+                          </div>
+                          <div className="px-5 py-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-center">
+                                <p className="text-2xl font-black text-amber-700">{allPetsInRange}</p>
+                                <p className="text-[11px] font-semibold text-amber-600 mt-1">Total Pets</p>
+                              </div>
+                              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-center">
+                                <p className="text-2xl font-black text-emerald-700">{paidPetsInRange}</p>
+                                <p className="text-[11px] font-semibold text-emerald-600 mt-1">Paid</p>
+                              </div>
+                              <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-center">
+                                <p className="text-2xl font-black text-rose-600">{unpaidPetsInRange}</p>
+                                <p className="text-[11px] font-semibold text-rose-500 mt-1">Unpaid</p>
+                              </div>
+                              <div className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-center">
+                                <p className="text-2xl font-black text-violet-700">{newClientCount}</p>
+                                <p className="text-[11px] font-semibold text-violet-600 mt-1">New Clients</p>
+                              </div>
+                              <div className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-center">
+                                <p className="text-2xl font-black text-sky-700">${avgSpend.toFixed(0)}</p>
+                                <p className="text-[11px] font-semibold text-sky-600 mt-1">Avg / Pet</p>
+                              </div>
+                            </div>
+                            <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
+                              <span>{uniqueClients} unique client{uniqueClients !== 1 ? 's' : ''}</span>
+                              <span>{uniquePets} unique pet{uniquePets !== 1 ? 's' : ''}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* ── SERVICES BREAKDOWN ────────────────────────────────── */}
+                    {(() => {
+                      const svcCount: Record<string, { count: number; revenue: number; tips: number; pets: Set<string> }> = {}
+                      allRangeAppts.forEach(a => {
+                        const svc = a.service || 'unknown'
+                        if (!svcCount[svc]) svcCount[svc] = { count: 0, revenue: 0, tips: 0, pets: new Set() }
+                        svcCount[svc].count += 1
+                        if (a.payment_status === 'paid') {
+                          svcCount[svc].revenue += parseFloat(a.payment_amount || '0')
+                          svcCount[svc].tips += parseFloat(a.tip_amount || '0')
+                        }
+                        if (a.pets?.name) svcCount[svc].pets.add(a.pets.name)
+                      })
+                      const svcRows = Object.entries(svcCount)
+                        .map(([key, v]) => ({ key, label: serviceMap[key] || key, ...v, petCount: v.pets.size }))
+                        .sort((a, b) => b.count - a.count)
+                      const totalSvcAppts = svcRows.reduce((s, r) => s + r.count, 0)
+
+                      return (
+                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                          <div className="px-5 py-4 border-b border-gray-100 bg-indigo-50/60">
+                            <h3 className="font-bold text-gray-800">✂️ Services Breakdown</h3>
+                            <p className="text-xs text-gray-400 mt-0.5">{rangeLabelMap[reportsRange]}</p>
+                          </div>
+                          {svcRows.length === 0 ? (
+                            <div className="px-5 py-10 text-center text-gray-400 text-sm">No services in this period.</div>
+                          ) : (
+                            <div className="divide-y divide-gray-100">
+                              {/* Header */}
+                              <div className="grid grid-cols-12 gap-2 px-5 py-2.5 bg-gray-50 text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                                <div className="col-span-4">Service</div>
+                                <div className="col-span-2 text-center">Pets</div>
+                                <div className="col-span-1 text-center">%</div>
+                                <div className="col-span-2 text-right">Revenue</div>
+                                <div className="col-span-1 text-right">Avg</div>
+                                <div className="col-span-2 text-right">Tips</div>
+                              </div>
+                              {svcRows.map((row, i) => {
+                                const pct = totalSvcAppts > 0 ? (row.count / totalSvcAppts * 100) : 0
+                                const avg = row.count > 0 ? row.revenue / row.count : 0
+                                const barWidth = totalSvcAppts > 0 ? (row.count / totalSvcAppts * 100) : 0
+                                return (
+                                  <div key={row.key} className={`grid grid-cols-12 gap-2 px-5 py-3 items-center ${i % 2 === 1 ? 'bg-gray-50/50' : ''} hover:bg-indigo-50/30 transition-colors`}>
+                                    <div className="col-span-4">
+                                      <p className="text-sm font-semibold text-gray-800">{row.label}</p>
+                                      <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden w-full">
+                                        <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${barWidth}%` }} />
+                                      </div>
+                                    </div>
+                                    <div className="col-span-2 text-center">
+                                      <span className="text-sm font-bold text-gray-700">{row.count}</span>
+                                    </div>
+                                    <div className="col-span-1 text-center">
+                                      <span className="text-xs text-gray-500">{pct.toFixed(0)}%</span>
+                                    </div>
+                                    <div className="col-span-2 text-right">
+                                      <span className="text-sm font-bold text-gray-800">${row.revenue.toFixed(2)}</span>
+                                    </div>
+                                    <div className="col-span-1 text-right">
+                                      <span className="text-xs text-gray-500">${avg.toFixed(0)}</span>
+                                    </div>
+                                    <div className="col-span-2 text-right">
+                                      <span className="text-sm font-semibold text-emerald-600">{row.tips > 0 ? `$${row.tips.toFixed(2)}` : '—'}</span>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                              {/* Totals footer */}
+                              <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-gray-50 border-t-2 border-gray-200 items-center">
+                                <div className="col-span-4 text-sm font-bold text-gray-700">Total</div>
+                                <div className="col-span-2 text-center text-sm font-bold text-gray-700">{totalSvcAppts}</div>
+                                <div className="col-span-1" />
+                                <div className="col-span-2 text-right text-sm font-bold text-gray-800">${svcRows.reduce((s,r)=>s+r.revenue,0).toFixed(2)}</div>
+                                <div className="col-span-1" />
+                                <div className="col-span-2 text-right text-sm font-bold text-emerald-600">${svcRows.reduce((s,r)=>s+r.tips,0).toFixed(2)}</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+
+                    {/* ── BREED TRACKER ─────────────────────────────────────── */}
+                    {(() => {
+                      const breedCount: Record<string, { count: number; revenue: number; pets: Set<string> }> = {}
+                      allRangeAppts.forEach(a => {
+                        const breed = a.pets?.breed || 'Unknown'
+                        if (!breedCount[breed]) breedCount[breed] = { count: 0, revenue: 0, pets: new Set() }
+                        breedCount[breed].count += 1
+                        if (a.payment_status === 'paid') {
+                          breedCount[breed].revenue += parseFloat(a.payment_amount || '0')
+                        }
+                        if (a.pets?.name) breedCount[breed].pets.add(a.pets.name)
+                      })
+                      const breedRows = Object.entries(breedCount)
+                        .map(([breed, v]) => ({ breed, ...v, uniquePets: v.pets.size }))
+                        .sort((a, b) => b.count - a.count)
+                        .slice(0, 15)
+
+                      return breedRows.length > 0 ? (
+                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                          <div className="px-5 py-4 border-b border-gray-100 bg-pink-50/60">
+                            <h3 className="font-bold text-gray-800">🐕 Top Breeds</h3>
+                            <p className="text-xs text-gray-400 mt-0.5">{rangeLabelMap[reportsRange]} · Top {breedRows.length} breeds</p>
+                          </div>
+                          <div className="px-5 py-4">
+                            <div className="flex flex-wrap gap-2">
+                              {breedRows.map(row => (
+                                <div key={row.breed} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                                  <span className="text-sm font-semibold text-gray-700">{row.breed}</span>
+                                  <span className="text-xs font-bold text-white bg-pink-400 rounded-full w-6 h-6 flex items-center justify-center">{row.count}</span>
+                                  {row.revenue > 0 && <span className="text-xs text-gray-400">${row.revenue.toFixed(0)}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null
+                    })()}
+
+                    {/* Payment breakdown for range */}
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
+                        <h3 className="font-bold text-gray-800">Payment Breakdown</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">{rangeLabelMap[reportsRange]}</p>
+                      </div>
+                      <div className="px-5 py-4">
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                          {(['cash', 'card', 'zelle', 'venmo', 'check'] as const).map(m => {
+                            const colors: Record<string, string> = {
+                              cash: 'bg-emerald-50 border-emerald-100 text-emerald-700',
+                              card: 'bg-sky-50 border-sky-100 text-sky-700',
+                              zelle: 'bg-violet-50 border-violet-100 text-violet-700',
+                              venmo: 'bg-blue-50 border-blue-100 text-blue-700',
+                              check: 'bg-gray-50 border-gray-100 text-gray-700',
+                            }
+                            const labels: Record<string, string> = { cash: 'Cash', card: 'Credit Card', zelle: 'Zelle', venmo: 'Venmo', check: 'Check' }
+                            const t = rangeMethodTotals[m]
+                            return (
+                              <div key={m} className={`rounded-xl border px-3 py-2.5 ${colors[m]} ${t.count === 0 ? 'opacity-30' : ''}`}>
+                                <p className="text-base font-bold">${t.amount.toFixed(2)}</p>
+                                <p className="text-[11px] font-semibold mt-0.5">{labels[m]}</p>
+                                <p className="text-[10px] opacity-70">{t.count} appt{t.count !== 1 ? 's' : ''}</p>
+                                {t.tips > 0 && <p className="text-[10px] opacity-70">+${t.tips.toFixed(2)} tips</p>}
+                              </div>
+                            )
+                          })}
+                          <div className={`rounded-xl border px-3 py-2.5 bg-rose-50 border-rose-100 text-rose-700 ${rangeMethodTotals['unpaid'].count === 0 ? 'opacity-30' : ''}`}>
+                            <p className="text-base font-bold">{rangeMethodTotals['unpaid'].count}</p>
+                            <p className="text-[11px] font-semibold mt-0.5">Unpaid</p>
+                            <p className="text-[10px] opacity-70">appt{rangeMethodTotals['unpaid'].count !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Per-groomer detail (payment method breakdown) */}
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                        <h3 className="font-bold text-gray-800">By Groomer</h3>
+                        <span className="text-xs text-gray-400">{rangeLabelMap[reportsRange]}</span>
+                      </div>
+                      {Object.keys(rangeGroomerDetail).length === 0 ? (
+                        <div className="px-5 py-10 text-center text-gray-400 text-sm">No appointments in this period.</div>
+                      ) : (
+                        <div className="divide-y divide-gray-100">
+                          {Object.entries(rangeGroomerDetail).sort(([a],[b]) => a.localeCompare(b)).map(([groomer, gAppts]) => {
+                            const gPaid = gAppts.filter(a => a.payment_status === 'paid')
+                            const gRevenue = gPaid.reduce((s,a) => s + parseFloat(a.payment_amount||'0'), 0)
+                            const gTips = gPaid.reduce((s,a) => s + parseFloat(a.tip_amount||'0'), 0)
+                            const gUnpaid = gAppts.filter(a => a.payment_status !== 'paid').length
+                            const staffMatch = staff.find(s => {
+                              const fullName = s.first_name ? `${s.first_name} ${s.last_name||''}`.trim() : s.name
+                              return fullName === groomer || s.name === groomer
+                            })
+                            const commPct = staffMatch?.commission_percent ?? 0
+                            const tipPct = staffMatch?.tip_percent ?? 0
+                            // Method breakdown for this groomer
+                            const gMethods: Record<string, { count: number; amount: number }> = {}
+                            gPaid.forEach(a => {
+                              const k = a.payment_method || 'other'
+                              if (!gMethods[k]) gMethods[k] = { count: 0, amount: 0 }
+                              gMethods[k].count += 1
+                              gMethods[k].amount += parseFloat(a.payment_amount||'0')
+                            })
+                            const methodIcons: Record<string, string> = { cash: '💵', card: '💳', zelle: '🔵', venmo: '📱', check: '📝' }
+                            const methodNames: Record<string, string> = { cash: 'Cash', card: 'Credit Card', zelle: 'Zelle', venmo: 'Venmo', check: 'Check' }
+                            return (
+                              <div key={groomer}>
+                                {/* Groomer summary row */}
+                                <div className="flex items-center justify-between px-5 py-3.5 bg-gray-50/80">
+                                  <div className="flex items-center gap-3">
+                                    <span className="font-semibold text-gray-800">✂️ {groomer}</span>
+                                    <span className="text-xs text-gray-400">{gAppts.length} appt{gAppts.length!==1?'s':''}</span>
+                                    {gUnpaid > 0 && <span className="text-xs font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">{gUnpaid} unpaid</span>}
+                                  </div>
+                                  <div className="flex items-center gap-4 text-sm">
+                                    <div className="text-right">
+                                      <p className="font-bold text-gray-800">${gRevenue.toFixed(2)}</p>
+                                      <p className="text-xs text-gray-400">revenue</p>
+                                    </div>
+                                    {commPct > 0 && (
+                                      <div className="text-right">
+                                        <p className="font-bold text-emerald-700">${(gRevenue * commPct / 100).toFixed(2)}</p>
+                                        <p className="text-xs text-gray-400">commission ({commPct}%)</p>
+                                      </div>
+                                    )}
+                                    {gTips > 0 && (
+                                      <div className="text-right">
+                                        <p className="font-bold text-sky-700">${gTips.toFixed(2)}</p>
+                                        <p className="text-xs text-gray-400">tips</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                {/* Per-appointment editable rows */}
+                                {gAppts.sort((a,b) => a.appointment_time.localeCompare(b.appointment_time)).map(appt => {
+                                  const isPaid = appt.payment_status === 'paid'
+                                  const isEditing = reportEditingId === appt.id
+                                  const tStr = (() => {
+                                    const t = appt.appointment_time
+                                    if (t.toUpperCase().includes('AM') || t.toUpperCase().includes('PM')) return t.trim()
+                                    const [h, m] = t.split(':'); const hr = parseInt(h)
+                                    return `${hr%12||12}:${m} ${hr>=12?'PM':'AM'}`
+                                  })()
+                                  return (
+                                    <div key={appt.id} className={`border-t border-gray-50 ${isEditing ? 'bg-sky-50/40' : 'hover:bg-gray-50/60'} transition-colors`}>
+                                      <div className="flex items-center gap-3 px-5 py-2.5 group">
+                                        <span className="text-[11px] text-gray-400 w-16 shrink-0 tabular-nums">{tStr}</span>
+                                        <div className="flex-1 min-w-0">
+                                          <span className="text-sm font-semibold text-gray-700">{appt.pets?.name}</span>
+                                          <span className="text-xs text-gray-400 ml-1.5">{appt.clients?.name}</span>
+                                          <span className="text-xs text-gray-300 ml-1.5">· {serviceMap[appt.service] ?? appt.service}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          {isPaid ? (
+                                            <span className="text-xs font-semibold text-emerald-600">
+                                              {appt.payment_method ? (methodIcons[appt.payment_method] ?? '💰') : ''} ${parseFloat(appt.payment_amount||'0').toFixed(2)}
+                                              {parseFloat(appt.tip_amount||'0') > 0 && <span className="text-emerald-400 ml-1">+${parseFloat(appt.tip_amount||'0').toFixed(2)}</span>}
+                                            </span>
+                                          ) : (
+                                            <span className="text-xs font-semibold text-rose-400 bg-rose-50 px-2 py-0.5 rounded-full">Unpaid</span>
+                                          )}
+                                          <button
+                                            onClick={() => {
+                                              if (isEditing) { setReportEditingId(null); return }
+                                              setReportEditingId(appt.id)
+                                              setReportEditAmount(appt.payment_amount || '')
+                                              setReportEditTip(appt.tip_amount || '')
+                                              setReportEditMethod(appt.payment_method || 'cash')
+                                              setReportEditStatus(appt.payment_status || 'paid')
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-sky-500 text-xs px-1"
+                                          >✏️</button>
+                                        </div>
+                                      </div>
+                                      {/* Inline edit row */}
+                                      {isEditing && (
+                                        <div className="px-5 pb-3 flex items-center gap-2 flex-wrap">
+                                          <select value={reportEditStatus} onChange={e => setReportEditStatus(e.target.value)}
+                                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-sky-200">
+                                            <option value="paid">Paid</option>
+                                            <option value="unpaid">Unpaid</option>
+                                          </select>
+                                          <select value={reportEditMethod} onChange={e => setReportEditMethod(e.target.value)}
+                                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-sky-200">
+                                            <option value="cash">💵 Cash</option>
+                                            <option value="card">💳 Card</option>
+                                            <option value="zelle">🔵 Zelle</option>
+                                            <option value="venmo">📱 Venmo</option>
+                                            <option value="check">📝 Check</option>
+                                          </select>
+                                          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                            <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">$</span>
+                                            <input type="number" min="0" step="0.01" placeholder="Amount"
+                                              value={reportEditAmount} onChange={e => setReportEditAmount(e.target.value)} autoFocus
+                                              className="w-20 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
+                                          </div>
+                                          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                            <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">Tip $</span>
+                                            <input type="number" min="0" step="0.01" placeholder="0"
+                                              value={reportEditTip} onChange={e => setReportEditTip(e.target.value)}
+                                              className="w-16 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
+                                          </div>
+                                          <button
+                                            disabled={reportSavingId === appt.id}
+                                            onClick={async () => {
+                                              setReportSavingId(appt.id)
+                                              try {
+                                                const res = await fetch(`/api/admin/appointments/${appt.id}`, {
+                                                  method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                                  body: JSON.stringify({ action: 'record-payment', payment_amount: reportEditAmount, tip_amount: reportEditTip || '0', payment_method: reportEditMethod, payment_status: reportEditStatus }),
+                                                })
+                                                if ((await res.json()).success) {
+                                                  setReportsAppts(prev => prev.map(x => x.id === appt.id
+                                                    ? { ...x, payment_amount: reportEditAmount, tip_amount: reportEditTip || '0', payment_method: reportEditMethod, payment_status: reportEditStatus }
+                                                    : x))
+                                                  setReportEditingId(null)
+                                                  showToast('✓ Updated!')
+                                                }
+                                              } catch {/**/}
+                                              finally { setReportSavingId(null) }
+                                            }}
+                                            className="text-xs bg-sky-500 hover:bg-sky-600 text-white px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50">
+                                            {reportSavingId === appt.id ? '…' : '✓ Save'}
+                                          </button>
+                                          <button onClick={() => setReportEditingId(null)} className="text-xs text-gray-300 hover:text-gray-500 px-1">✕</button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          })}
+                          {/* Totals footer */}
+                          <div className="flex items-center justify-between px-5 py-3.5 bg-gray-50 border-t-2 border-gray-200">
+                            <span className="font-bold text-gray-700">Total</span>
+                            <div className="flex items-center gap-4 text-sm">
+                              <div className="text-right">
+                                <p className="font-bold text-gray-800">${totalRevenue.toFixed(2)}</p>
+                                <p className="text-xs text-gray-400">{totalAppts} paid</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-emerald-700">${rows.reduce((s,r)=>s+r.commission,0).toFixed(2)}</p>
+                                <p className="text-xs text-gray-400">commission</p>
+                              </div>
+                              {totalTips > 0 && (
+                                <div className="text-right">
+                                  <p className="font-bold text-sky-700">${totalTips.toFixed(2)}</p>
+                                  <p className="text-xs text-gray-400">tips</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* ── CALENDAR ─────────────────────────────────────────────────── */}
+          {tab === 'calendar' && (() => {
+            const [year, month] = calendarMonth.split('-').map(Number)
+            const firstDay = new Date(year, month-1, 1).getDay()
+            const daysInMonth = new Date(year, month, 0).getDate()
+            const _td = new Date(); const today = `${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,'0')}-${String(_td.getDate()).padStart(2,'0')}`
+            const monthName = new Date(year, month-1).toLocaleDateString('en-US',{month:'long',year:'numeric'})
+            const byDate: Record<string, Appointment[]> = {}
+            calendarAppts.forEach(a => { if(!byDate[a.appointment_date]) byDate[a.appointment_date]=[]; byDate[a.appointment_date].push(a) })
+            const prevMonth = () => { const d=new Date(year,month-2); setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); setSelectedDay(null) }
+            const nextMonth = () => { const d=new Date(year,month); setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); setSelectedDay(null) }
+            const totalCells = Math.ceil((firstDay+daysInMonth)/7)*7
+            return (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-600 text-xl font-bold">‹</button>
+                    <h2 className="font-bold text-gray-800 text-xl">{monthName}</h2>
+                    <button onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-600 text-xl font-bold">›</button>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="hidden sm:flex items-center gap-3 text-xs font-medium">
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-sky-100 border border-sky-300 inline-block"/>Simply Cute</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-teal-100 border border-teal-300 inline-block"/>Bath &amp; Brush</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-pink-100 border border-pink-300 inline-block"/>Asian Fusion</span>
+                      <span className="flex items-center gap-1"><span className="text-amber-500">⭐</span>First Visit</span>
+                    </div>
+                    <button onClick={fetchCalendar} className="text-sm text-sky-600 hover:text-sky-800 font-medium">↻ Refresh</button>
+                  </div>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                  <div className="grid grid-cols-7 border-b border-gray-200">
+                    {DAY_NAMES.map(d=><div key={d} className="text-center text-xs font-semibold text-gray-500 py-3 border-r border-gray-100 last:border-r-0">{d}</div>)}
+                  </div>
+                  <div className="grid grid-cols-7">
+                    {Array.from({length:totalCells}).map((_,i)=>{
+                      const dayNum=i-firstDay+1
+                      const isValid=dayNum>=1&&dayNum<=daysInMonth
+                      if(!isValid) return <div key={`e-${i}`} className="min-h-28 bg-gray-50 border-r border-b border-gray-100 last:border-r-0"/>
+                      const dateStr=`${calendarMonth}-${String(dayNum).padStart(2,'0')}`
+                      const dayAppts=byDate[dateStr]||[]
+                      const dayBlockedCount=blockedTimes.filter(b=>b.date===dateStr).length
+                      const isToday=dateStr===today
+                      const isSelected=dateStr===selectedDay
+                      return (
+                        <div key={dayNum} onClick={()=>setSelectedDay(isSelected?null:dateStr)}
+                          className={`min-h-16 md:min-h-28 p-1 md:p-2 border-r border-b border-gray-100 last:border-r-0 transition-colors cursor-pointer ${i%7===6?'border-r-0':''}
+                            ${isSelected?'bg-sky-50 ring-2 ring-inset ring-sky-300':isToday?'bg-sky-50/50':'bg-white hover:bg-gray-50'}`}>
+                          <div className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full mb-1
+                            ${isToday?'bg-sky-600 text-white':isSelected?'bg-sky-500 text-white':'text-gray-700'}`}>
+                            {dayNum}
+                          </div>
+                          {dayAppts.length>0 && (
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <span className="text-xs text-sky-600 font-semibold">{dayAppts.length} appt{dayAppts.length!==1?'s':''}</span>
+                              {dayAppts.some(a => a.is_new_client) && (
+                                <span className="text-xs text-amber-500 font-bold leading-none" title="Has first-time client">⭐</span>
+                              )}
+                            </div>
+                          )}
+                          {dayBlockedCount>0 && (
+                            <div className="text-xs text-rose-400 font-medium mb-0.5">🚫 {dayBlockedCount} blocked</div>
+                          )}
+                          {[...dayAppts].sort((a,b)=>a.appointment_time.localeCompare(b.appointment_time)).slice(0,2).map((a,idx)=>(
+                            <div key={idx} className={`text-xs rounded px-1 py-0.5 mb-0.5 truncate font-medium flex items-center gap-0.5 ${
+                              a.service==='simply_cute' ? 'bg-sky-100 text-sky-700' :
+                              a.service==='bath_brush'  ? 'bg-teal-100 text-teal-700' :
+                              a.service==='asian_fusion'? 'bg-pink-100 text-pink-700' :
+                                                          'bg-gray-100 text-gray-600'}`}>
+                              {a.is_new_client && <span className="text-amber-500 flex-shrink-0">⭐</span>}
+                              {a.appointment_time.replace(':00','').replace(' AM','a').replace(' PM','p')} {a.service==='bath_brush'?'B&B':a.service==='asian_fusion'?'AF':a.service==='simply_cute'?'SC':(serviceMap[a.service]??a.service).slice(0,4)}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+            {/* ── Day detail MODAL ─────────────────────────────────────────── */}
+            {selectedDay && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                {/* Backdrop */}
+                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                  onClick={() => { setSelectedDay(null); setBlockingSlot(null); setBlockReason(''); setCalendarStaffFilter('all') }} />
+
+                {/* Modal */}
+                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden"
+                  style={{maxHeight: 'min(80vh, 700px)'}}>
+
+                  {/* Header */}
+                  <div className="bg-sky-50 border-b border-gray-200 px-5 py-4 flex items-center justify-between flex-shrink-0">
+                    <div>
+                      <h3 className="font-bold text-sky-800 text-base">
+                        {new Date(selectedDay+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}
+                      </h3>
+                      <p className="text-xs text-sky-500 mt-0.5">
+                        {(() => {
+                          const all = byDate[selectedDay]||[]
+                          const filtered = calendarStaffFilter === 'all'
+                            ? all
+                            : all.filter(a => a.assigned_groomer === calendarStaffFilter || a.assigned_bather === calendarStaffFilter)
+                          return `${filtered.length} appointment${filtered.length!==1?'s':''}`
+                        })()}
+                        {blockedTimes.filter(b=>b.date===selectedDay).length > 0 &&
+                          <span className="ml-2 text-rose-400">· {blockedTimes.filter(b=>b.date===selectedDay).length} blocked</span>}
+                      </p>
+                    </div>
+                    <button onClick={() => { setSelectedDay(null); setBlockingSlot(null); setBlockReason(''); setCalendarStaffFilter('all') }}
+                      className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-sky-100 text-gray-400 hover:text-gray-700 text-xl font-bold transition-colors">✕</button>
+                  </div>
+
+                  {/* Staff filter chips */}
+                  {staff.filter(s => s.is_active).length > 0 && (
+                    <div className="px-4 py-2.5 flex items-center gap-2 overflow-x-auto flex-shrink-0 border-b border-gray-100 bg-white">
+                      <button
+                        onClick={() => setCalendarStaffFilter('all')}
+                        className={`shrink-0 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                          calendarStaffFilter === 'all'
+                            ? 'bg-sky-500 text-white'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}>
+                        All
+                      </button>
+                      {staff.filter(s => s.is_active).map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() => setCalendarStaffFilter(calendarStaffFilter === s.name ? 'all' : s.name)}
+                          className={`shrink-0 text-xs px-3 py-1.5 rounded-full font-medium transition-colors whitespace-nowrap ${
+                            calendarStaffFilter === s.name
+                              ? s.role === 'groomer' ? 'bg-sky-500 text-white' : 'bg-teal-500 text-white'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}>
+                          {s.role === 'groomer' ? '✂️' : '🛁'} {s.name.split(' ')[0]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Time slots timeline */}
+                  <div className="divide-y divide-gray-50 overflow-y-auto flex-1">
+                    {TIME_OPTIONS.filter(slot => {
+                      const openIdx = TIME_OPTIONS.indexOf(openTime)
+                      const closeIdx = TIME_OPTIONS.indexOf(closeTime)
+                      const slotIdx = TIME_OPTIONS.indexOf(slot)
+                      if (openIdx === -1 || closeIdx === -1) return true
+                      return slotIdx >= openIdx && slotIdx <= closeIdx
+                    }).map(slot => {
+                      // Match exact slot OR any time that falls between this slot and the next
+                      const slotIdx = TIME_OPTIONS.indexOf(slot)
+                      const nextSlot = TIME_OPTIONS[slotIdx + 1]
+                      const toMins = (t: string) => {
+                        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
+                        if (!m) return -1
+                        let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
+                        if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
+                        return h * 60 + min
+                      }
+                      const apptsAll = (byDate[selectedDay]||[]).filter(a => {
+                        if (a.appointment_time === slot) return true
+                        if (!nextSlot) return false
+                        const at = toMins(a.appointment_time), st = toMins(slot), nt = toMins(nextSlot)
+                        return at > st && at < nt
+                      })
+                      const appts = calendarStaffFilter === 'all'
+                        ? apptsAll
+                        : apptsAll.filter(a => a.assigned_groomer === calendarStaffFilter || a.assigned_bather === calendarStaffFilter)
+                      const blocked = blockedTimes.find(b => b.date === selectedDay && b.time === slot)
+                      const isBlocking = blockingSlot?.date === selectedDay && blockingSlot?.time === slot
+
+                      return (
+                        <div key={slot} className={`flex items-stretch min-h-[56px] group transition-opacity ${
+                          appts.length > 0 ? '' : blocked ? 'bg-rose-50/60' : 'hover:bg-gray-50/60'
+                        }`}>
+                          {/* Time label */}
+                          <div className="w-20 flex-shrink-0 flex items-center justify-end pr-3 py-2">
+                            <span className="text-xs font-semibold text-gray-400">{slot}</span>
+                          </div>
+
+                          {/* Slot content */}
+                          <div className="flex-1 border-l border-gray-100 py-2 px-3 flex items-center gap-2">
+                            {appts.length > 0 ? (
+                              <>
+                                {appts.map(appt => (
+                                  <button key={appt.id} onClick={() => { openApptDetail(appt); setSelectedDay(null) }}
+                                    className={`flex-1 flex items-center gap-3 rounded-xl px-3 py-2 text-left transition-all hover:shadow-sm group/pill ${
+                                      appt.is_new_client
+                                        ? 'bg-amber-50 border-2 border-amber-300 hover:bg-amber-100'
+                                        : appt.service==='simply_cute' ? 'bg-sky-50 border border-sky-200 hover:bg-sky-100' :
+                                          appt.service==='bath_brush'  ? 'bg-teal-50 border border-teal-200 hover:bg-teal-100' :
+                                          appt.service==='asian_fusion'? 'bg-pink-50 border border-pink-200 hover:bg-pink-100' :
+                                          'bg-gray-50 border border-gray-200 hover:bg-gray-100'}`}>
+                                    {appt.pets?.photo_url
+                                      ? <img src={appt.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
+                                      : <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base flex-shrink-0">🐶</div>}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <p className="font-semibold text-gray-800 text-sm truncate">{appt.pets?.name} <span className="font-normal text-gray-400 text-xs">{appt.pets?.breed}</span></p>
+                                        {appt.is_new_client && (
+                                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-400 text-white font-bold flex-shrink-0">⭐ First Visit</span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-gray-500 truncate">{serviceMap[appt.service]??appt.service} · {appt.clients?.name}</p>
+                                      <p className="text-xs text-gray-400 mt-0.5">
+                                        <span>✂️ {firstName(appt.assigned_groomer) || <span className="text-gray-300">—</span>}</span>
+                                        <span className="mx-1">·</span>
+                                        <span>🛁 {firstName(appt.assigned_bather) || <span className="text-gray-300">—</span>}</span>
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[appt.status]??'bg-gray-100 text-gray-500'}`}>{appt.status}</span>
+                                      <span className="text-gray-300 group-hover/pill:text-sky-400 text-lg">›</span>
+                                    </div>
+                                  </button>
+                                ))}
+                                {/* Add another appointment at this same time slot */}
+                                <button onClick={() => {
+                                    const d = selectedDay, t = slot
+                                    setSelectedDay(null)
+                                    setBlockingSlot(null); setBlockReason('')
+                                    setAddApptPhone(''); setAddApptClientName(''); setAddApptEmail('')
+                                    setAddApptPetId(''); setAddApptPetName(''); setAddApptBreed(''); setAddApptWeight('')
+                                    setAddApptVaccine('pending'); setAddApptClientData(null)
+                                    setAddApptService(services[0]?.id ?? 'bath_brush')
+                                    setAddingApptSlot({date:d, time:t})
+                                  }}
+                                  className="flex-shrink-0 text-xs bg-sky-100 hover:bg-sky-500 text-sky-600 hover:text-white w-7 h-7 rounded-lg font-bold flex items-center justify-center"
+                                  title="Add another appointment at this time">
+                                  +
+                                </button>
+                              </>
+                            ) : blocked ? (
+                              <div className="flex-1 flex items-center gap-3">
+                                <div className="flex-1 flex items-center gap-2">
+                                  <span className="text-xs font-semibold text-rose-400">🚫 Blocked</span>
+                                  {blocked.reason && <span className="text-xs text-rose-300">— {blocked.reason}</span>}
+                                </div>
+                                <button onClick={() => unblockTimeSlot(selectedDay, slot)}
+                                  className="text-xs text-gray-400 hover:text-rose-500 font-medium px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors">
+                                  ✕ Unblock
+                                </button>
+                              </div>
+                            ) : isBlocking ? (
+                              <div className="flex-1 flex items-center gap-2">
+                                <input type="text" value={blockReason} onChange={e => setBlockReason(e.target.value)}
+                                  placeholder="Reason (optional)"
+                                  className="flex-1 text-xs border border-rose-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                                  autoFocus
+                                  onKeyDown={e => { if (e.key==='Enter') blockTimeSlot(selectedDay,slot,blockReason); if (e.key==='Escape') { setBlockingSlot(null); setBlockReason('') } }} />
+                                <button onClick={() => blockTimeSlot(selectedDay,slot,blockReason)} disabled={savingBlock}
+                                  className="text-xs bg-rose-500 hover:bg-rose-600 text-white px-2 py-1.5 rounded-lg font-medium disabled:opacity-50">
+                                  {savingBlock ? '…' : 'Block'}
+                                </button>
+                                <button onClick={() => { setBlockingSlot(null); setBlockReason('') }}
+                                  className="text-xs text-gray-400 hover:text-gray-600 px-1">Cancel</button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => {
+                                  const d = selectedDay, t = slot
+                                  setSelectedDay(null) // close day popup first so its backdrop doesn't block modal
+                                  setBlockingSlot(null); setBlockReason('')
+                                  setAddApptPhone(''); setAddApptClientName(''); setAddApptEmail('')
+                                  setAddApptPetId(''); setAddApptPetName(''); setAddApptBreed(''); setAddApptWeight('')
+                                  setAddApptVaccine('pending'); setAddApptClientData(null)
+                                  setAddApptService(services[0]?.id ?? 'bath_brush')
+                                  setAddingApptSlot({date:d, time:t})
+                                }}
+                                  className="text-xs bg-sky-500 hover:bg-sky-600 text-white px-2.5 py-1 rounded-lg font-medium transition-colors">
+                                  + Appointment
+                                </button>
+                                <button onClick={() => { setBlockingSlot({date:selectedDay,time:slot}); setBlockReason('') }}
+                                  className="text-xs text-gray-300 hover:text-rose-400 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors font-medium">
+                                  Block
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+              </div>
+            )
+          })()}
+
+          {/* ── SETTINGS ─────────────────────────────────────────────────── */}
+          {tab === 'settings' && (
+            <div className="max-w-3xl space-y-5">
+              {settingsLoading ? <p className="text-gray-400">Loading...</p> : (
+                <>
+                  {/* ── BUSINESS HOURS ───────────────────────────────── */}
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="font-bold text-gray-800">Business Hours</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">Set which days and hours you accept appointments</p>
+                      </div>
+                      <button onClick={async () => {
+                        try {
+                          const responses = await Promise.all([
+                            fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'open_days', value: JSON.stringify(openDays) }) }),
+                            fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'open_time', value: openTime }) }),
+                            fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'close_time', value: closeTime }) }),
+                            fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'appointment_interval', value: String(appointmentInterval) }) }),
+                          ])
+                          for (let i = 0; i < responses.length; i++) {
+                            if (!responses[i].ok) {
+                              const error = await responses[i].json()
+                              console.error(`Failed to save business hours setting ${i}:`, error)
+                              alert(`Error saving business hours: ${error.error || 'Unknown error'}`)
+                              return
+                            }
+                          }
+                          console.log('✓ Business hours saved successfully')
+                          setHoursSaved(true); setTimeout(() => setHoursSaved(false), 2000)
+                        } catch (error) {
+                          console.error('Failed to save business hours:', error)
+                          alert(`Error saving business hours: ${error instanceof Error ? error.message : 'Unknown error'}`)
+                        }
+                      }} className={`text-sm font-semibold px-5 py-2 rounded-xl transition-colors ${hoursSaved ? 'bg-emerald-500 text-white' : 'bg-sky-700 hover:bg-sky-800 text-white'}`}>
+                        {hoursSaved ? '✓ Saved!' : 'Save Hours'}
+                      </button>
+                    </div>
+                    <div className="mb-4">
+                      <p className="text-xs text-gray-500 font-medium mb-2">Open Days</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {DAY_NAMES.map((day, idx) => (
+                          <button key={idx} onClick={() => setOpenDays(prev => prev.includes(idx) ? prev.filter(d => d !== idx) : [...prev, idx].sort((a, b) => a - b))}
+                            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${openDays.includes(idx) ? 'bg-sky-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div>
+                        <p className="text-xs text-gray-500 font-medium mb-1.5">Opening Time</p>
+                        <select value={openTime} onChange={e => setOpenTime(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                          {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 font-medium mb-1.5">Closing Time</p>
+                        <select value={closeTime} onChange={e => setCloseTime(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                          {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 font-medium mb-1.5">Appointment Interval</p>
+                      <div className="flex gap-2">
+                        {([15, 30] as const).map(val => (
+                          <button key={val} onClick={() => setAppointmentInterval(val)}
+                            className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${appointmentInterval === val ? 'bg-sky-700 text-white border-sky-700' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-sky-300'}`}>
+                            Every {val} min
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── SERVICES & PRICING (merged) ──────────────────── */}
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="font-bold text-gray-800">Services & Pricing</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">Name, duration, and price tiers per service</p>
+                      </div>
+                      <button onClick={saveServices}
+                        className={`text-sm font-semibold px-5 py-2 rounded-xl transition-colors ${servicesSaved ? 'bg-emerald-500 text-white' : 'bg-sky-700 hover:bg-sky-800 text-white'}`}>
+                        {servicesSaved ? '✓ Saved!' : 'Save Services'}
+                      </button>
+                    </div>
+
+                    {/* Live preview: what booking page customers see */}
+                    <div className="mb-4 bg-sky-50 border border-sky-100 rounded-xl px-4 py-2.5 flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-semibold text-sky-500 shrink-0">👤 Customers see:</span>
+                      {services.filter(s => s.visible !== false).length === 0
+                        ? <span className="text-xs text-red-500 font-medium">⚠️ No services visible!</span>
+                        : services.filter(s => s.visible !== false).map(s => (
+                          <span key={s.id} className="text-xs bg-white border border-sky-200 text-sky-700 font-medium px-2 py-0.5 rounded-full">{s.name}</span>
+                        ))
+                      }
+                    </div>
+                    <div className="space-y-4">
+                      {services.map((svc, idx) => (
+                        <div key={svc.id} className="border border-gray-200 rounded-2xl overflow-hidden">
+                          {/* Service header row */}
+                          <div className="bg-gray-50 px-4 py-3 flex items-center gap-3">
+                            <input type="text" value={svc.name}
+                              onChange={e => setServices(prev => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
+                              placeholder="Service name"
+                              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white" />
+                            {/* Visibility toggle — auto-saves immediately to services JSON + hidden_service_ids list */}
+                            <button
+                              onClick={async () => {
+                                const newVisible = svc.visible !== false ? false : true
+                                const updated = services.map((s, i) => i === idx ? { ...s, visible: newVisible } : s)
+                                setServices(updated)
+                                try {
+                                  // Save 1: update the services array with visible flag
+                                  const r1 = await fetch('/api/admin/settings', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ key: 'services', value: JSON.stringify(updated) }),
+                                  })
+                                  const d1 = await r1.json()
+                                  if (d1.error) throw new Error(d1.error)
+                                  // Save 2: also write a standalone hidden_service_ids list (belt-and-suspenders)
+                                  const hiddenIds = updated.filter(s => s.visible === false).map(s => s.id)
+                                  const r2 = await fetch('/api/admin/settings', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ key: 'hidden_service_ids', value: JSON.stringify(hiddenIds) }),
+                                  })
+                                  const d2 = await r2.json()
+                                  if (d2.error) throw new Error(d2.error)
+                                  showToast(newVisible ? '👁 Now visible to customers' : '🔒 Hidden from booking page')
+                                } catch {
+                                  showToast('⚠️ Save failed — try again')
+                                  // Revert state on failure
+                                  setServices(services)
+                                }
+                              }}
+                              title={svc.visible === false ? 'Admin only — customers cannot see this' : 'Visible to customers'}
+                              className={`shrink-0 flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${
+                                svc.visible === false
+                                  ? 'bg-gray-100 border-gray-200 text-gray-400 hover:border-gray-300'
+                                  : 'bg-sky-50 border-sky-200 text-sky-600 hover:bg-sky-100'
+                              }`}>
+                              {svc.visible === false ? '🔒 Admin only' : '👁 Customer'}
+                            </button>
+                            <button onClick={() => setServices(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-gray-300 hover:text-rose-500 text-2xl leading-none flex-shrink-0">×</button>
+                          </div>
+                          {/* Description */}
+                          <div className="px-4 py-2.5 border-b border-gray-100">
+                            <input type="text" value={svc.desc}
+                              onChange={e => setServices(prev => prev.map((s, i) => i === idx ? { ...s, desc: e.target.value } : s))}
+                              placeholder="Description shown on booking form…"
+                              className="w-full text-sm text-gray-600 placeholder-gray-300 focus:outline-none" />
+                          </div>
+                          {/* Price tiers — each row has size label, price, and duration */}
+                          <div className="px-4 py-3 space-y-2">
+                            <div className="grid grid-cols-3 gap-2 mb-1">
+                              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide col-span-1">Size</p>
+                              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide text-center">Price</p>
+                              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide text-center">Duration</p>
+                            </div>
+                            {(svc.tiers || []).map((tier, ti) => (
+                              <div key={ti} className="grid grid-cols-3 gap-2 items-center">
+                                <input type="text" value={tier.label}
+                                  onChange={e => setServices(prev => prev.map((s, i) => i === idx ? { ...s, tiers: (s.tiers||[]).map((t, j) => j === ti ? { ...t, label: e.target.value } : t) } : s))}
+                                  placeholder="e.g. Small (under 10 lbs)"
+                                  className="border border-gray-100 rounded-lg px-3 py-1.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sky-200" />
+                                <div className="flex items-center gap-1 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white">
+                                  <span className="text-gray-400 text-xs">$</span>
+                                  <input type="number" min="0" step="1" value={tier.price}
+                                    onChange={e => setServices(prev => prev.map((s, i) => i === idx ? { ...s, tiers: (s.tiers||[]).map((t, j) => j === ti ? { ...t, price: e.target.value } : t) } : s))}
+                                    placeholder="0"
+                                    className="flex-1 text-sm text-right focus:outline-none bg-transparent text-gray-800 font-semibold min-w-0" />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <div className="flex-1 flex items-center gap-1 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white">
+                                    <span className="text-gray-300 text-xs">⏱</span>
+                                    <input type="text" value={tier.duration || ''}
+                                      onChange={e => setServices(prev => prev.map((s, i) => i === idx ? { ...s, tiers: (s.tiers||[]).map((t, j) => j === ti ? { ...t, duration: e.target.value } : t) } : s))}
+                                      placeholder="1 hr"
+                                      className="flex-1 text-sm focus:outline-none bg-transparent text-gray-700 min-w-0" />
+                                  </div>
+                                  <button onClick={() => setServices(prev => prev.map((s, i) => i === idx ? { ...s, tiers: (s.tiers||[]).filter((_, j) => j !== ti) } : s))}
+                                    className="text-gray-300 hover:text-rose-400 text-xl leading-none px-1">×</button>
+                                </div>
+                              </div>
+                            ))}
+                            <button onClick={() => setServices(prev => prev.map((s, i) => i === idx ? { ...s, tiers: [...(s.tiers||[]), { label: '', price: '', duration: '' }] } : s))}
+                              className="text-xs text-sky-500 hover:text-sky-700 font-medium mt-1">
+                              + Add size tier
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => setServices(prev => [...prev, { id: `service_${Date.now()}`, name: '', desc: '', price: '', tiers: DEFAULT_TIERS.map(t => ({...t})) }])}
+                      className="w-full mt-4 border-2 border-dashed border-sky-200 hover:border-sky-400 text-sky-500 hover:text-sky-600 font-semibold py-2.5 rounded-xl text-sm transition-colors">
+                      + Add Service
+                    </button>
+                  </div>
+
+                  {/* ── STAFF ───────────────────────────────────── */}
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <h3 className="font-bold text-gray-800 mb-1">Staff</h3>
+                    <p className="text-xs text-gray-400 mb-4">Manage your groomers and staff</p>
+                    <div className="flex gap-2 mb-4">
+                      <input type="text" placeholder="Staff name" value={newStaffName}
+                        onChange={e => setNewStaffName(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && addStaff()}
+                        className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                      <select value={newStaffRole} onChange={e => setNewStaffRole(e.target.value)}
+                        className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300">
+                        <option value="groomer">Groomer</option>
+                        <option value="bather">Bather</option>
+                        <option value="receptionist">Receptionist</option>
+                        <option value="manager">Manager</option>
+                      </select>
+                      <button onClick={addStaff} disabled={!newStaffName.trim()}
+                        className="bg-sky-700 hover:bg-sky-800 disabled:opacity-40 text-white font-semibold px-4 rounded-xl text-sm transition-colors">
+                        Add
+                      </button>
+                    </div>
+                    {staff.length === 0
+                      ? <p className="text-sm text-gray-400 text-center py-3">No staff added yet</p>
+                      : <div className="space-y-2">
+                          {staff.map(member => (
+                            <div key={member.id} className={`flex items-center justify-between p-3 rounded-xl border ${member.is_active ? 'border-gray-100 bg-gray-50' : 'border-gray-100 bg-white opacity-50'}`}>
+                              <div>
+                                <p className="font-medium text-gray-800 text-sm">{member.name}</p>
+                                <p className="text-xs text-gray-400 capitalize">{member.role}</p>
+                              </div>
+                              <button onClick={() => toggleStaff(member.id, !member.is_active)}
+                                className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+                                  member.is_active ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                                }`}>
+                                {member.is_active ? 'Deactivate' : 'Reactivate'}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                    }
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <h3 className="font-bold text-gray-800 mb-3">Days Off / Blocked Dates</h3>
+                    <div className="flex gap-3 mb-4">
+                      <input type="date" value={newBlockDate} onChange={e=>setNewBlockDate(e.target.value)}
+                        className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                      <input type="text" placeholder="Reason (optional)" value={newBlockReason} onChange={e=>setNewBlockReason(e.target.value)}
+                        className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                      <button onClick={async()=>{
+                        if(!newBlockDate)return
+                        await fetch('/api/admin/blocked-dates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:newBlockDate,reason:newBlockReason||null})})
+                        setNewBlockDate(''); setNewBlockReason(''); fetchSettings()
+                      }} disabled={!newBlockDate}
+                        className="bg-rose-500 hover:bg-rose-600 disabled:opacity-40 text-white font-semibold px-4 py-2 rounded-xl text-sm">
+                        Block Date
+                      </button>
+                    </div>
+                    {blockedDates.length===0
+                      ? <p className="text-sm text-gray-400">No blocked dates</p>
+                      : <div className="space-y-2">
+                          {blockedDates.map(bd=>(
+                            <div key={bd.date} className="flex items-center justify-between bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5">
+                              <div>
+                                <p className="font-medium text-gray-800 text-sm">{new Date(bd.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}</p>
+                                {bd.reason && <p className="text-xs text-gray-500">{bd.reason}</p>}
+                              </div>
+                              <button onClick={async()=>{
+                                await fetch('/api/admin/blocked-dates',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:bd.date})})
+                                fetchSettings()
+                              }} className="text-xs text-rose-500 hover:text-rose-700 font-medium">Remove</button>
+                            </div>
+                          ))}
+                        </div>
+                    }
+                  </div>
+
+                  {/* ── TAGS ───────────────────────────────────────── */}
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <div className="mb-4">
+                      <h3 className="font-bold text-gray-800">🏷️ Tags</h3>
+                      <p className="text-xs text-gray-400 mt-0.5">Create color-coded tags to categorize pets (e.g. Aggressive, Senior, Matted). Tags help you filter and research your clients.</p>
+                    </div>
+
+                    {/* Create tag form */}
+                    <div className="bg-sky-50 border border-sky-100 rounded-xl p-3 mb-4 space-y-2">
+                      <p className="text-xs font-semibold text-sky-700">New tag</p>
+                      <input
+                        placeholder="Tag name (e.g. Aggressive, Senior)"
+                        value={newTagName}
+                        onChange={e => setNewTagName(e.target.value)}
+                        className="w-full border border-sky-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                      />
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Color</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {['sky','rose','amber','violet','emerald','teal','pink','gray','indigo','orange'].map(c => {
+                            const swatch: Record<string,string> = {
+                              sky:'bg-sky-500', rose:'bg-rose-500', amber:'bg-amber-500', violet:'bg-violet-500',
+                              emerald:'bg-emerald-500', teal:'bg-teal-500', pink:'bg-pink-500', gray:'bg-gray-500',
+                              indigo:'bg-indigo-500', orange:'bg-orange-500',
+                            }
+                            return (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() => setNewTagColor(c)}
+                                className={`w-7 h-7 rounded-full ${swatch[c]} ${newTagColor === c ? 'ring-2 ring-offset-2 ring-sky-600' : ''}`}
+                                title={c}
+                              />
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <button
+                        disabled={savingTag || !newTagName.trim()}
+                        onClick={async () => {
+                          setSavingTag(true)
+                          try {
+                            const res = await fetch('/api/admin/tags', {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ name: newTagName.trim(), color: newTagColor }),
+                            })
+                            const data = await res.json()
+                            if (data.tag) {
+                              setTags(prev => [...prev, data.tag].sort((a,b) => a.name.localeCompare(b.name)))
+                              setNewTagName(''); setNewTagColor('sky')
+                            } else if (data.error) { alert(data.error) }
+                          } finally { setSavingTag(false) }
+                        }}
+                        className="w-full bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-lg">
+                        {savingTag ? 'Adding…' : '+ Add Tag'}
+                      </button>
+                    </div>
+
+                    {/* Existing tags list */}
+                    {tags.length === 0
+                      ? <p className="text-sm text-gray-400">No tags yet. Add one above.</p>
+                      : <div className="flex flex-wrap gap-2">
+                          {tags.map(tag => {
+                            const tagStyle: Record<string,string> = {
+                              sky:'bg-sky-100 text-sky-700 border-sky-200',
+                              rose:'bg-rose-100 text-rose-700 border-rose-200',
+                              amber:'bg-amber-100 text-amber-700 border-amber-200',
+                              violet:'bg-violet-100 text-violet-700 border-violet-200',
+                              emerald:'bg-emerald-100 text-emerald-700 border-emerald-200',
+                              teal:'bg-teal-100 text-teal-700 border-teal-200',
+                              pink:'bg-pink-100 text-pink-700 border-pink-200',
+                              gray:'bg-gray-100 text-gray-700 border-gray-200',
+                              indigo:'bg-indigo-100 text-indigo-700 border-indigo-200',
+                              orange:'bg-orange-100 text-orange-700 border-orange-200',
+                            }
+                            return (
+                              <div key={tag.id} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium ${tagStyle[tag.color] || tagStyle.sky}`}>
+                                <span>{tag.name}</span>
+                                <button
+                                  onClick={async () => {
+                                    if (!confirm(`Delete tag "${tag.name}"? It will be removed from all pets.`)) return
+                                    await fetch('/api/admin/tags', {
+                                      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ id: tag.id }),
+                                    })
+                                    setTags(prev => prev.filter(t => t.id !== tag.id))
+                                  }}
+                                  className="hover:bg-black/10 rounded-full w-4 h-4 flex items-center justify-center text-xs">✕</button>
+                              </div>
+                            )
+                          })}
+                        </div>}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  )
+}

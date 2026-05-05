@@ -1,0 +1,15 @@
+{
+  "name": "Kokoni — Admin Mobile",
+  "short_name": "Kokoni Admin",
+  "description": "Admin mobile portal for Kokoni Pet Grooming Salon",
+  "start_url": "/admin/mobile",
+  "scope": "/admin",
+  "display": "standalone",
+  "background_color": "#7b5ea7",
+  "theme_color": "#7b5ea7",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/admin-mobile-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/admin-mobile-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

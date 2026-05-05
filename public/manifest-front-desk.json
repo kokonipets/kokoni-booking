@@ -1,0 +1,25 @@
+{
+  "name": "Kokoni Front Desk",
+  "short_name": "Front Desk",
+  "description": "Front desk portal — book, check in, and cashier for Kokoni Pet Grooming Salon",
+  "start_url": "/front-desk",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#e89838",
+  "theme_color": "#e89838",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/front-desk-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/front-desk-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

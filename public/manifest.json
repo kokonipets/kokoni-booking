@@ -1,0 +1,25 @@
+{
+  "name": "Kokoni Pet Grooming Salon Kiosk",
+  "short_name": "KokoniKiosk",
+  "description": "Check in & check out kiosk for Kokoni Pet Grooming Salon",
+  "start_url": "/kiosk",
+  "scope": "/kiosk",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#e8765a",
+  "theme_color": "#e8765a",
+  "icons": [
+    {
+      "src": "/kiosk-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/kiosk-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

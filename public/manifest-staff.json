@@ -1,0 +1,25 @@
+{
+  "name": "Kokoni Pet Grooming Salon — Staff",
+  "short_name": "Kokoni Staff",
+  "description": "Groomer portal for Kokoni Pet Grooming Salon",
+  "start_url": "/groomer/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#9cc089",
+  "theme_color": "#9cc089",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/staff-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/staff-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# next.js build
+.next/
+out/
+
+# misc
+.DS_Store
+*.pem
+.env
+.env*.local
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# vercel
+.vercel
+
+# lock files for office docs
+.~lock.*

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chat Mockup — Kokoni Pet Grooming Salon</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; }
+  .phone {
+    width: 375px;
+    height: 780px;
+    background: white;
+    border-radius: 40px;
+    border: 12px solid #1f2937;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  }
+  .notch {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 22px;
+    background: #1f2937;
+    border-radius: 0 0 16px 16px;
+    z-index: 100;
+  }
+  .screen { height: 100%; overflow-y: auto; background: #f9fafb; }
+</style>
+</head>
+<body class="p-8">
+
+<div class="max-w-7xl mx-auto">
+  <h1 class="text-2xl font-bold text-gray-900 mb-2">Chat Pattern — Groomer.io Style</h1>
+  <p class="text-gray-600 mb-8">Three views: Home with chat icon → Message list → Conversation thread</p>
+
+  <div class="flex gap-6 flex-wrap justify-center">
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- SCREEN 1: Home / Today with chat icon -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <!-- Status bar -->
+          <div class="pt-8 px-6 pb-2 flex justify-between text-xs font-medium text-gray-800">
+            <span>2:42</span>
+            <span>📶 📶 100%</span>
+          </div>
+
+          <!-- Top Header with CHAT ICON (the new pattern) -->
+          <div class="px-5 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
+            <h1 class="text-xl font-bold text-gray-900">Today</h1>
+            <div class="flex items-center gap-3">
+              <!-- Appointment badge -->
+              <button class="relative">
+                <svg class="w-6 h-6 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+                <span class="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">3</span>
+              </button>
+              <!-- CHAT ICON with unread badge -->
+              <button class="relative">
+                <svg class="w-7 h-7 text-sky-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span class="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">5</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Dashboard cards -->
+          <div class="p-4 grid grid-cols-2 gap-3">
+            <div class="bg-sky-50 rounded-xl p-4"><div class="text-3xl font-bold text-sky-900">3</div><div class="text-xs text-sky-700 mt-1">Coming</div></div>
+            <div class="bg-rose-50 rounded-xl p-4"><div class="text-3xl font-bold text-rose-900">2</div><div class="text-xs text-rose-700 mt-1">Late</div></div>
+            <div class="bg-amber-50 rounded-xl p-4"><div class="text-3xl font-bold text-amber-900">4</div><div class="text-xs text-amber-700 mt-1">In Salon</div></div>
+            <div class="bg-emerald-50 rounded-xl p-4"><div class="text-3xl font-bold text-emerald-900">2</div><div class="text-xs text-emerald-700 mt-1">Done</div></div>
+          </div>
+
+          <div class="px-4">
+            <h3 class="text-sm font-semibold text-gray-600 mb-2">🔴 Late · 2 appts</h3>
+            <div class="bg-white rounded-xl p-4 mb-2 shadow-sm border border-gray-100">
+              <div class="flex justify-between">
+                <div><div class="font-semibold">1:00 PM</div><div class="text-xs text-gray-500">湯圓 · wylie</div></div>
+                <div class="text-xs text-gray-400">Bath & Brush</div>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl p-4 mb-2 shadow-sm border border-gray-100">
+              <div class="flex justify-between">
+                <div><div class="font-semibold">2:00 PM</div><div class="text-xs text-gray-500">wind · wylie</div></div>
+                <div class="text-xs text-gray-400">Simply Cute</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom nav -->
+          <div class="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-2">
+            <div class="flex flex-col items-center text-sky-600 text-xs"><div>🏠</div><div>Home</div></div>
+            <div class="flex flex-col items-center text-gray-400 text-xs"><div>📋</div><div>Requests</div></div>
+            <div class="flex flex-col items-center text-gray-400 text-xs"><div>📅</div><div>Calendar</div></div>
+            <div class="flex flex-col items-center text-gray-400 text-xs"><div>💵</div><div>Check Out</div></div>
+            <div class="flex flex-col items-center text-gray-400 text-xs"><div>⚙️</div><div>More</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="text-center text-sm text-gray-600 mt-4 max-w-[375px]">
+        <strong>1. Any screen</strong><br>
+        Chat icon top-right with badge "5" = 5 unread customer texts
+      </p>
+    </div>
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- SCREEN 2: Messages list overlay      -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="pt-8 px-6 pb-2 flex justify-between text-xs font-medium text-gray-800">
+            <span>2:42</span>
+            <span>📶 📶 100%</span>
+          </div>
+
+          <!-- Messages header with Done button -->
+          <div class="px-5 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
+            <button class="text-sky-600 font-medium">Done</button>
+            <h1 class="text-lg font-bold text-gray-900">Messages</h1>
+            <button class="text-gray-500">•••</button>
+          </div>
+
+          <!-- Search bar -->
+          <div class="px-4 py-2 bg-white border-b border-gray-100">
+            <input type="text" placeholder="🔍 Search name or phone..." class="w-full text-sm bg-gray-100 rounded-lg px-3 py-2 focus:outline-none">
+          </div>
+
+          <!-- Thread list -->
+          <div class="divide-y divide-gray-100 bg-white">
+
+            <div class="flex items-center gap-3 px-4 py-3">
+              <div class="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 font-bold">K</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-baseline">
+                  <div class="font-semibold text-gray-900">Karen Rojek</div>
+                  <div class="text-xs text-rose-500 font-medium">1h ago</div>
+                </div>
+                <div class="text-sm text-gray-600 truncate">It's my bad didn't send you messages, sorry for it</div>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0"></span>
+            </div>
+
+            <div class="flex items-center gap-3 px-4 py-3">
+              <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold">A</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-baseline">
+                  <div class="font-semibold text-gray-900">Aundrea Unique</div>
+                  <div class="text-xs text-gray-400">1d ago</div>
+                </div>
+                <div class="text-sm text-gray-600 truncate">Okay</div>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0"></span>
+            </div>
+
+            <div class="flex items-center gap-3 px-4 py-3 bg-gray-50">
+              <div class="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 font-bold">R</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-baseline">
+                  <div class="font-semibold text-gray-900">Ron Laureano</div>
+                  <div class="text-xs text-gray-400">3d ago</div>
+                </div>
+                <div class="text-sm text-gray-500 truncate">
+                  <span class="text-gray-400">You:</span> Sorry I'm just seeing this. On my way
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 px-4 py-3 bg-gray-50">
+              <div class="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">D</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-baseline">
+                  <div class="font-semibold text-gray-900">Denise Kaser</div>
+                  <div class="text-xs text-gray-400">3d ago</div>
+                </div>
+                <div class="text-sm text-gray-500 truncate">Yes that is fine. Thank you</div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 px-4 py-3">
+              <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 font-bold">S</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-baseline">
+                  <div class="font-semibold text-gray-900">Sofia Trinh</div>
+                  <div class="text-xs text-gray-400">3d ago</div>
+                </div>
+                <div class="text-sm text-gray-600 truncate">Hi Wylie! Can you let me know how much is it? I will Zell...</div>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0"></span>
+            </div>
+
+            <div class="flex items-center gap-3 px-4 py-3 bg-gray-50">
+              <div class="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center text-rose-700 font-bold">T</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-baseline">
+                  <div class="font-semibold text-gray-900">Terry Hu</div>
+                  <div class="text-xs text-gray-400">3d ago</div>
+                </div>
+                <div class="text-sm text-gray-500 truncate">Just he doesn't like when I brushing tangles</div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 px-4 py-3">
+              <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold">I</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-baseline">
+                  <div class="font-semibold text-gray-900">Isabella Wynn</div>
+                  <div class="text-xs text-gray-400">4d ago</div>
+                </div>
+                <div class="text-sm text-gray-600 truncate">Hello, do you have availability for a bath and haircut for...</div>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0"></span>
+            </div>
+
+            <div class="flex items-center gap-3 px-4 py-3">
+              <div class="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">X</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-baseline">
+                  <div class="font-semibold text-gray-900">Xiaofan Guo</div>
+                  <div class="text-xs text-gray-400">4d ago</div>
+                </div>
+                <div class="text-sm text-gray-600 truncate">😊</div>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0"></span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+      <p class="text-center text-sm text-gray-600 mt-4 max-w-[375px]">
+        <strong>2. Tap chat icon</strong><br>
+        Full-screen message list. Blue dot = unread. "Done" returns to previous screen.
+      </p>
+    </div>
+
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- SCREEN 3: Individual conversation   -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen bg-gray-50 flex flex-col">
+          <div class="pt-8 px-6 pb-2 flex justify-between text-xs font-medium text-gray-800">
+            <span>2:42</span>
+            <span>📶 📶 100%</span>
+          </div>
+
+          <!-- Conversation header -->
+          <div class="px-4 py-3 bg-white border-b border-gray-200 flex items-center gap-3">
+            <button class="text-sky-600 font-medium text-sm">‹ Messages</button>
+            <div class="flex-1 text-center">
+              <div class="font-semibold text-gray-900">Karen Rojek</div>
+              <div class="text-xs text-gray-500">(626) 429-0038</div>
+            </div>
+            <button class="text-gray-400">ⓘ</button>
+          </div>
+
+          <!-- Messages -->
+          <div class="flex-1 p-4 space-y-3 overflow-y-auto">
+            <div class="text-center text-xs text-gray-400 my-2">Today 1:35 PM</div>
+
+            <!-- Outbound -->
+            <div class="flex justify-end">
+              <div class="max-w-[75%] bg-sky-500 text-white rounded-2xl rounded-br-sm px-4 py-2">
+                <div class="text-sm">Hi Karen! 🐾 Reminder: Jack's Bath & Brush appointment is TOMORROW at 2:00pm.</div>
+                <div class="text-[10px] text-sky-100 mt-1">1:35 PM</div>
+              </div>
+            </div>
+
+            <!-- Inbound -->
+            <div class="flex justify-start">
+              <div class="max-w-[75%] bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-2">
+                <div class="text-sm text-gray-900">Thanks! Running about 10 min late, sorry 😬</div>
+                <div class="text-[10px] text-gray-400 mt-1">1:42 PM</div>
+              </div>
+            </div>
+
+            <div class="flex justify-end">
+              <div class="max-w-[75%] bg-sky-500 text-white rounded-2xl rounded-br-sm px-4 py-2">
+                <div class="text-sm">No problem, see you soon!</div>
+                <div class="text-[10px] text-sky-100 mt-1">1:43 PM</div>
+              </div>
+            </div>
+
+            <div class="flex justify-start">
+              <div class="max-w-[75%] bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-4 py-2">
+                <div class="text-sm text-gray-900">It's my bad didn't send you messages, sorry for it</div>
+                <div class="text-[10px] text-gray-400 mt-1">2:42 PM</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input -->
+          <div class="p-3 bg-white border-t border-gray-200">
+            <div class="flex items-end gap-2 bg-gray-100 rounded-2xl px-3 py-2">
+              <input type="text" placeholder="Message" class="flex-1 bg-transparent text-sm focus:outline-none">
+              <button class="w-8 h-8 rounded-full bg-sky-500 text-white flex items-center justify-center">↑</button>
+            </div>
+            <p class="text-[10px] text-gray-400 text-center mt-1">Reply sends from (949) 868-0900</p>
+          </div>
+        </div>
+      </div>
+      <p class="text-center text-sm text-gray-600 mt-4 max-w-[375px]">
+        <strong>3. Tap a conversation</strong><br>
+        iMessage-style thread. Your replies blue, customer texts white. Type + send.
+      </p>
+    </div>
+
+  </div>
+
+  <div class="mt-12 max-w-3xl mx-auto bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+    <h2 class="text-lg font-bold text-gray-900 mb-3">What changes from current build?</h2>
+    <ul class="space-y-2 text-sm text-gray-700">
+      <li>✅ <strong>Chat icon moves to top-right header</strong> of every admin page (not just a bottom tab)</li>
+      <li>✅ <strong>Unread badge</strong> visible from anywhere — staff always know when a customer texted</li>
+      <li>✅ <strong>Full-screen overlay</strong> opens on tap (with "Done" button to return)</li>
+      <li>✅ <strong>Blue dot per unread row</strong> (cleaner than current per-row badge)</li>
+      <li>✅ <strong>Customer avatar circles</strong> with first-letter initial + colored background</li>
+      <li>✅ <strong>iMessage-style speech bubbles</strong> in thread view (already built)</li>
+    </ul>
+  </div>
+
+</div>
+
+</body>
+</html>
