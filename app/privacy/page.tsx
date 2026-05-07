@@ -1,136 +1,93 @@
-export const metadata = {
-  title: 'Privacy Policy — Kokoni Pet Grooming Salon',
-  description: 'Privacy policy for Kokoni Pet Grooming Salon.',
-}
-
-export default function PrivacyPolicy() {
-  const updated = 'April 14, 2026'
-
+export default function PrivacyPage() {
   return (
-    <main className="min-h-screen bg-white">
-      <div className="max-w-3xl mx-auto px-6 py-12 text-gray-800">
-        <h1 className="text-3xl font-bold text-sky-900 mb-2">Privacy Policy</h1>
-        <p className="text-sm text-gray-500 mb-8">Last updated: {updated}</p>
+    <main className="max-w-2xl mx-auto px-6 py-12 text-gray-700">
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
+      <p className="text-sm text-gray-500 mb-8">Last updated: May 2026</p>
 
-        <section className="space-y-6 leading-relaxed">
-          <p>
-            Kokoni Pet Grooming Salon (&ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) respects your
-            privacy. This Privacy Policy explains how we collect, use, and protect information when you book
-            grooming services with us.
-          </p>
+      <p className="mb-6">
+        Kokoni Pet Grooming Salon ("we," "us," or "our") operates the booking website at{' '}
+        <strong>book.kokonipets.com</strong>. This Privacy Policy explains how we collect, use,
+        and protect your personal information when you book an appointment with us.
+      </p>
 
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">1. Information We Collect</h2>
-            <p>We collect only the information needed to schedule and deliver grooming services, including:</p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
-              <li>Your name and phone number</li>
-              <li>Your pet&rsquo;s name, breed, age, and grooming notes</li>
-              <li>Appointment details (service, date, time)</li>
-              <li>Optional vaccine and health notes you choose to share</li>
-            </ul>
-          </div>
+      <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">Information We Collect</h2>
+      <p className="mb-4">
+        When you book an appointment, we collect your name, phone number, email address, and
+        information about your pet (name, breed, weight, vaccination records). We use this
+        information solely to manage your grooming appointments and communicate with you about
+        your bookings.
+      </p>
 
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">2. How We Use Your Information</h2>
-            <p>We use the information you provide to:</p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
-              <li>Schedule, confirm, reschedule, and complete grooming appointments</li>
-              <li>Send appointment reminders and ready-for-pickup notifications via SMS</li>
-              <li>Communicate with you about your pet&rsquo;s visit</li>
-              <li>Maintain records for safety and service quality</li>
-            </ul>
-          </div>
+      <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">SMS / Text Message Communications</h2>
+      <p className="mb-4">
+        By providing your mobile phone number and checking the SMS consent box during booking,
+        you expressly consent to receive text messages (SMS) from Kokoni Pet Grooming Salon at
+        the phone number you provide. These messages may include:
+      </p>
+      <ul className="list-disc pl-6 mb-4 space-y-1">
+        <li>Appointment confirmations</li>
+        <li>Appointment reminders</li>
+        <li>Notifications that your pet is ready for pickup</li>
+        <li>Rescheduling or cancellation notices</li>
+      </ul>
+      <p className="mb-4">
+        <strong>Message frequency:</strong> You will receive up to 4 messages per appointment
+        (confirmation, reminder, grooming updates, and pickup notification).
+      </p>
+      <p className="mb-4">
+        <strong>Message and data rates may apply.</strong> Check with your mobile carrier for
+        details on your plan.
+      </p>
+      <p className="mb-4">
+        <strong>Opt-out:</strong> You may opt out of SMS messages at any time by replying{' '}
+        <strong>STOP</strong> to any text message you receive from us. After opting out, you
+        will receive one final confirmation message and no further texts. To re-subscribe, reply{' '}
+        <strong>START</strong>.
+      </p>
+      <p className="mb-4">
+        <strong>Help:</strong> Reply <strong>HELP</strong> to any message for assistance, or
+        contact us directly at (626) 621-4646 or kokonipets@gmail.com.
+      </p>
+      <p className="mb-4">
+        SMS consent is <strong>not required</strong> as a condition of booking an appointment.
+        You may book without consenting to SMS and we will communicate with you by phone or email
+        instead.
+      </p>
+      <p className="mb-6">
+        We do <strong>not</strong> share your phone number or consent data with third parties for
+        marketing purposes. Your information is used solely to send appointment-related messages
+        from Kokoni Pet Grooming Salon.
+      </p>
 
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">3. SMS Messaging</h2>
-            <p>
-              By providing your phone number and checking the consent box when booking, you agree to receive
-              appointment-related text messages from Kokoni Pet Grooming Salon. Message frequency varies based on
-              your appointments. Message &amp; data rates may apply.
-            </p>
-            <p className="mt-2">
-              You can opt out at any time by replying <strong>STOP</strong> to any message. Reply{' '}
-              <strong>HELP</strong> for help, or call us at (626) 621-4646.
-            </p>
-            <p className="mt-2">
-              <strong>We do not share SMS opt-in data or phone numbers with third parties or affiliates for
-              marketing purposes.</strong> Phone numbers collected for SMS are used solely to send
-              appointment-related messages.
-            </p>
-          </div>
+      <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">How We Use Your Information</h2>
+      <p className="mb-4">
+        We use your personal information to schedule and manage grooming appointments, send
+        appointment reminders and updates, and improve our services. We do not sell or rent your
+        personal information to third parties.
+      </p>
 
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">4. Information Sharing</h2>
-            <p>
-              We do not sell, rent, or share your personal information with third parties for marketing
-              purposes. We share information only with service providers that help us operate the business,
-              such as:
-            </p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
-              <li>Our SMS delivery provider (Twilio) — to send appointment text messages</li>
-              <li>Our database provider (Supabase) — to securely store your appointment records</li>
-              <li>Our hosting provider (Vercel) — to operate the booking website</li>
-            </ul>
-            <p className="mt-2">
-              These providers are contractually required to protect your information and use it only to
-              provide services to us.
-            </p>
-          </div>
+      <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">Data Security</h2>
+      <p className="mb-4">
+        We take reasonable measures to protect your personal information from unauthorized access
+        or disclosure. Your data is stored securely and accessible only to Kokoni Pet Grooming
+        Salon staff for appointment management purposes.
+      </p>
 
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">5. Data Security</h2>
-            <p>
-              We use industry-standard safeguards to protect your information. Data is transmitted over
-              encrypted connections (HTTPS) and stored in secure databases with restricted access.
-            </p>
-          </div>
+      <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">Contact Us</h2>
+      <p className="mb-4">
+        If you have questions about this Privacy Policy or how we handle your information,
+        please contact us:
+      </p>
+      <ul className="list-none pl-0 space-y-1 mb-8">
+        <li><strong>Kokoni Pet Grooming Salon</strong></li>
+        <li>Phone: (626) 621-4646</li>
+        <li>Email: kokonipets@gmail.com</li>
+        <li>Website: book.kokonipets.com</li>
+      </ul>
 
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">6. Data Retention</h2>
-            <p>
-              We retain customer and appointment information for as long as needed to provide services and
-              comply with our legal obligations. You may request deletion of your records at any time by
-              contacting us.
-            </p>
-          </div>
-
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">7. Your Rights</h2>
-            <p>You have the right to:</p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
-              <li>Request access to the information we hold about you</li>
-              <li>Request correction of inaccurate information</li>
-              <li>Request deletion of your information</li>
-              <li>Opt out of SMS messages at any time by replying STOP</li>
-            </ul>
-          </div>
-
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">8. Children&rsquo;s Privacy</h2>
-            <p>
-              Our services are intended for adult pet owners. We do not knowingly collect information from
-              children under 13.
-            </p>
-          </div>
-
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">9. Changes to This Policy</h2>
-            <p>
-              We may update this Privacy Policy from time to time. The &ldquo;Last updated&rdquo; date at the
-              top of this page will reflect any changes.
-            </p>
-          </div>
-
-          <div>
-            <h2 className="text-xl font-semibold text-sky-900 mb-2">10. Contact Us</h2>
-            <p>If you have questions about this Privacy Policy or your information, contact us:</p>
-            <ul className="list-none pl-0 mt-2 space-y-1">
-              <li><strong>Kokoni Pet Grooming Salon</strong></li>
-              <li>Phone: (626) 621-4646</li>
-            </ul>
-          </div>
-        </section>
-      </div>
+      <p className="text-sm text-gray-400 mt-8">
+        © 2026 Kokoni Pet Grooming Salon. All rights reserved.
+      </p>
     </main>
   )
 }
