@@ -1234,16 +1234,29 @@ export default function BookPage() {
               ))}
             </div>
 
-            {/* Agree checkbox */}
+            {/* Agree to Terms of Service (required) */}
             <label className="flex items-start gap-3 mt-4 cursor-pointer">
               <input
                 type="checkbox"
                 checked={tosAgreed}
                 onChange={e => setTosAgreed(e.target.checked)}
-                className="w-5 h-5 mt-0.5 accent-sky-600 cursor-pointer"
+                className="w-5 h-5 mt-0.5 accent-sky-600 cursor-pointer flex-shrink-0"
               />
               <span className="text-sm text-gray-700">
-                I have read and agree to the <strong>Terms of Service</strong>, and I agree to receive appointment-related text messages from Kokoni Pet Grooming Salon at the phone number provided. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.
+                I have read and agree to the <strong>Terms of Service</strong>.
+              </span>
+            </label>
+
+            {/* SMS Consent (optional) */}
+            <label className="flex items-start gap-3 mt-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={smsConsentChecked}
+                onChange={e => setSmsConsentChecked(e.target.checked)}
+                className="w-5 h-5 mt-0.5 accent-sky-600 cursor-pointer flex-shrink-0"
+              />
+              <span className="text-sm text-gray-700">
+                <strong>(Optional)</strong> I agree to receive appointment-related text messages from Kokoni Pet Grooming Salon at the phone number provided. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Consent is not required to book an appointment.
               </span>
             </label>
 
