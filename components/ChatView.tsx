@@ -159,7 +159,7 @@ export default function ChatView() {
             <div className="p-6 text-center text-sm text-gray-400">Loading…</div>
           ) : filteredThreads.length === 0 ? (
             <div className="p-6 text-center text-sm text-gray-400">
-              No conversations yet. When a customer texts (949) 868-0900, it will appear here.
+              No conversations yet. When a customer texts (626) 789-0858, it will appear here.
             </div>
           ) : (
             filteredThreads.map(t => (
@@ -267,7 +267,7 @@ export default function ChatView() {
                 </button>
               </div>
               <div className="mt-1 text-[10px] text-gray-400">
-                Replies send from (949) 868-0900 via SMS. Standard rates apply.
+                Replies send from (626) 789-0858 via SMS. Standard rates apply.
               </div>
             </div>
           </>
