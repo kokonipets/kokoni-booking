@@ -23,7 +23,12 @@ export async function GET() {
     .limit(500)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: error.message, _debug: 'select_error' }, { status: 500 })
+  }
+
+  // Temporary debug: return raw count
+  if (!msgs || msgs.length === 0) {
+    return NextResponse.json({ threads: [], _debug: 'no_msgs', _error: error })
   }
 
   type Msg = NonNullable<typeof msgs>[number]
