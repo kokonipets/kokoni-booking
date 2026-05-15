@@ -33,7 +33,7 @@ export default function ChatSidebarLink({ href = '/admin/desk/chat', onClick }: 
     <a
       href={href}
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-100 hover:bg-white/5 hover:text-white transition-colors text-left"
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
     >
       <span className="text-base leading-none w-5 text-center">💬</span>
       <span className="flex-1">Chat</span>
