@@ -56,6 +56,24 @@ export default function ChatView() {
   const [search, setSearch] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  async function syncAndLoadThreads() {
+    // Pull new inbound messages from Twilio API (fallback since webhook may not fire)
+    try {
+      await fetch('/api/admin/chat/sync', { cache: 'no-store' })
+    } catch (e) {
+      console.error('sync error', e)
+    }
+    try {
+      const res = await fetch('/api/admin/chat/threads', { cache: 'no-store' })
+      const json = await res.json()
+      setThreads(json.threads ?? [])
+      setLoading(false)
+    } catch (e) {
+      console.error(e)
+      setLoading(false)
+    }
+  }
+
   async function loadThreads() {
     try {
       const res = await fetch('/api/admin/chat/threads', { cache: 'no-store' })
@@ -87,8 +105,8 @@ export default function ChatView() {
   }
 
   useEffect(() => {
-    loadThreads()
-    const iv = setInterval(loadThreads, 15000) // poll every 15s for new messages
+    syncAndLoadThreads()
+    const iv = setInterval(syncAndLoadThreads, 15000) // sync from Twilio + refresh every 15s
     return () => clearInterval(iv)
   }, [])
 
