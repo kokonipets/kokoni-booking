@@ -5876,6 +5876,14 @@ export default function DeskAdmin() {
                         <p className="text-xs text-gray-500">Sent when customer rates 4-5 stars</p>
                       </div>
 
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-800 mb-3">😔 Negative Feedback Message</h3>
+                        <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3 max-h-24 overflow-y-auto">
+                          {reviewSettings.feedback_request_template || <span className="text-gray-400 italic">Not set</span>}
+                        </div>
+                        <p className="text-xs text-gray-500">Sent to customer when they rate 1-3 stars</p>
+                      </div>
+
                       {/* Review Links */}
                       <div className="bg-white rounded-lg border border-gray-200 p-4">
                         <h3 className="font-bold text-gray-800 mb-3">🔗 Google Review Link</h3>
@@ -5940,6 +5948,18 @@ export default function DeskAdmin() {
                           rows={4}
                         />
                         <p className="text-xs text-gray-500 mt-2">Use {'{google_url}'} and {'{yelp_url}'} as placeholders for review links</p>
+                      </div>
+
+                      {/* Negative Feedback Template */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <label className="block font-bold text-gray-800 mb-2">😔 Negative Feedback Message</label>
+                        <textarea
+                          value={reviewSettingsEdit.feedback_request_template || ''}
+                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, feedback_request_template: e.target.value })}
+                          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows={4}
+                        />
+                        <p className="text-xs text-gray-500 mt-2">Sent to customer when they rate 1-3 stars. Use {'{client_name}'} as placeholder.</p>
                       </div>
 
                       {/* Google Review URL */}
