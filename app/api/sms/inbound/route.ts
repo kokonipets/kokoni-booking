@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer } from '@/lib/supabase'
+import { sendSMS } from '@/lib/sms'
 
 // Twilio posts here when someone texts our number.
-// Configure in Twilio Console: Phone Numbers → Active → +1 (949) 868-0900
-//   "A MESSAGE COMES IN" → Webhook → https://www.kokonipetsalon.com/api/sms/inbound (HTTP POST)
+// Configure in Twilio Console: Messaging Services → Kokoni Pet Grooming Salon → Integration
+//   "Send a webhook" → https://book.kokonipets.com/api/sms/inbound (HTTP POST)
 export const dynamic = 'force-dynamic'
 
 // Strip +1 / spaces / dashes → 10-digit
@@ -63,6 +64,81 @@ export async function POST(req: NextRequest) {
     return xmlResponse(
       'Kokoni Pet Grooming Salon: You are re-subscribed to appointment messages. Reply STOP to opt out.'
     )
+  }
+
+  // Check if this is a review rating response (1-5)
+  const ratingMatch = body.match(/^[1-5]/)
+  if (ratingMatch) {
+    const rating = parseInt(ratingMatch[0])
+    // Look for a recent pending review for this phone (within 48 hours)
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+    const { data: review } = await sb
+      .from('reviews')
+      .select('*')
+      .eq('client_phone', tenDigit)
+      .in('status', ['sent', 'pending'])
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (review) {
+      // Update review with rating
+      await sb
+        .from('reviews')
+        .update({
+          rating,
+          response_text: body,
+          rating_received_at: new Date().toISOString(),
+          status: rating >= 4 ? 'positive' : 'negative',
+        })
+        .eq('id', review.id)
+
+      await sb.from('review_activity_log').insert({
+        review_id: review.id,
+        action: 'rating_received',
+        actor: 'system',
+        details: { rating, from },
+      })
+
+      // Fetch settings
+      const { data: settings } = await sb
+        .from('review_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle()
+
+      if (settings) {
+        if (rating >= 4) {
+          // Positive: send review links
+          let msg = settings.positive_response_template ?? ''
+          if (settings.google_review_url) msg = msg.replace('{google_url}', settings.google_review_url)
+          if (settings.yelp_business_url) msg = msg.replace('{yelp_url}', settings.yelp_business_url)
+          if (msg) await sendSMS(tenDigit, msg)
+        } else {
+          // Negative: send feedback request + alert admin
+          if (settings.feedback_request_template) {
+            await sendSMS(tenDigit, settings.feedback_request_template)
+          }
+          if (settings.alert_on_negative && settings.admin_alert_phone) {
+            const alert = `⚠️ Negative review! ${review.client_name ?? tenDigit} gave ${rating}★. Message: "${body}"`
+            await sendSMS(settings.admin_alert_phone, alert)
+          }
+          // Log alert
+          await sb.from('review_alerts').insert({
+            review_id: review.id,
+            client_phone: tenDigit,
+            client_name: review.client_name,
+            rating,
+            feedback_text: body,
+            status: 'pending',
+          })
+        }
+      }
+
+      // Don't show review responses in Chat — handled above
+      return xmlResponse('')
+    }
   }
 
   // No auto-reply for normal messages — they'll be seen in the Chat tab and
