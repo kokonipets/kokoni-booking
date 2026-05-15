@@ -63,7 +63,18 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ synced: newCount, total: messages.length })
+    // Debug: check if we can read back from sms_messages
+    const { data: readCheck, error: readError } = await sb
+      .from('sms_messages')
+      .select('id, direction, client_phone')
+      .limit(5)
+
+    return NextResponse.json({
+      synced: newCount,
+      total: messages.length,
+      dbReadCount: readCheck?.length ?? 0,
+      dbReadError: readError?.message ?? null,
+    })
   } catch (error: any) {
     console.error('Chat sync error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
