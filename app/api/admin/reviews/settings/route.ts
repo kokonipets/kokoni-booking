@@ -72,11 +72,25 @@ export async function PUT(request: NextRequest) {
       .select('id')
       .limit(1)
 
+    let settingsId: string
+
     if (!settings || settings.length === 0) {
-      return Response.json({ error: 'Settings not found' }, { status: 404 })
+      // No settings record exists yet — create one
+      const { data: created, error: createError } = await supabase
+        .from('review_settings')
+        .insert(updateData)
+        .select()
+        .single()
+
+      if (createError) {
+        console.error('Failed to create settings:', createError)
+        return Response.json({ error: 'Failed to create settings', details: createError.message }, { status: 500 })
+      }
+
+      return Response.json(created)
     }
 
-    const settingsId = settings[0].id
+    settingsId = settings[0].id
 
     // Update settings
     const { data: updated, error } = await supabase
