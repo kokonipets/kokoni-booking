@@ -46,7 +46,7 @@ export async function GET() {
 
       if (!existing) {
         const tenDigit = toTenDigits(msg.from)
-        await sb.from('sms_messages').insert({
+        const { error: insertError } = await sb.from('sms_messages').insert({
           direction: 'inbound',
           from_number: msg.from,
           to_number: msg.to,
@@ -55,6 +55,10 @@ export async function GET() {
           client_phone: tenDigit,
           created_at: msg.dateSent?.toISOString() ?? new Date().toISOString(),
         })
+        if (insertError) {
+          console.error('Insert error:', insertError)
+          return NextResponse.json({ error: insertError.message, code: insertError.code, details: insertError.details }, { status: 500 })
+        }
         newCount++
       }
     }
