@@ -489,7 +489,7 @@ export default function DeskAdmin() {
   const [payrollEndDate, setPayrollEndDate] = useState('')
   const [payrollNotes, setPayrollNotes] = useState('')
   const [payrollSelectedGroomer, setPayrollSelectedGroomer] = useState('')
-  type PayrollDailyRow = {date:string;appts:number;revenue:number;tips:number}
+  type PayrollDailyRow = {date:string;appts:number;revenue:number;tips:number;commission:number;tipShare:number}
   type PayrollGroomerRow = {name:string;appts:number;revenue:number;tips:number;commission:number;tipShare:number;commRate:number;tipRate:number}
   type PayrollReportData = {daily: PayrollDailyRow[]; groomers: PayrollGroomerRow[]}
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
@@ -1459,19 +1459,27 @@ export default function DeskAdmin() {
       })
 
       // ── Daily totals (all groomers combined for the filtered set) ──
-      const byDate: Record<string, {appts: number; revenue: number; tips: number}> = {}
+      const byDate: Record<string, {appts: number; revenue: number; tips: number; commission: number; tipShare: number}> = {}
       appts.forEach((a: any) => {
         const d = a.appointment_date
-        if (!byDate[d]) byDate[d] = { appts: 0, revenue: 0, tips: 0 }
+        if (!byDate[d]) byDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
         byDate[d].appts += 1
         if (a.payment_status === 'paid') {
-          byDate[d].revenue += parseFloat(a.payment_amount || '0')
-          byDate[d].tips += parseFloat(a.tip_amount || '0')
+          const rev = parseFloat(a.payment_amount || '0')
+          const tip = parseFloat(a.tip_amount || '0')
+          byDate[d].revenue += rev
+          byDate[d].tips += tip
+          // Look up this appointment's groomer rates
+          const apptMember = a.assigned_groomer ? staff.find(s => s.name === a.assigned_groomer) : null
+          const cRate = apptMember ? apptMember.commission_percent / 100 : 0
+          const tRate = apptMember ? apptMember.tip_percent / 100 : 0
+          byDate[d].commission += rev * cRate
+          byDate[d].tipShare += tip * tRate
         }
       })
       const daily = Object.entries(byDate)
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, v]) => ({ date, appts: v.appts, revenue: v.revenue, tips: v.tips }))
+        .map(([date, v]) => ({ date, appts: v.appts, revenue: v.revenue, tips: v.tips, commission: v.commission, tipShare: v.tipShare }))
 
       // ── Per-groomer totals for the period ──
       const groomersToShow = payrollSelectedGroomer
@@ -1514,14 +1522,16 @@ export default function DeskAdmin() {
 
     // Section 1: Daily transactions
     csv += 'DAILY TRANSACTIONS\r\n'
-    csv += 'Date,Appointments,Revenue,Tips Collected\r\n'
+    csv += 'Date,Appointments,Revenue,Commission Earned,Tips Collected,Tip Share Earned\r\n'
     payrollReport.daily.forEach(r => {
-      csv += `${r.date},${r.appts},$${r.revenue.toFixed(2)},$${r.tips.toFixed(2)}\r\n`
+      csv += `${r.date},${r.appts},$${r.revenue.toFixed(2)},$${r.commission.toFixed(2)},$${r.tips.toFixed(2)},$${r.tipShare.toFixed(2)}\r\n`
     })
     const dTotalAppts = payrollReport.daily.reduce((s, r) => s + r.appts, 0)
     const dTotalRev = payrollReport.daily.reduce((s, r) => s + r.revenue, 0)
     const dTotalTips = payrollReport.daily.reduce((s, r) => s + r.tips, 0)
-    csv += `TOTAL,${dTotalAppts},$${dTotalRev.toFixed(2)},$${dTotalTips.toFixed(2)}\r\n\r\n`
+    const dTotalComm = payrollReport.daily.reduce((s, r) => s + r.commission, 0)
+    const dTotalTipShare = payrollReport.daily.reduce((s, r) => s + r.tipShare, 0)
+    csv += `TOTAL,${dTotalAppts},$${dTotalRev.toFixed(2)},$${dTotalComm.toFixed(2)},$${dTotalTips.toFixed(2)},$${dTotalTipShare.toFixed(2)}\r\n\r\n`
 
     // Section 2: Groomer pay summary
     csv += 'GROOMER PAY SUMMARY\r\n'
@@ -5567,35 +5577,45 @@ export default function DeskAdmin() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b-2 border-gray-200">
-                              <th className="text-left text-xs font-semibold text-gray-500 pb-2 pr-4">Date</th>
-                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-3">Appts</th>
-                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-3">Revenue</th>
-                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 pl-3">Tips Collected</th>
+                              <th className="text-left text-xs font-semibold text-gray-500 pb-2 pr-3">Date</th>
+                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-2">Appts</th>
+                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-2">Revenue</th>
+                              <th className="text-right text-xs font-semibold text-sky-600 pb-2 px-2">Commission</th>
+                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-2">Tips</th>
+                              <th className="text-right text-xs font-semibold text-emerald-600 pb-2 pl-2">Tip Share</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                             {payrollReport.daily.map(row => (
                               <tr key={row.date} className="hover:bg-gray-50">
-                                <td className="py-2 pr-4 text-gray-800 font-medium whitespace-nowrap">
+                                <td className="py-2 pr-3 text-gray-800 font-medium whitespace-nowrap">
                                   {new Date(row.date + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
                                 </td>
-                                <td className="py-2 px-3 text-right text-gray-600">{row.appts}</td>
-                                <td className="py-2 px-3 text-right text-gray-800">${row.revenue.toFixed(2)}</td>
-                                <td className="py-2 pl-3 text-right text-gray-700">${row.tips.toFixed(2)}</td>
+                                <td className="py-2 px-2 text-right text-gray-600">{row.appts}</td>
+                                <td className="py-2 px-2 text-right text-gray-700">${row.revenue.toFixed(2)}</td>
+                                <td className="py-2 px-2 text-right text-sky-700 font-semibold">${row.commission.toFixed(2)}</td>
+                                <td className="py-2 px-2 text-right text-gray-500">${row.tips.toFixed(2)}</td>
+                                <td className="py-2 pl-2 text-right text-emerald-700 font-semibold">${row.tipShare.toFixed(2)}</td>
                               </tr>
                             ))}
                           </tbody>
                           <tfoot>
                             <tr className="border-t-2 border-gray-400 bg-gray-50">
-                              <td className="py-3 pr-4 text-sm font-bold text-gray-800">Period Total</td>
-                              <td className="py-3 px-3 text-right text-sm font-bold text-gray-800">
+                              <td className="py-3 pr-3 text-sm font-bold text-gray-800">Period Total</td>
+                              <td className="py-3 px-2 text-right text-sm font-bold text-gray-800">
                                 {payrollReport.daily.reduce((s, r) => s + r.appts, 0)}
                               </td>
-                              <td className="py-3 px-3 text-right text-sm font-bold text-gray-800">
+                              <td className="py-3 px-2 text-right text-sm font-bold text-gray-800">
                                 ${payrollReport.daily.reduce((s, r) => s + r.revenue, 0).toFixed(2)}
                               </td>
-                              <td className="py-3 pl-3 text-right text-sm font-bold text-gray-800">
+                              <td className="py-3 px-2 text-right text-sm font-bold text-sky-700">
+                                ${payrollReport.daily.reduce((s, r) => s + r.commission, 0).toFixed(2)}
+                              </td>
+                              <td className="py-3 px-2 text-right text-sm font-bold text-gray-500">
                                 ${payrollReport.daily.reduce((s, r) => s + r.tips, 0).toFixed(2)}
+                              </td>
+                              <td className="py-3 pl-2 text-right text-sm font-bold text-emerald-700">
+                                ${payrollReport.daily.reduce((s, r) => s + r.tipShare, 0).toFixed(2)}
                               </td>
                             </tr>
                           </tfoot>
