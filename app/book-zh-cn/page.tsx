@@ -561,6 +561,12 @@ export default function BookPageZhCn() {
       <div className="flex flex-col items-center mb-6">
         <Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={160} height={120} className="object-contain mb-1" priority />
         <p className="text-sm text-sky-600 font-medium">在线预约</p>
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-xs text-gray-400">语言：</span>
+          <a href="/book" className="text-xs text-gray-500 hover:text-sky-600 px-2 py-0.5 rounded-full hover:bg-sky-50 transition-colors">English</a>
+          <a href="/book-zh-tw" className="text-xs text-gray-500 hover:text-sky-600 px-2 py-0.5 rounded-full hover:bg-sky-50 transition-colors">繁體中文</a>
+          <span className="text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">简体中文</span>
+        </div>
       </div>
 
       {step !== 'confirmed' && (

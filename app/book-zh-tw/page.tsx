@@ -562,6 +562,12 @@ export default function BookPageZhTw() {
       <div className="flex flex-col items-center mb-6">
         <Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={160} height={120} className="object-contain mb-1" priority />
         <p className="text-sm text-sky-600 font-medium">線上預約</p>
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-xs text-gray-400">語言：</span>
+          <a href="/book" className="text-xs text-gray-500 hover:text-sky-600 px-2 py-0.5 rounded-full hover:bg-sky-50 transition-colors">English</a>
+          <span className="text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">繁體中文</span>
+          <a href="/book-zh-cn" className="text-xs text-gray-500 hover:text-sky-600 px-2 py-0.5 rounded-full hover:bg-sky-50 transition-colors">简体中文</a>
+        </div>
       </div>
 
       {step !== 'confirmed' && (
