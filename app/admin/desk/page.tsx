@@ -488,6 +488,8 @@ export default function DeskAdmin() {
   const [payrollStartDate, setPayrollStartDate] = useState('')
   const [payrollEndDate, setPayrollEndDate] = useState('')
   const [payrollNotes, setPayrollNotes] = useState('')
+  const [payrollSelectedGroomer, setPayrollSelectedGroomer] = useState('')
+  const [payrollReport, setPayrollReport] = useState<{date:string;appts:number;revenue:number;tips:number;commission:number}[]|null>(null)
 
   // Reports
   const [reportsRange, setReportsRange] = useState<'week' | 'month' | 'all'>('month')
@@ -1433,79 +1435,88 @@ export default function DeskAdmin() {
     } catch { /* silent */ }
   }, [])
 
-  // Generate payroll report based on date range
+  // Generate payroll report based on date range and optional groomer filter
   const generatePayrollReport = useCallback(async () => {
     if (!payrollStartDate || !payrollEndDate) {
       alert('Please select both start and end dates')
       return
     }
     setActionLoading('payroll')
+    setPayrollReport(null)
     try {
-      // Fetch appointments in the date range
       const res = await fetch(`/api/admin/appointments?status=all`)
       const data = await res.json()
       const allAppts = data.appointments || []
 
-      // Filter appointments by date range
+      // Filter by date range and optional groomer
       const appts = allAppts.filter((a: any) => {
         const apptDate = a.appointment_date
-        return apptDate >= payrollStartDate && apptDate <= payrollEndDate
+        if (apptDate < payrollStartDate || apptDate > payrollEndDate) return false
+        if (payrollSelectedGroomer && a.assigned_groomer !== payrollSelectedGroomer) return false
+        return true
       })
 
-      // Calculate earnings for each staff member
-      const staffEarnings: Record<string, {name: string; role: string; commission: number; tips: number; appts: number}> = {}
-
-      staff.forEach(member => {
-        staffEarnings[member.name] = {
-          name: member.name,
-          role: member.role,
-          commission: 0,
-          tips: 0,
-          appts: 0
-        }
-      })
-
-      // Calculate based on assignments
+      // Group by date for daily breakdown
+      const byDate: Record<string, {appts: number; revenue: number; tips: number}> = {}
       appts.forEach((appt: any) => {
-        if (appt.assigned_groomer && staffEarnings[appt.assigned_groomer]) {
-          const member = staff.find(s => s.name === appt.assigned_groomer)
-          if (member && appt.payment_status === 'paid') {
-            const amount = parseFloat(appt.payment_amount || '0')
-            staffEarnings[appt.assigned_groomer].commission += (amount * member.commission_percent / 100)
-            staffEarnings[appt.assigned_groomer].appts += 1
-          }
-        }
-        if (appt.assigned_groomer && appt.tip_amount && staffEarnings[appt.assigned_groomer]) {
-          const amount = parseFloat(appt.tip_amount || '0')
-          staffEarnings[appt.assigned_groomer].tips += amount
+        const d = appt.appointment_date
+        if (!byDate[d]) byDate[d] = { appts: 0, revenue: 0, tips: 0 }
+        byDate[d].appts += 1
+        if (appt.payment_status === 'paid') {
+          byDate[d].revenue += parseFloat(appt.payment_amount || '0')
+          byDate[d].tips += parseFloat(appt.tip_amount || '0')
         }
       })
 
-      // Create CSV content
-      let csv = 'Name,Role,Commissions,Tips,Appointments\n'
-      Object.values(staffEarnings).forEach(earning => {
-        csv += `${earning.name},${earning.role},$${earning.commission.toFixed(2)},$${earning.tips.toFixed(2)},${earning.appts}\n`
-      })
+      // Determine commission rate for the selected groomer (if any)
+      const groomerMember = payrollSelectedGroomer
+        ? staff.find(s => s.name === payrollSelectedGroomer)
+        : null
+      const commRate = groomerMember ? groomerMember.commission_percent / 100 : 1
 
-      // Download CSV
-      const blob = new Blob([csv], { type: 'text/csv' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `payroll-${payrollStartDate}-to-${payrollEndDate}.csv`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
+      const dailyRows = Object.entries(byDate)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, vals]) => ({
+          date,
+          appts: vals.appts,
+          revenue: vals.revenue,
+          tips: vals.tips,
+          commission: vals.revenue * commRate,
+        }))
 
-      alert('Payroll report generated and downloaded!')
+      setPayrollReport(dailyRows)
     } catch (e) {
       console.error(e)
       alert('Error generating payroll report')
     } finally {
       setActionLoading(null)
     }
-  }, [payrollStartDate, payrollEndDate, staff])
+  }, [payrollStartDate, payrollEndDate, payrollSelectedGroomer, staff])
+
+  // Export payroll report to CSV
+  const exportPayrollCSV = useCallback(() => {
+    if (!payrollReport || payrollReport.length === 0) return
+    const groomerLabel = payrollSelectedGroomer || 'All Groomers'
+    let csv = `Payroll Report: ${groomerLabel}\nPeriod: ${payrollStartDate} to ${payrollEndDate}\n\n`
+    csv += 'Date,Appointments,Revenue,Tips,Commission\n'
+    payrollReport.forEach(row => {
+      csv += `${row.date},${row.appts},$${row.revenue.toFixed(2)},$${row.tips.toFixed(2)},$${row.commission.toFixed(2)}\n`
+    })
+    const totalRev = payrollReport.reduce((s, r) => s + r.revenue, 0)
+    const totalTips = payrollReport.reduce((s, r) => s + r.tips, 0)
+    const totalComm = payrollReport.reduce((s, r) => s + r.commission, 0)
+    const totalAppts = payrollReport.reduce((s, r) => s + r.appts, 0)
+    csv += `TOTAL,${totalAppts},$${totalRev.toFixed(2)},$${totalTips.toFixed(2)},$${totalComm.toFixed(2)}\n`
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `payroll-${payrollSelectedGroomer || 'all'}-${payrollStartDate}-to-${payrollEndDate}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }, [payrollReport, payrollStartDate, payrollEndDate, payrollSelectedGroomer])
 
   const fetchReports = useCallback(async (range?: 'week' | 'month' | 'all') => {
     setReportsLoading(true)
@@ -5454,39 +5465,16 @@ export default function DeskAdmin() {
           {/* ── PAYROLL ───────────────────────────────────────────────────── */}
           {tab === 'payroll' && (
             <div className="space-y-6">
-              {/* Staff Earnings Summary */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                <p className="text-sm font-semibold text-gray-700 mb-3">👥 Staff Earnings Summary</p>
-                {staff.length === 0 ? (
-                  <p className="text-sm text-gray-500">No staff members to display</p>
-                ) : (
-                  <div className="space-y-2">
-                    {staff.map(member => (
-                      <div key={member.id} className="bg-gray-50 p-3 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-sm font-semibold text-gray-800">{member.name}</p>
-                          <span className="text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded font-medium">{member.role}</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
-                          <div>Commission: <span className="font-semibold text-gray-800">{member.commission_percent}%</span></div>
-                          <div>Tips: <span className="font-semibold text-gray-800">{member.tip_percent}%</span></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Payroll Period */}
+              {/* Filters */}
               <div className="bg-white rounded-2xl border border-gray-200 p-6">
                 <h2 className="text-lg font-bold text-gray-800 mb-4">📅 Payroll Period</h2>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                   <div>
                     <label className="text-xs font-semibold text-gray-600 block mb-1">Start Date</label>
                     <input
                       type="date"
                       value={payrollStartDate}
-                      onChange={e => setPayrollStartDate(e.target.value)}
+                      onChange={e => { setPayrollStartDate(e.target.value); setPayrollReport(null) }}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
@@ -5495,42 +5483,143 @@ export default function DeskAdmin() {
                     <input
                       type="date"
                       value={payrollEndDate}
-                      onChange={e => setPayrollEndDate(e.target.value)}
+                      onChange={e => { setPayrollEndDate(e.target.value); setPayrollReport(null) }}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1">Groomer</label>
+                    <select
+                      value={payrollSelectedGroomer}
+                      onChange={e => { setPayrollSelectedGroomer(e.target.value); setPayrollReport(null) }}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="">All Groomers</option>
+                      {staff.filter(s => s.role === 'groomer' || s.role === 'Groomer').map(s => (
+                        <option key={s.id} value={s.name}>{s.name}</option>
+                      ))}
+                      {staff.filter(s => s.role !== 'groomer' && s.role !== 'Groomer').map(s => (
+                        <option key={s.id} value={s.name}>{s.name} ({s.role})</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                <h2 className="text-lg font-bold text-gray-800 mb-4">⚡ Quick Actions</h2>
                 <div className="flex gap-2 flex-wrap">
-                  <button onClick={generatePayrollReport} disabled={actionLoading === 'payroll'} className="px-4 py-2 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-50 text-emerald-700 text-sm font-semibold rounded-lg transition-colors">
-                    {actionLoading === 'payroll' ? '⏳ Generating…' : '📊 Generate Payroll Report'}
+                  <button
+                    onClick={generatePayrollReport}
+                    disabled={actionLoading === 'payroll'}
+                    className="px-4 py-2 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-50 text-emerald-700 text-sm font-semibold rounded-lg transition-colors"
+                  >
+                    {actionLoading === 'payroll' ? '⏳ Generating…' : '📊 Generate Report'}
                   </button>
-                  <button onClick={() => {
-                    if (!payrollStartDate || !payrollEndDate) { alert('Please select dates'); return }
-                    alert('CSV export coming soon!')
-                  }} className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-semibold rounded-lg transition-colors">
-                    💾 Export to CSV
-                  </button>
-                  <button onClick={() => alert('Payroll send feature coming soon!')} className="px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-700 text-sm font-semibold rounded-lg transition-colors">
-                    📧 Send Payroll
-                  </button>
+                  {payrollReport && payrollReport.length > 0 && (
+                    <button
+                      onClick={exportPayrollCSV}
+                      className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-semibold rounded-lg transition-colors"
+                    >
+                      💾 Export CSV
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Notes */}
+              {/* Daily Breakdown Table */}
+              {payrollReport && (
+                <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold text-gray-800">
+                      📋 Daily Transactions
+                      {payrollSelectedGroomer && <span className="text-sm font-normal text-gray-500 ml-2">— {payrollSelectedGroomer}</span>}
+                    </h2>
+                    <span className="text-xs text-gray-400">{payrollStartDate} → {payrollEndDate}</span>
+                  </div>
+
+                  {payrollReport.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-4 text-center">No appointments found for this period.</p>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-200">
+                              <th className="text-left text-xs font-semibold text-gray-500 pb-2 pr-4">Date</th>
+                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-3">Appts</th>
+                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-3">Revenue</th>
+                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-3">Tips</th>
+                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 pl-3">Commission</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {payrollReport.map(row => (
+                              <tr key={row.date} className="hover:bg-gray-50">
+                                <td className="py-2 pr-4 text-gray-800 font-medium">
+                                  {new Date(row.date + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+                                </td>
+                                <td className="py-2 px-3 text-right text-gray-600">{row.appts}</td>
+                                <td className="py-2 px-3 text-right text-gray-800">${row.revenue.toFixed(2)}</td>
+                                <td className="py-2 px-3 text-right text-emerald-600 font-medium">${row.tips.toFixed(2)}</td>
+                                <td className="py-2 pl-3 text-right text-sky-700 font-semibold">${row.commission.toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t-2 border-gray-300 bg-gray-50">
+                              <td className="py-3 pr-4 text-sm font-bold text-gray-800">Total</td>
+                              <td className="py-3 px-3 text-right text-sm font-bold text-gray-800">
+                                {payrollReport.reduce((s, r) => s + r.appts, 0)}
+                              </td>
+                              <td className="py-3 px-3 text-right text-sm font-bold text-gray-800">
+                                ${payrollReport.reduce((s, r) => s + r.revenue, 0).toFixed(2)}
+                              </td>
+                              <td className="py-3 px-3 text-right text-sm font-bold text-emerald-700">
+                                ${payrollReport.reduce((s, r) => s + r.tips, 0).toFixed(2)}
+                              </td>
+                              <td className="py-3 pl-3 text-right text-sm font-bold text-sky-700">
+                                ${payrollReport.reduce((s, r) => s + r.commission, 0).toFixed(2)}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+
+                      {/* Tips breakdown note */}
+                      {payrollSelectedGroomer && (() => {
+                        const member = staff.find(s => s.name === payrollSelectedGroomer)
+                        if (!member) return null
+                        const totalTips = payrollReport.reduce((s, r) => s + r.tips, 0)
+                        const groomerTipShare = totalTips * (member.tip_percent / 100)
+                        return (
+                          <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+                            <span className="font-semibold">Tips breakdown for {payrollSelectedGroomer}:</span>{' '}
+                            Total tips collected <span className="font-bold">${totalTips.toFixed(2)}</span> × {member.tip_percent}% share ={' '}
+                            <span className="font-bold">${groomerTipShare.toFixed(2)}</span>
+                          </div>
+                        )
+                      })()}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Staff commission rates reference */}
               <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                <label className="text-sm font-semibold text-gray-700 block mb-2">📝 Payroll Notes</label>
-                <textarea
-                  placeholder="Add any special notes for this payroll period..."
-                  value={payrollNotes}
-                  onChange={e => setPayrollNotes(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"
-                  rows={4}
-                />
+                <p className="text-sm font-semibold text-gray-700 mb-3">👥 Staff Rates</p>
+                {staff.length === 0 ? (
+                  <p className="text-sm text-gray-500">No staff members. Add staff in Settings.</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {staff.map(member => (
+                      <div key={member.id} className="bg-gray-50 p-3 rounded-lg">
+                        <p className="text-sm font-semibold text-gray-800">{member.name}</p>
+                        <p className="text-xs text-gray-500 capitalize">{member.role}</p>
+                        <div className="mt-1 text-xs text-gray-600 space-y-0.5">
+                          <div>Commission: <span className="font-semibold text-sky-700">{member.commission_percent}%</span></div>
+                          <div>Tip share: <span className="font-semibold text-emerald-700">{member.tip_percent}%</span></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
