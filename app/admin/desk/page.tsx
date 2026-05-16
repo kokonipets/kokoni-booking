@@ -495,7 +495,9 @@ export default function DeskAdmin() {
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
 
   // Reports
-  const [reportsRange, setReportsRange] = useState<'week' | 'month' | 'all'>('month')
+  const [reportsRange, setReportsRange] = useState<'week' | 'month' | 'all' | 'custom'>('month')
+  const [reportsCustomStart, setReportsCustomStart] = useState('')
+  const [reportsCustomEnd, setReportsCustomEnd] = useState('')
   const [reportsAppts, setReportsAppts] = useState<Appointment[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportEditingId, setReportEditingId] = useState<string | null>(null)
@@ -6242,11 +6244,20 @@ export default function DeskAdmin() {
             const weekAgoStr = `${weekAgo.getFullYear()}-${String(weekAgo.getMonth()+1).padStart(2,'0')}-${String(weekAgo.getDate()).padStart(2,'0')}`
             const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
 
+            const inRange = (date: string) => {
+              if (reportsRange === 'week') return date >= weekAgoStr
+              if (reportsRange === 'month') return date >= monthStart
+              if (reportsRange === 'custom') {
+                if (reportsCustomStart && date < reportsCustomStart) return false
+                if (reportsCustomEnd && date > reportsCustomEnd) return false
+                return true
+              }
+              return true
+            }
+
             const rangeAppts = reportsAppts.filter(a => {
               if (a.payment_status !== 'paid') return false
-              if (reportsRange === 'week') return a.appointment_date >= weekAgoStr
-              if (reportsRange === 'month') return a.appointment_date >= monthStart
-              return true
+              return inRange(a.appointment_date)
             })
 
             // Group by assigned_groomer name
@@ -6277,15 +6288,77 @@ export default function DeskAdmin() {
             const totalTips = rows.reduce((s, r) => s + r.tips, 0)
             const totalAppts = rows.reduce((s, r) => s + r.count, 0)
 
-            const rangeLabelMap = { week: 'This Week', month: 'This Month', all: 'All Time' }
+            const rangeLabelMap: Record<string, string> = {
+              week: 'This Week', month: 'This Month', all: 'All Time',
+              custom: reportsCustomStart && reportsCustomEnd ? `${reportsCustomStart} → ${reportsCustomEnd}` : 'Custom Range'
+            }
+
+            // ── Excel export ────────────────────────────────────────────────
+            const exportToExcel = async () => {
+              const XLSX = await import('xlsx')
+              const methodLabelsLocal: Record<string, string> = { cash: 'Cash', card: 'Credit Card', zelle: 'Zelle', venmo: 'Venmo', check: 'Check' }
+
+              // Sheet 1: Transaction detail (all appts in range)
+              const detailRows = allRangeAppts
+                .slice()
+                .sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
+                .map(a => {
+                  const [h, m] = (a.appointment_time || '').split(':')
+                  const hour = parseInt(h || '0')
+                  const timeStr = `${hour % 12 || 12}:${m || '00'} ${hour >= 12 ? 'PM' : 'AM'}`
+                  return {
+                    Date: a.appointment_date,
+                    Time: timeStr,
+                    'Client Name': a.clients?.name ?? '',
+                    'Pet Name': a.pets?.name ?? '',
+                    Service: serviceMap[a.service] ?? a.service ?? '',
+                    Groomer: a.assigned_groomer ?? '',
+                    'Payment Method': a.payment_status === 'paid' ? (methodLabelsLocal[a.payment_method || ''] || a.payment_method || '') : 'Unpaid',
+                    'Amount ($)': a.payment_status === 'paid' ? parseFloat(a.payment_amount || '0') : 0,
+                    'Tip ($)': parseFloat(a.tip_amount || '0'),
+                    'Total ($)': (a.payment_status === 'paid' ? parseFloat(a.payment_amount || '0') : 0) + parseFloat(a.tip_amount || '0'),
+                    Status: a.payment_status === 'paid' ? 'Paid' : 'Unpaid',
+                  }
+                })
+
+              // Sheet 2: Payment method summary
+              const methodSummary = (['cash', 'card', 'zelle', 'venmo', 'check', 'unpaid'] as const).map(m => {
+                const appts = allRangeAppts.filter(a =>
+                  m === 'unpaid' ? a.payment_status !== 'paid' : (a.payment_status === 'paid' && a.payment_method === m)
+                )
+                return {
+                  'Payment Method': m === 'unpaid' ? 'Unpaid' : methodLabelsLocal[m],
+                  'Appointments': appts.length,
+                  'Revenue ($)': appts.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0),
+                  'Tips ($)': appts.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0),
+                }
+              }).filter(r => r.Appointments > 0)
+
+              // Sheet 3: Per-groomer summary
+              const groomerSummaryRows = rows.map(r => ({
+                Groomer: r.name,
+                Appointments: r.count,
+                'Revenue ($)': r.revenue,
+                [`Commission (${r.commissionPct}%) ($)`]: r.commission,
+                'Tips Collected ($)': r.tips,
+                [`Tip Share (${r.tipPct}%) ($)`]: r.tipEarned,
+                'Total Pay ($)': r.commission + r.tipEarned,
+              }))
+
+              const wb = XLSX.utils.book_new()
+              XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), 'Transactions')
+              XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(methodSummary), 'Payment Methods')
+              XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(groomerSummaryRows), 'Groomer Pay')
+
+              const label = reportsRange === 'custom'
+                ? `${reportsCustomStart}-to-${reportsCustomEnd}`
+                : reportsRange
+              XLSX.writeFile(wb, `kokoni-report-${label}.xlsx`)
+            }
 
             // ── Range payment breakdown ──────────────────────────────────────
             // All appointments in range (paid + unpaid/completed) for full picture
-            const allRangeAppts = reportsAppts.filter(a => {
-              if (reportsRange === 'week') return a.appointment_date >= weekAgoStr
-              if (reportsRange === 'month') return a.appointment_date >= monthStart
-              return true
-            })
+            const allRangeAppts = reportsAppts.filter(a => inRange(a.appointment_date))
             const rangeMethodTotals: Record<string, { count: number; amount: number; tips: number }> = {
               cash: { count: 0, amount: 0, tips: 0 }, card: { count: 0, amount: 0, tips: 0 },
               zelle: { count: 0, amount: 0, tips: 0 }, venmo: { count: 0, amount: 0, tips: 0 },
@@ -6504,17 +6577,52 @@ export default function DeskAdmin() {
                 </div>
 
                 {/* Date range selector */}
-                <div className="flex items-center gap-2">
-                  {(['week', 'month', 'all'] as const).map(r => (
-                    <button
-                      key={r}
-                      onClick={() => setReportsRange(r)}
-                      className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${reportsRange === r ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}`}
-                    >
-                      {rangeLabelMap[r]}
-                    </button>
-                  ))}
-                  <button onClick={() => fetchReports()} className="ml-auto text-sm text-sky-600 hover:text-sky-800 font-medium">↻ Refresh</button>
+                <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(['week', 'month', 'all', 'custom'] as const).map(r => (
+                      <button
+                        key={r}
+                        onClick={() => setReportsRange(r)}
+                        className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${reportsRange === r ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}`}
+                      >
+                        {r === 'week' ? 'This Week' : r === 'month' ? 'This Month' : r === 'all' ? 'All Time' : '📅 Custom'}
+                      </button>
+                    ))}
+                    <div className="ml-auto flex items-center gap-2">
+                      <button
+                        onClick={exportToExcel}
+                        className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-full transition-colors"
+                      >
+                        ⬇️ Export Excel
+                      </button>
+                      <button onClick={() => fetchReports()} className="text-sm text-sky-600 hover:text-sky-800 font-medium">↻</button>
+                    </div>
+                  </div>
+                  {reportsRange === 'custom' && (
+                    <div className="flex items-center gap-3 flex-wrap pt-1">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-semibold text-gray-500">From</label>
+                        <input
+                          type="date"
+                          value={reportsCustomStart}
+                          onChange={e => setReportsCustomStart(e.target.value)}
+                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-semibold text-gray-500">To</label>
+                        <input
+                          type="date"
+                          value={reportsCustomEnd}
+                          onChange={e => setReportsCustomEnd(e.target.value)}
+                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+                        />
+                      </div>
+                      {reportsCustomStart && reportsCustomEnd && (
+                        <span className="text-xs text-gray-400">{allRangeAppts.length} appointments in range</span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {reportsLoading ? (
