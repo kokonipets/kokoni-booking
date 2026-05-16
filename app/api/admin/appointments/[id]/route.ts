@@ -48,7 +48,7 @@ export async function PATCH(
     if (appt) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const a = appt as any
-      const clientName: string = a.clients?.name ?? 'there'
+      const clientName: string = (a.clients?.name ?? 'there').split(' ')[0]
       const petName: string = a.pets?.name ?? 'your pet'
       const date = new Date(a.appointment_date + 'T12:00:00').toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric',

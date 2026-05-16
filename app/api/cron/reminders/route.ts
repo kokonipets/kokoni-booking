@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       const clientData = appt.clients as { name: string; sms_consent: boolean } | null
       if (!clientData?.sms_consent) return { id: appt.id, skipped: 'no sms consent' }
 
-      const clientName = clientData.name ?? 'there'
+      const clientName = (clientData.name ?? 'there').split(' ')[0]
       const petName = (appt.pets as { name: string } | null)?.name ?? 'your pet'
 
       const result = await sendAppointmentReminder({
