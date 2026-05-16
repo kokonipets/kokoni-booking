@@ -7,10 +7,11 @@ export const dynamic = 'force-dynamic'
 // Used for the Chat sidebar badge.
 export async function GET() {
   const sb = createSupabaseServer()
-  const { count } = await sb
+  const { data } = await sb
     .from('sms_messages')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('direction', 'inbound')
     .is('read_at', null)
-  return NextResponse.json({ count: count ?? 0 })
+    .limit(100)
+  return NextResponse.json({ count: data?.length ?? 0 })
 }
