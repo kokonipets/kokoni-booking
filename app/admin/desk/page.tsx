@@ -1556,6 +1556,72 @@ export default function DeskAdmin() {
     window.URL.revokeObjectURL(url)
   }, [payrollReport, payrollStartDate, payrollEndDate, payrollSelectedGroomer])
 
+  // Export payroll report to Excel (.xlsx)
+  const exportPayrollExcel = useCallback(async () => {
+    if (!payrollReport) return
+    const XLSX = await import('xlsx')
+    const groomerLabel = payrollSelectedGroomer || 'All Groomers'
+    const filename = `payroll-${payrollSelectedGroomer || 'all'}-${payrollStartDate}-to-${payrollEndDate}.xlsx`
+
+    // Sheet 1: Daily Transactions
+    const dailyData = payrollReport.daily.map(r => ({
+      'Date': r.date,
+      'Appointments': r.appts,
+      'Revenue ($)': r.revenue,
+      'Commission Earned ($)': r.commission,
+      'Tips Collected ($)': r.tips,
+      'Tip Share Earned ($)': r.tipShare,
+    }))
+    // Totals row
+    dailyData.push({
+      'Date': 'TOTAL',
+      'Appointments': payrollReport.daily.reduce((s, r) => s + r.appts, 0),
+      'Revenue ($)': payrollReport.daily.reduce((s, r) => s + r.revenue, 0),
+      'Commission Earned ($)': payrollReport.daily.reduce((s, r) => s + r.commission, 0),
+      'Tips Collected ($)': payrollReport.daily.reduce((s, r) => s + r.tips, 0),
+      'Tip Share Earned ($)': payrollReport.daily.reduce((s, r) => s + r.tipShare, 0),
+    })
+
+    // Sheet 2: Groomer Pay Summary
+    const groomerData = payrollReport.groomers.map(g => ({
+      'Groomer': g.name,
+      'Appointments': g.appts,
+      'Revenue ($)': g.revenue,
+      [`Commission Rate`]: `${g.commRate}%`,
+      'Commission Earned ($)': g.commission,
+      'Tips Collected ($)': g.tips,
+      [`Tip Share Rate`]: `${g.tipRate}%`,
+      'Tip Share Earned ($)': g.tipShare,
+      'Total Pay ($)': g.commission + g.tipShare,
+    }))
+    // Totals row
+    groomerData.push({
+      'Groomer': 'TOTAL',
+      'Appointments': payrollReport.groomers.reduce((s, g) => s + g.appts, 0),
+      'Revenue ($)': payrollReport.groomers.reduce((s, g) => s + g.revenue, 0),
+      'Commission Rate': '',
+      'Commission Earned ($)': payrollReport.groomers.reduce((s, g) => s + g.commission, 0),
+      'Tips Collected ($)': payrollReport.groomers.reduce((s, g) => s + g.tips, 0),
+      'Tip Share Rate': '',
+      'Tip Share Earned ($)': payrollReport.groomers.reduce((s, g) => s + g.tipShare, 0),
+      'Total Pay ($)': payrollReport.groomers.reduce((s, g) => s + g.commission + g.tipShare, 0),
+    })
+
+    const wb = XLSX.utils.book_new()
+    const ws1 = XLSX.utils.json_to_sheet(dailyData)
+    const ws2 = XLSX.utils.json_to_sheet(groomerData)
+
+    // Add a title row above each sheet
+    XLSX.utils.sheet_add_aoa(ws1, [[`Payroll Report: ${groomerLabel}`], [`Period: ${payrollStartDate} to ${payrollEndDate}`], []], { origin: 'A1' })
+    XLSX.utils.sheet_add_json(ws1, dailyData, { origin: 'A4', skipHeader: false })
+    XLSX.utils.sheet_add_aoa(ws2, [[`Groomer Pay Summary: ${groomerLabel}`], [`Period: ${payrollStartDate} to ${payrollEndDate}`], []], { origin: 'A1' })
+    XLSX.utils.sheet_add_json(ws2, groomerData, { origin: 'A4', skipHeader: false })
+
+    XLSX.utils.book_append_sheet(wb, ws1, 'Daily Transactions')
+    XLSX.utils.book_append_sheet(wb, ws2, 'Groomer Pay')
+    XLSX.writeFile(wb, filename)
+  }, [payrollReport, payrollStartDate, payrollEndDate, payrollSelectedGroomer])
+
   const fetchReports = useCallback(async (range?: 'week' | 'month' | 'all') => {
     setReportsLoading(true)
     try {
@@ -5551,12 +5617,20 @@ export default function DeskAdmin() {
                     {actionLoading === 'payroll' ? '⏳ Generating…' : '📊 Generate Report'}
                   </button>
                   {payrollReport && (
-                    <button
-                      onClick={exportPayrollCSV}
-                      className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-semibold rounded-lg transition-colors"
-                    >
-                      💾 Export CSV
-                    </button>
+                    <>
+                      <button
+                        onClick={exportPayrollCSV}
+                        className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-semibold rounded-lg transition-colors"
+                      >
+                        💾 CSV
+                      </button>
+                      <button
+                        onClick={exportPayrollExcel}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                      >
+                        ⬇️ Excel
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
