@@ -176,7 +176,8 @@ export async function notifyClientGroomingReady(data: {
   clientName: string
   petName: string
 }) {
-  const body = `Hi ${data.clientName}! 🐾 Great news — ${data.petName} is all done and ready to be picked up! We can't wait to see you!\nKokoni Pet Grooming Salon — (626) 621-4646\nReply STOP to opt out.`
+  const firstName = data.clientName.split(' ')[0]
+  const body = `Hi ${firstName}! 🐾 Great news — ${data.petName} will be ready for pickup in 15 minutes! Please pick up within 30 minutes to avoid a late pickup fee.\n📍 https://maps.app.goo.gl/qDTcGhcazqsHvahQ7\nKokoni Pet Grooming Salon — (626) 621-4646\nReply STOP to opt out.`
   return sendSMS(data.to, body, 'notifyClientGroomingReady')
 }
 
