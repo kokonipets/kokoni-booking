@@ -315,7 +315,7 @@ export default function KioskPage() {
           'S.com.squareup.pos.API_VERSION=v2.0',
           `i.com.squareup.pos.TOTAL_AMOUNT=${amountCents}`,
           'S.com.squareup.pos.CURRENCY_CODE=USD',
-          'S.com.squareup.pos.TENDER_TYPES=com.squareup.pos.TENDER_CARD,com.squareup.pos.TENDER_SQUARE_GIFT_CARD',
+          'S.com.squareup.pos.TENDER_TYPES=com.squareup.pos.TENDER_CARD',
         ]
         return `intent:#Intent;${parts.join(';')};end`
       } else {
