@@ -74,16 +74,20 @@ function CheckoutModal({
   )
   const [amount, setAmount] = useState(appt.payment_amount || '')
   const [tip, setTip] = useState(appt.tip_amount && appt.tip_amount !== '0' ? appt.tip_amount : '')
+  const [discount, setDiscount] = useState(false)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
 
-  const serviceAmt = parseFloat(amount) || 0
+  const rawAmt = parseFloat(amount) || 0
+  const discountAmt = discount ? Math.round(rawAmt * 0.20 * 100) / 100 : 0
+  const serviceAmt = rawAmt - discountAmt
   const tipAmt = parseFloat(tip) || 0
   const total = serviceAmt + tipAmt
 
   // Quick tip % for card; manual for others
   const cardTipPcts = [15, 18, 20, 25]
   const setTipPct = (pct: number) => setTip((serviceAmt * pct / 100).toFixed(2))
+
 
   const confirm = async () => {
     if (!amount) return
@@ -94,7 +98,7 @@ function CheckoutModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'record-payment',
-          payment_amount: amount,
+          payment_amount: serviceAmt.toFixed(2),
           tip_amount: tip || '0',
           payment_method: method,
           payment_status: 'paid',
@@ -104,7 +108,7 @@ function CheckoutModal({
       if (d.success) {
         setDone(true)
         onSuccess({
-          payment_amount: amount,
+          payment_amount: serviceAmt.toFixed(2),
           tip_amount: tip || '0',
           payment_method: method,
           payment_status: 'paid',
@@ -173,11 +177,26 @@ function CheckoutModal({
               <span className={`text-lg font-black px-4 py-3 border-r-2 ${pm.border} ${pm.text}`}>$</span>
               <input
                 type="number" min="0" step="0.01"
-                value={amount} onChange={e => setAmount(e.target.value)}
+                value={amount} onChange={e => { setAmount(e.target.value); setDiscount(false) }}
                 placeholder="0.00" autoFocus
                 className={`flex-1 text-xl font-black py-3 px-4 bg-transparent focus:outline-none ${pm.text} placeholder:text-gray-300`}
               />
             </div>
+            {/* First-time discount toggle */}
+            {rawAmt > 0 && (
+              <button
+                onClick={() => setDiscount(d => !d)}
+                className={`mt-2 w-full flex items-center justify-between rounded-2xl px-4 py-2.5 border-2 transition-all ${
+                  discount
+                    ? 'bg-pink-50 border-pink-300 text-pink-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200 hover:text-pink-500'
+                }`}>
+                <span className="font-bold text-sm">🎉 First-time customer 20% off</span>
+                <span className={`text-xs font-black px-2.5 py-1 rounded-full ${discount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                  {discount ? 'ON' : 'OFF'}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* Tips */}
@@ -228,16 +247,27 @@ function CheckoutModal({
             <div className="flex items-center justify-between">
               <div>
                 <p className={`text-sm font-bold ${pm.text} opacity-70`}>Service</p>
+                {discount && discountAmt > 0 && (
+                  <p className="text-xs text-pink-500 font-semibold">🎉 20% off</p>
+                )}
                 <p className={`text-xs ${pm.text} opacity-60`}>Tip</p>
               </div>
               <div className="text-right">
-                <p className={`text-sm font-bold ${pm.text}`}>{fmtMoney(amount)}</p>
+                <div className="flex items-center gap-2 justify-end">
+                  {discount && rawAmt > 0 && (
+                    <span className="text-xs text-gray-400 line-through">{fmtMoney(amount)}</span>
+                  )}
+                  <p className={`text-sm font-bold ${discount ? 'text-pink-600' : pm.text}`}>{fmtMoney(serviceAmt.toFixed(2))}</p>
+                </div>
+                {discount && discountAmt > 0 && (
+                  <p className="text-xs text-pink-400">−{fmtMoney(discountAmt.toFixed(2))}</p>
+                )}
                 <p className={`text-xs ${pm.text} opacity-70`}>+{fmtMoney(tip || '0')}</p>
               </div>
             </div>
             <div className={`border-t-2 ${pm.border} mt-3 pt-3 flex items-center justify-between`}>
               <p className={`text-lg font-black ${pm.text}`}>Total</p>
-              <p className={`text-3xl font-black ${pm.text}`}>{fmtMoney(total)}</p>
+              <p className={`text-3xl font-black ${discount ? 'text-pink-600' : pm.text}`}>{fmtMoney(total)}</p>
             </div>
           </div>
 

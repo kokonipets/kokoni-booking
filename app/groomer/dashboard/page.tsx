@@ -227,6 +227,7 @@ export default function GroomerDashboard() {
   const [popupBaseTier, setPopupBaseTier] = useState('')
   const [popupAddOns, setPopupAddOns] = useState<{id:string;name:string;price:string}[]>([])
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
+  const [popupDiscount, setPopupDiscount] = useState(false)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
   const [popupPriceNote, setPopupPriceNote] = useState('')
   const [editingPopupNote, setEditingPopupNote] = useState(false)
@@ -626,6 +627,7 @@ export default function GroomerDashboard() {
       .map(n => ({ id: n.id, name: n.text, price: n.price ?? '' }))
     setPopupAddOns(savedAddOns)
     setPopupTotalSaved(!!appt.payment_amount)
+    setPopupDiscount(false)
     setPopupPriceNote('')
     setEditingPopupNote(false)
     setPopupNoteText('')
@@ -1735,7 +1737,9 @@ export default function GroomerDashboard() {
                 const otherServices = serviceDefs.filter(s => s.id !== popupServiceVal && s.visible !== false)
                 const addOnTotal = popupAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
                 const baseAmt = parseFloat(popupBasePrice) || 0
-                const grandTotal = baseAmt + addOnTotal
+                const subtotal = baseAmt + addOnTotal
+                const discountAmt = popupDiscount ? Math.round(subtotal * 0.20 * 100) / 100 : 0
+                const grandTotal = subtotal - discountAmt
 
                 return (
                   <div className="rounded-2xl p-4 border border-gray-200 bg-white">
@@ -1900,6 +1904,22 @@ export default function GroomerDashboard() {
                       </div>
                     )}
 
+                    {/* First-time discount toggle */}
+                    {subtotal > 0 && (
+                      <button
+                        onClick={() => { setPopupDiscount(d => !d); setPopupTotalSaved(false) }}
+                        className={`w-full flex items-center justify-between rounded-2xl px-4 py-2.5 mb-3 border-2 transition-all ${
+                          popupDiscount
+                            ? 'bg-pink-50 border-pink-300 text-pink-700'
+                            : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200 hover:text-pink-500'
+                        }`}>
+                        <span className="font-bold text-sm">🎉 First-time customer 20% off</span>
+                        <span className={`text-xs font-black px-2.5 py-1 rounded-full ${popupDiscount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                          {popupDiscount ? 'ON' : 'OFF'}
+                        </span>
+                      </button>
+                    )}
+
                     {/* Total breakdown */}
                     {(popupBasePrice || popupAddOns.length > 0) && (
                       <div className="bg-gray-50 rounded-2xl border border-gray-100 px-4 py-3 mb-3 space-y-1.5">
@@ -1915,9 +1935,20 @@ export default function GroomerDashboard() {
                             <span className="font-bold text-gray-700">${a.price || '0'}</span>
                           </div>
                         ))}
+                        {popupDiscount && discountAmt > 0 && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-pink-500 font-semibold">🎉 20% discount</span>
+                            <span className="font-bold text-pink-500">−${discountAmt.toFixed(2)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                           <span className="font-bold text-gray-800">Total</span>
-                          <span className={`text-xl font-black ${popupTotalSaved && grandTotal > 0 ? 'text-emerald-600' : 'text-gray-700'}`}>${grandTotal}</span>
+                          <div className="text-right">
+                            {popupDiscount && subtotal > 0 && (
+                              <span className="text-xs text-gray-400 line-through mr-2">${subtotal.toFixed(2)}</span>
+                            )}
+                            <span className={`text-xl font-black ${popupTotalSaved && grandTotal > 0 ? 'text-emerald-600' : popupDiscount ? 'text-pink-600' : 'text-gray-700'}`}>${grandTotal.toFixed(2)}</span>
+                          </div>
                         </div>
                       </div>
                     )}
