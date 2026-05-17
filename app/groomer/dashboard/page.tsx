@@ -228,6 +228,7 @@ export default function GroomerDashboard() {
   const [popupAddOns, setPopupAddOns] = useState<{id:string;name:string;price:string}[]>([])
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupDiscount, setPopupDiscount] = useState(false)
+  const [popupIsFirstTime, setPopupIsFirstTime] = useState(false)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
   const [popupPriceNote, setPopupPriceNote] = useState('')
   const [editingPopupNote, setEditingPopupNote] = useState(false)
@@ -628,6 +629,7 @@ export default function GroomerDashboard() {
     setPopupAddOns(savedAddOns)
     setPopupTotalSaved(!!appt.payment_amount)
     setPopupDiscount(false)
+    setPopupIsFirstTime(false)
     setPopupPriceNote('')
     setEditingPopupNote(false)
     setPopupNoteText('')
@@ -689,6 +691,9 @@ export default function GroomerDashboard() {
           setPopupBasePrice(data.amount)
           setPopupBaseTier('')
           setPopupTotalSaved(false) // show as a suggestion, not confirmed
+          setPopupIsFirstTime(false)
+        } else {
+          setPopupIsFirstTime(true) // no previous paid appointment — first-time!
         }
       } catch { /**/ }
     } else {
@@ -1904,8 +1909,8 @@ export default function GroomerDashboard() {
                       </div>
                     )}
 
-                    {/* First-time discount toggle */}
-                    {subtotal > 0 && (
+                    {/* First-time discount toggle — only shown for new customers */}
+                    {subtotal > 0 && popupIsFirstTime && (
                       <button
                         onClick={() => { setPopupDiscount(d => !d); setPopupTotalSaved(false) }}
                         className={`w-full flex items-center justify-between rounded-2xl px-4 py-2.5 mb-3 border-2 transition-all ${

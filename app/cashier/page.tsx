@@ -75,7 +75,17 @@ function CheckoutModal({
   const [amount, setAmount] = useState(appt.payment_amount || '')
   const [tip, setTip] = useState(appt.tip_amount && appt.tip_amount !== '0' ? appt.tip_amount : '')
   const [discount, setDiscount] = useState(false)
+  const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const petId = appt.pets?.id
+    if (!petId) { setIsFirstTime(false); return }
+    fetch(`/api/groomer/last-payment?pet_id=${petId}&exclude_id=${appt.id}`)
+      .then(r => r.json())
+      .then(d => setIsFirstTime(!d.amount))
+      .catch(() => setIsFirstTime(false))
+  }, [appt.id, appt.pets?.id])
   const [done, setDone] = useState(false)
 
   const rawAmt = parseFloat(amount) || 0
@@ -182,8 +192,8 @@ function CheckoutModal({
                 className={`flex-1 text-xl font-black py-3 px-4 bg-transparent focus:outline-none ${pm.text} placeholder:text-gray-300`}
               />
             </div>
-            {/* First-time discount toggle */}
-            {rawAmt > 0 && (
+            {/* First-time discount toggle — only for new customers */}
+            {rawAmt > 0 && isFirstTime === true && (
               <button
                 onClick={() => setDiscount(d => !d)}
                 className={`mt-2 w-full flex items-center justify-between rounded-2xl px-4 py-2.5 border-2 transition-all ${
