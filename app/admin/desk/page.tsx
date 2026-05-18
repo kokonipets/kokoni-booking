@@ -3469,6 +3469,16 @@ export default function DeskAdmin() {
           {/* Chat — two-way SMS with customers */}
           <ChatSidebarLink onClick={() => setSidebarOpen(false)} />
 
+          {/* Reviews */}
+          <a
+            href="/admin/reviews"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <span className="text-base leading-none w-5 text-center">⭐</span>
+            <span className="flex-1">Reviews</span>
+          </a>
+
           {/* Time Tracking */}
           <a
             href="/admin/timesheet"
