@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       .insert({
         client_phone: phone,
         client_name: name,
-        status: 'sent',
+        status: 'pending',
         review_request_sent_at: new Date().toISOString(),
         attempt_count: 1,
         last_attempt_at: new Date().toISOString(),

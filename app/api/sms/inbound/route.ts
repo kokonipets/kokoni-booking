@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       .from('reviews')
       .select('*')
       .eq('client_phone', tenDigit)
-      .in('status', ['sent', 'pending'])
+      .in('status', ['pending'])
       .gte('created_at', cutoff)
       .order('created_at', { ascending: false })
       .limit(1)
