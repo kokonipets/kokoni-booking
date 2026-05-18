@@ -795,6 +795,110 @@ export default function BookPageZhCn() {
                 </button>
               ))}
             </div>
+            {/* ── 价格参考 ── */}
+            <div className="mt-6 rounded-2xl border border-sky-100 bg-sky-50 overflow-hidden">
+              <div className="px-4 py-3 bg-sky-100 text-sky-900 font-semibold text-sm">💰 价格参考</div>
+              <div className="p-4 space-y-5 text-xs text-gray-700">
+
+                {/* 洗澡美容 */}
+                <div>
+                  <p className="font-bold text-sky-800 mb-2">🛁 洗澡 &amp; 梳毛</p>
+                  <table className="w-full text-center border-collapse">
+                    <thead>
+                      <tr className="text-gray-500">
+                        <th className="text-left pb-1 font-medium">体型</th>
+                        <th className="pb-1 font-medium">短毛</th>
+                        <th className="pb-1 font-medium">长毛</th>
+                        <th className="pb-1 font-medium">贵宾/双层</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-sky-100">
+                      <tr><td className="text-left py-1">15磅以下</td><td>$50</td><td>$60</td><td>$70</td></tr>
+                      <tr><td className="text-left py-1">16–30磅</td><td>$60</td><td>$75</td><td>$85</td></tr>
+                      <tr><td className="text-left py-1">31–50磅</td><td>$70</td><td>$85</td><td>$100</td></tr>
+                      <tr><td className="text-left py-1">50–70磅</td><td>$80</td><td>$95</td><td>$120</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 洗澡剪毛 */}
+                <div>
+                  <p className="font-bold text-sky-800 mb-2">✂️ 洗澡 &amp; 剪毛</p>
+                  <table className="w-full text-center border-collapse">
+                    <thead>
+                      <tr className="text-gray-500">
+                        <th className="text-left pb-1 font-medium">体型</th>
+                        <th className="pb-1 font-medium">Simply Cute</th>
+                        <th className="pb-1 font-medium">亚洲风格</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-sky-100">
+                      <tr><td className="text-left py-1">15磅以下</td><td>$70</td><td>$110</td></tr>
+                      <tr><td className="text-left py-1">16–30磅</td><td>$90</td><td>$130</td></tr>
+                      <tr><td className="text-left py-1">31–50磅</td><td>$100</td><td>$190</td></tr>
+                      <tr><td className="text-left py-1">51–70磅</td><td>$120</td><td>$240</td></tr>
+                    </tbody>
+                  </table>
+                  <p className="text-gray-400 mt-1 italic">* 70磅以上请咨询我们。</p>
+                </div>
+
+                {/* 贵宾/泰迪 洗澡剪毛 */}
+                <div>
+                  <p className="font-bold text-sky-800 mb-2">🐩 贵宾/泰迪 洗澡 &amp; 剪毛</p>
+                  <table className="w-full text-center border-collapse">
+                    <thead>
+                      <tr className="text-gray-500">
+                        <th className="text-left pb-1 font-medium">体型</th>
+                        <th className="pb-1 font-medium">Simply Cute</th>
+                        <th className="pb-1 font-medium">亚洲风格</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-sky-100">
+                      <tr><td className="text-left py-1">15磅以下</td><td>$100</td><td>$130</td></tr>
+                      <tr><td className="text-left py-1">16–30磅</td><td>$120</td><td>$170</td></tr>
+                      <tr><td className="text-left py-1">31–50磅</td><td>$140</td><td>$240</td></tr>
+                      <tr><td className="text-left py-1">51–70磅</td><td>$170</td><td>$290</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 附加服务 */}
+                <div>
+                  <p className="font-bold text-sky-800 mb-2">➕ 附加服务（加于套餐上）</p>
+                  <ul className="space-y-0.5 text-gray-600">
+                    <li>局部修剪 — <span className="font-medium">+$10–$30</span></li>
+                    <li>除蚤洗毛精 — <span className="font-medium">+$15/$25</span></li>
+                    <li>除结/加强梳毛 — <span className="font-medium">+$20/$40/$60</span></li>
+                    <li>除毛服务 — <span className="font-medium">+$15/$20/$30</span></li>
+                    <li>手工修毛 — <span className="font-medium">+$20/$40</span></li>
+                    <li>额外协助费 — <span className="font-medium">+$20</span></li>
+                    <li>染毛 — <span className="font-medium">起价 $30</span>（局部 $15–$25 · 全身 $150起）</li>
+                  </ul>
+                </div>
+
+                {/* Top Dog & 单项服务 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="font-bold text-sky-800 mb-1">🐾 Top Dog</p>
+                    <p className="text-gray-500 text-xs mb-1">不含洗澡及剪毛</p>
+                    <p>剪甲 · 肛腺 · 刷牙 · 清耳 — <span className="font-medium">$30</span></p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-sky-800 mb-1">单项服务</p>
+                    <p className="text-gray-500 text-xs mb-1">无需美容服务</p>
+                    <ul className="space-y-0.5">
+                      <li>剪指甲 — <span className="font-medium">$15</span></li>
+                      <li>肛腺清洁 — <span className="font-medium">$15</span></li>
+                      <li>脚底修剪 — <span className="font-medium">$10</span></li>
+                      <li>刷牙 — <span className="font-medium">$10</span></li>
+                      <li>清耳 — <span className="font-medium">$10</span></li>
+                    </ul>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
             {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
             <button onClick={handleServiceContinue}
               className="w-full mt-6 bg-sky-600 hover:bg-sky-700 text-white font-semibold py-3 rounded-xl transition-colors">继续</button>
