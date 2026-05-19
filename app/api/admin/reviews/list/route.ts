@@ -34,6 +34,29 @@ export async function GET(request: Request) {
   }
 }
 
+export async function PATCH(request: Request) {
+  try {
+    const supabase = createSupabaseServer()
+    const body = await request.json()
+    const { id, admin_notes, follow_up_flagged } = body
+
+    if (!id) return Response.json({ error: 'Review id required' }, { status: 400 })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updates: Record<string, any> = {}
+    if (admin_notes !== undefined) updates.admin_notes = admin_notes
+    if (follow_up_flagged !== undefined) updates.follow_up_flagged = follow_up_flagged
+
+    const { error } = await supabase.from('reviews').update(updates).eq('id', id)
+    if (error) throw error
+
+    return Response.json({ success: true })
+  } catch (error) {
+    console.error('Error updating review:', error)
+    return Response.json({ error: 'Failed to update review' }, { status: 500 })
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = createSupabaseServer()
