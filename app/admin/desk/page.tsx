@@ -566,7 +566,8 @@ export default function DeskAdmin() {
     }
     try {
       const auth = JSON.parse(localStorage.getItem('auth') || '{}')
-      if (auth?.name) setLoggedInName(auth.name)
+      if (auth?.username) setLoggedInName(auth.username)
+      else if (auth?.name) setLoggedInName(auth.name)
     } catch {}
   }, [])
 
