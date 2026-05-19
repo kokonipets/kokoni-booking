@@ -333,6 +333,7 @@ export default function KioskPage() {
             supported_tender_types: ['CREDIT_CARD', 'SQUARE_GIFT_CARD'],
             skip_receipt_screen: false,
             collect_signature: false,
+            disable_cnp: true,
           },
         }
         const encoded = btoa(JSON.stringify(data))
