@@ -453,11 +453,9 @@ export default function KioskPage() {
       {/* ── WELCOME ───────────────────────────────────────────────────────── */}
       {step === 'welcome' && (
         <div className="relative flex flex-col items-center gap-14 w-full max-w-2xl text-center">
-          {/* Logo card */}
+          {/* Logo */}
           <div className="flex flex-col items-center gap-8">
-            <div className="bg-white rounded-3xl shadow-xl p-8 ring-1 ring-gray-100">
-              <Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={220} height={220} className="rounded-2xl" />
-            </div>
+            <Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={320} height={320} className="object-contain" />
             <div>
               <h1 className="text-8xl font-black text-gray-800 leading-tight">Welcome!</h1>
               <p className="text-3xl text-gray-400 mt-3 font-medium">Kokoni Pet Grooming Salon</p>
