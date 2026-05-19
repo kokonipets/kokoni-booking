@@ -316,6 +316,7 @@ export default function KioskPage() {
           `i.com.squareup.pos.TOTAL_AMOUNT=${amountCents}`,
           'S.com.squareup.pos.CURRENCY_CODE=USD',
           'S.com.squareup.pos.TENDER_TYPES=com.squareup.pos.TENDER_CARD',
+          'B.com.squareup.pos.DISABLE_CNP=true',
         ]
         return `intent:#Intent;${parts.join(';')};end`
       } else {
@@ -794,8 +795,10 @@ export default function KioskPage() {
                 <div className="grid grid-cols-4 gap-3">
                   {PAY_METHODS.map(({ key, icon, label, style }) => (
                     <button key={key}
-                      disabled={submitting}
+                      disabled={submitting || (key === 'card' && (!grandTotal || grandTotal <= 0))}
+                      title={key === 'card' && (!grandTotal || grandTotal <= 0) ? 'Payment amount not set — please see staff' : undefined}
                       onClick={() => {
+                        if (key === 'card' && (!grandTotal || grandTotal <= 0)) return
                         setPaymentMethod(key)
                         if (key === 'card') {
                           handleSquareCardPayment(grandTotal)
