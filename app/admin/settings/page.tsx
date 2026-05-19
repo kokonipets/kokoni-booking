@@ -77,7 +77,7 @@ export default function SettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [expandedStaffId, setExpandedStaffId] = useState<string | null>(null)
   const [showPasswordFor, setShowPasswordFor] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'staff' | 'business' | 'tags' | 'account'>('staff')
+  const [activeTab, setActiveTab] = useState<'staff' | 'business' | 'tags' | 'account' | 'coupons'>('staff')
   const [accountForm, setAccountForm] = useState({ username: '', currentPassword: '', newPassword: '', confirmPassword: '' })
   const [accountMsg, setAccountMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [savingAccount, setSavingAccount] = useState(false)
@@ -102,10 +102,27 @@ export default function SettingsPage() {
   const [selectedServiceTier, setSelectedServiceTier] = useState<Record<string, number>>({})
   const [slotInterval, setSlotInterval] = useState<15 | 30 | 45>(30)
 
+  // ── Coupons state ─────────────────────────────────────────────────────────
+  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; created_at: string }
+  const [coupons, setCoupons] = useState<Coupon[]>([])
+  const [couponForm, setCouponForm] = useState<{ name: string; code: string; discount_type: 'percent' | 'fixed'; discount_value: string }>({ name: '', code: '', discount_type: 'percent', discount_value: '' })
+  const [editingCouponId, setEditingCouponId] = useState<string | null>(null)
+  const [savingCoupon, setSavingCoupon] = useState(false)
+  const [couponMsg, setCouponMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const loadCoupons = async () => {
+    try {
+      const res = await fetch('/api/admin/coupons')
+      const data = await res.json()
+      setCoupons(data.coupons || [])
+    } catch {}
+  }
+
   useEffect(() => {
     loadStaff()
     loadBusinessSettings()
     loadTags()
+    loadCoupons()
     // Pre-fill account form with current user's username
     try {
       const auth = JSON.parse(localStorage.getItem('auth') || '{}')
@@ -409,17 +426,17 @@ export default function SettingsPage() {
       {/* Tabs */}
       <div className="bg-white border-b border-gray-100 px-6">
         <div className="flex gap-8">
-          {(['staff', 'business', 'tags', 'account'] as const).map(tab => (
+          {(['staff', 'business', 'tags', 'coupons', 'account'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`py-4 px-2 text-sm font-medium border-b-2 transition-colors ${
+              className={`py-4 px-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab
                   ? 'border-sky-500 text-sky-700'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
-              {tab === 'staff' ? '👥 Staff' : tab === 'business' ? '🏪 Business Settings' : tab === 'tags' ? '🏷️ Tags' : '🔑 My Account'}
+              {tab === 'staff' ? '👥 Staff' : tab === 'business' ? '🏪 Business Settings' : tab === 'tags' ? '🏷️ Tags' : tab === 'coupons' ? '🎟️ Coupons' : '🔑 My Account'}
             </button>
           ))}
         </div>
@@ -2215,6 +2232,182 @@ export default function SettingsPage() {
                   {savingAccount ? '⏳ Saving…' : 'Save Changes'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'coupons' && (
+          <div className="max-w-2xl space-y-6">
+            {/* Header */}
+            <div>
+              <h3 className="font-bold text-gray-800 text-lg">🎟️ Discount Coupons</h3>
+              <p className="text-xs text-gray-500 mt-1">Create discount coupons that groomers can apply at checkout. Supports percentage or fixed dollar discounts.</p>
+            </div>
+
+            {/* Feedback message */}
+            {couponMsg && (
+              <div className={`p-3 rounded-xl text-sm font-semibold ${couponMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                {couponMsg.text}
+              </div>
+            )}
+
+            {/* Create / Edit form */}
+            <div className="bg-sky-50 border border-sky-100 rounded-2xl p-5 space-y-4">
+              <p className="text-xs font-bold uppercase tracking-widest text-sky-700">{editingCouponId ? 'Edit Coupon' : 'New Coupon'}</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Coupon name *</label>
+                  <input
+                    placeholder="e.g. First Time Customer"
+                    value={couponForm.name}
+                    onChange={e => setCouponForm(p => ({ ...p, name: e.target.value }))}
+                    className="w-full border border-sky-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Short code (optional)</label>
+                  <input
+                    placeholder="e.g. FIRST20"
+                    value={couponForm.code}
+                    onChange={e => setCouponForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                    className="w-full border border-sky-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300 uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Discount type *</label>
+                  <select
+                    value={couponForm.discount_type}
+                    onChange={e => setCouponForm(p => ({ ...p, discount_type: e.target.value as 'percent' | 'fixed' }))}
+                    className="w-full border border-sky-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  >
+                    <option value="percent">Percentage (%)</option>
+                    <option value="fixed">Fixed amount ($)</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">
+                    Discount value * {couponForm.discount_type === 'percent' ? '(e.g. 20 = 20% off)' : '(e.g. 10 = $10 off)'}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">
+                      {couponForm.discount_type === 'percent' ? '%' : '$'}
+                    </span>
+                    <input
+                      type="number" min="0" max={couponForm.discount_type === 'percent' ? '100' : undefined} step="0.01"
+                      placeholder={couponForm.discount_type === 'percent' ? '20' : '10'}
+                      value={couponForm.discount_value}
+                      onChange={e => setCouponForm(p => ({ ...p, discount_value: e.target.value }))}
+                      className="w-full border border-sky-200 rounded-xl pl-8 pr-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  disabled={savingCoupon || !couponForm.name || !couponForm.discount_value}
+                  onClick={async () => {
+                    if (!couponForm.name || !couponForm.discount_value) return
+                    setSavingCoupon(true)
+                    setCouponMsg(null)
+                    try {
+                      const method = editingCouponId ? 'PATCH' : 'POST'
+                      const body = editingCouponId
+                        ? { id: editingCouponId, ...couponForm, discount_value: couponForm.discount_value }
+                        : couponForm
+                      const res = await fetch('/api/admin/coupons', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+                      const data = await res.json()
+                      if (data.error) throw new Error(data.error)
+                      setCouponMsg({ type: 'success', text: editingCouponId ? '✓ Coupon updated!' : '✓ Coupon created!' })
+                      setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '' })
+                      setEditingCouponId(null)
+                      await loadCoupons()
+                    } catch (e: unknown) {
+                      setCouponMsg({ type: 'error', text: (e instanceof Error ? e.message : 'Failed to save coupon') })
+                    } finally {
+                      setSavingCoupon(false)
+                    }
+                  }}
+                  className="flex-1 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors"
+                >
+                  {savingCoupon ? '⏳ Saving…' : editingCouponId ? '💾 Update Coupon' : '+ Create Coupon'}
+                </button>
+                {editingCouponId && (
+                  <button
+                    onClick={() => { setEditingCouponId(null); setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '' }) }}
+                    className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-semibold rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Coupons list */}
+            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+              {coupons.length === 0 ? (
+                <div className="p-8 text-center text-gray-400 text-sm">No coupons yet — create one above</div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {coupons.map(c => (
+                    <div key={c.id} className="flex items-center gap-3 px-4 py-3">
+                      {/* Active toggle */}
+                      <button
+                        onClick={async () => {
+                          await fetch('/api/admin/coupons', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: c.id, active: !c.active }) })
+                          setCoupons(prev => prev.map(x => x.id === c.id ? { ...x, active: !c.active } : x))
+                        }}
+                        className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${c.active ? 'bg-emerald-400' : 'bg-gray-200'}`}
+                        title={c.active ? 'Active — click to deactivate' : 'Inactive — click to activate'}
+                      >
+                        <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${c.active ? 'translate-x-5' : 'translate-x-1'}`} />
+                      </button>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-gray-800 text-sm">{c.name}</span>
+                          {c.code && (
+                            <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-mono font-bold">{c.code}</span>
+                          )}
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${c.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                            {c.active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}
+                        </p>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            setEditingCouponId(c.id)
+                            setCouponForm({ name: c.name, code: c.code ?? '', discount_type: c.discount_type, discount_value: c.discount_value.toString() })
+                            setCouponMsg(null)
+                            window.scrollTo({ top: 0, behavior: 'smooth' })
+                          }}
+                          className="text-xs px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold rounded-lg transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Delete "${c.name}"?`)) return
+                            await fetch('/api/admin/coupons', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: c.id }) })
+                            setCoupons(prev => prev.filter(x => x.id !== c.id))
+                          }}
+                          className="text-xs px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-lg transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

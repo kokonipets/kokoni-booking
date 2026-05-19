@@ -229,6 +229,9 @@ export default function GroomerDashboard() {
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupDiscount, setPopupDiscount] = useState(false)
   const [popupIsFirstTime, setPopupIsFirstTime] = useState(false)
+  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean }
+  const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([])
+  const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
   const [popupPriceNote, setPopupPriceNote] = useState('')
   const [editingPopupNote, setEditingPopupNote] = useState(false)
@@ -345,6 +348,11 @@ export default function GroomerDashboard() {
       const settingsObj: Record<string, string> = d?.settings ?? {}
       const svcValue = settingsObj['services']
       if (svcValue) { try { setServiceDefs(JSON.parse(svcValue)) } catch { /**/ } }
+    }).catch(() => {})
+
+    // Load active coupons for groomer popup discount selector
+    fetch('/api/admin/coupons').then(r => r.json()).then(d => {
+      setAvailableCoupons((d.coupons ?? []).filter((c: Coupon) => c.active))
     }).catch(() => {})
 
     // Poll every 15 seconds for new pending appointments
@@ -629,6 +637,7 @@ export default function GroomerDashboard() {
     setPopupAddOns(savedAddOns)
     setPopupTotalSaved(!!appt.payment_amount)
     setPopupDiscount(false)
+    setPopupCouponId(null)
     setPopupIsFirstTime(false)
     setPopupPriceNote('')
     setEditingPopupNote(false)
@@ -1743,7 +1752,12 @@ export default function GroomerDashboard() {
                 const addOnTotal = popupAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
                 const baseAmt = parseFloat(popupBasePrice) || 0
                 const subtotal = baseAmt + addOnTotal
-                const discountAmt = popupDiscount ? Math.round(subtotal * 0.20 * 100) / 100 : 0
+                const selectedCoupon = availableCoupons.find(c => c.id === popupCouponId) ?? null
+                const discountAmt = selectedCoupon
+                  ? selectedCoupon.discount_type === 'percent'
+                    ? Math.round(subtotal * selectedCoupon.discount_value / 100 * 100) / 100
+                    : Math.min(selectedCoupon.discount_value, subtotal)
+                  : popupDiscount ? Math.round(subtotal * 0.20 * 100) / 100 : 0
                 const grandTotal = subtotal - discountAmt
 
                 return (
@@ -1912,20 +1926,48 @@ export default function GroomerDashboard() {
                       </div>
                     )}
 
-                    {/* First-time discount toggle — always available for groomers to apply manually */}
+                    {/* Coupon / Discount selector */}
                     {subtotal > 0 && (
-                      <button
-                        onClick={() => { setPopupDiscount(d => !d); setPopupTotalSaved(false) }}
-                        className={`w-full flex items-center justify-between rounded-2xl px-4 py-2.5 mb-3 border-2 transition-all ${
-                          popupDiscount
-                            ? 'bg-pink-50 border-pink-300 text-pink-700'
-                            : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200 hover:text-pink-500'
-                        }`}>
-                        <span className="font-bold text-sm">🎉 First-time customer 20% off</span>
-                        <span className={`text-xs font-black px-2.5 py-1 rounded-full ${popupDiscount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
-                          {popupDiscount ? 'ON' : 'OFF'}
-                        </span>
-                      </button>
+                      <div className="mb-3">
+                        {availableCoupons.length > 0 ? (
+                          <div className={`rounded-2xl border-2 transition-all overflow-hidden ${popupCouponId ? 'border-pink-300 bg-pink-50' : 'border-gray-200 bg-gray-50'}`}>
+                            <div className="flex items-center px-4 py-2.5 gap-3">
+                              <span className="text-sm">🎟️</span>
+                              <select
+                                value={popupCouponId ?? ''}
+                                onChange={e => { setPopupCouponId(e.target.value || null); setPopupDiscount(false); setPopupTotalSaved(false) }}
+                                className={`flex-1 text-sm font-semibold bg-transparent focus:outline-none ${popupCouponId ? 'text-pink-700' : 'text-gray-400'}`}
+                              >
+                                <option value="">Apply coupon…</option>
+                                {availableCoupons.map(c => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}
+                                    {c.code ? ` (${c.code})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                              {popupCouponId && (
+                                <button onClick={() => { setPopupCouponId(null); setPopupTotalSaved(false) }}
+                                  className="text-pink-400 hover:text-pink-600 text-lg leading-none">✕</button>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          // Fallback: no coupons configured — show manual 20% toggle
+                          <button
+                            onClick={() => { setPopupDiscount(d => !d); setPopupTotalSaved(false) }}
+                            className={`w-full flex items-center justify-between rounded-2xl px-4 py-2.5 border-2 transition-all ${
+                              popupDiscount
+                                ? 'bg-pink-50 border-pink-300 text-pink-700'
+                                : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200 hover:text-pink-500'
+                            }`}>
+                            <span className="font-bold text-sm">🎉 First-time customer 20% off</span>
+                            <span className={`text-xs font-black px-2.5 py-1 rounded-full ${popupDiscount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                              {popupDiscount ? 'ON' : 'OFF'}
+                            </span>
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {/* Total breakdown */}
@@ -1943,9 +1985,12 @@ export default function GroomerDashboard() {
                             <span className="font-bold text-gray-700">${a.price || '0'}</span>
                           </div>
                         ))}
-                        {popupDiscount && discountAmt > 0 && (
+                        {discountAmt > 0 && (
                           <div className="flex justify-between items-center text-sm">
-                            <span className="text-pink-500 font-semibold">🎉 20% discount</span>
+                            <span className="text-pink-500 font-semibold">
+                              🎟️ {selectedCoupon ? selectedCoupon.name : '20% discount'}
+                              {selectedCoupon?.discount_type === 'percent' ? ` (${selectedCoupon.discount_value}%)` : selectedCoupon?.discount_type === 'fixed' ? ` ($${selectedCoupon.discount_value} off)` : ''}
+                            </span>
                             <span className="font-bold text-pink-500">−${discountAmt.toFixed(2)}</span>
                           </div>
                         )}
