@@ -24,12 +24,27 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
   if (phoneFilter) clientQuery = clientQuery.eq('phone', phoneFilter)
 
-  const { data: clients, error: clientsError } = await clientQuery
+  const { data: clientRows, error: clientsError } = await clientQuery
   if (clientsError) return NextResponse.json({ error: clientsError.message }, { status: 500 })
 
-  if (!clients || clients.length === 0) return NextResponse.json({ clients: [] })
+  // Also pull any phones from appointments that may not have a clients row
+  const { data: apptRows } = await supabase
+    .from('appointments')
+    .select('client_phone')
+    .not('client_phone', 'is', null)
 
-  const phones = clients.map(c => c.phone)
+  const extraPhones = [...new Set((apptRows ?? []).map((a: { client_phone: string }) => a.client_phone))]
+  const existingPhones = new Set((clientRows ?? []).map((c: { phone: string }) => c.phone))
+
+  // Build synthetic client rows for phones only in appointments
+  const syntheticClients = extraPhones
+    .filter(p => !existingPhones.has(p))
+    .map(p => ({ name: p, phone: p, email: null, address: null, created_at: null }))
+
+  const clients = [...(clientRows ?? []), ...syntheticClients]
+  if (clients.length === 0) return NextResponse.json({ clients: [] })
+
+  const phones = clients.map((c: { phone: string }) => c.phone)
 
   // 2. Fetch pets by client_phone
   const { data: petsRaw, error: petsError } = await supabase

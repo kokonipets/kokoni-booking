@@ -292,6 +292,7 @@ const TIME_OPTIONS = [
 export default function DeskAdmin() {
   const [isBookMode, setIsBookMode] = useState(false)
   const [authed, setAuthed] = useState(false)
+  const [loggedInName, setLoggedInName] = useState('Kokoni')
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState('')
   const [pinLoading, setPinLoading] = useState(false)
@@ -563,6 +564,10 @@ export default function DeskAdmin() {
     } else if (sessionStorage.getItem('admin_authed') === 'yes') {
       setAuthed(true)
     }
+    try {
+      const auth = JSON.parse(localStorage.getItem('auth') || '{}')
+      if (auth?.name) setLoggedInName(auth.name)
+    } catch {}
   }, [])
 
   // No-op — AudioContext created on demand inside play functions
@@ -3530,8 +3535,8 @@ export default function DeskAdmin() {
         <div className="px-4 py-3 border-t border-sky-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-sky-400 flex items-center justify-center text-white text-sm font-bold">S</div>
-              <span className="text-sky-800 text-sm font-medium">Semira Huang</span>
+              <div className="w-8 h-8 rounded-full bg-sky-400 flex items-center justify-center text-white text-sm font-bold">{loggedInName.charAt(0).toUpperCase()}</div>
+              <span className="text-sky-800 text-sm font-medium">{loggedInName}</span>
             </div>
             <button onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false) }}
               className="text-sky-400 hover:text-sky-700 text-xs">Sign out</button>
