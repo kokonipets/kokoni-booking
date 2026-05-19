@@ -31,11 +31,11 @@ export async function GET(req: NextRequest) {
 
   const phones = clients.map(c => c.phone)
 
-  // 2. Fetch pets by owner_phone
+  // 2. Fetch pets by client_phone
   const { data: petsRaw, error: petsError } = await supabase
     .from('pets')
-    .select('id, name, breed, weight, vaccine_status, vaccine_expiry, photo_url, owner_phone, pet_tags ( tags ( id, name, color ) )')
-    .in('owner_phone', phones)
+    .select('id, name, breed, weight, vaccine_status, vaccine_expiry, photo_url, client_phone, pet_tags ( tags ( id, name, color ) )')
+    .in('client_phone', phones)
   if (petsError) return NextResponse.json({ error: petsError.message }, { status: 500 })
 
   // 3. Fetch authorized pickups by client_phone
@@ -57,14 +57,14 @@ export async function GET(req: NextRequest) {
   if (apptError) return NextResponse.json({ error: apptError.message }, { status: 500 })
 
   // 5. Group by phone and flatten pet_tags
-  type PetWithJoin = { owner_phone: string; pet_tags?: { tags: unknown }[] } & Record<string, unknown>
+  type PetWithJoin = { client_phone: string; pet_tags?: { tags: unknown }[] } & Record<string, unknown>
 
   const petsByPhone: Record<string, unknown[]> = {}
   for (const p of (petsRaw ?? []) as PetWithJoin[]) {
-    const { pet_tags, owner_phone, ...rest } = p
+    const { pet_tags, client_phone: petPhone, ...rest } = p
     const tags = (pet_tags ?? []).map((pt: { tags: unknown }) => pt.tags).filter(Boolean)
-    if (!petsByPhone[owner_phone]) petsByPhone[owner_phone] = []
-    petsByPhone[owner_phone].push({ ...rest, tags })
+    if (!petsByPhone[petPhone]) petsByPhone[petPhone] = []
+    petsByPhone[petPhone].push({ ...rest, tags })
   }
 
   const pickupsByPhone: Record<string, unknown[]> = {}
@@ -99,7 +99,7 @@ export async function DELETE(req: NextRequest) {
   // Delete related records first
   await supabase.from('authorized_pickups').delete().eq('client_phone', phone)
   await supabase.from('appointments').delete().eq('client_phone', phone)
-  await supabase.from('pets').delete().eq('owner_phone', phone)
+  await supabase.from('pets').delete().eq('client_phone', phone)
   const { error } = await supabase.from('clients').delete().eq('phone', phone)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -2166,18 +2166,14 @@ export default function SettingsPage() {
                       setAccountMsg({ type: 'error', text: 'Username cannot be empty.' })
                       return
                     }
-                    const changingPassword = accountForm.newPassword || accountForm.confirmPassword || accountForm.currentPassword
+                    const changingPassword = !!(accountForm.newPassword || accountForm.confirmPassword)
                     if (changingPassword) {
-                      if (!accountForm.currentPassword) {
-                        setAccountMsg({ type: 'error', text: 'Enter your current password to set a new one.' })
-                        return
-                      }
                       if (!accountForm.newPassword) {
                         setAccountMsg({ type: 'error', text: 'New password cannot be empty.' })
                         return
                       }
                       if (accountForm.newPassword !== accountForm.confirmPassword) {
-                        setAccountMsg({ type: 'error', text: 'New passwords do not match.' })
+                        setAccountMsg({ type: 'error', text: 'Passwords do not match.' })
                         return
                       }
                     }
@@ -2188,19 +2184,6 @@ export default function SettingsPage() {
                       const auth = JSON.parse(localStorage.getItem('auth') || '{}')
                       const staffId = auth?.staff_id || auth?.id
                       if (!staffId) throw new Error('Not logged in')
-
-                      // If changing password, verify current password first
-                      if (changingPassword) {
-                        const verifyRes = await fetch('/api/auth/login', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ username: auth.username, password: accountForm.currentPassword }),
-                        })
-                        if (!verifyRes.ok) {
-                          setAccountMsg({ type: 'error', text: 'Current password is incorrect.' })
-                          return
-                        }
-                      }
 
                       // Save updates
                       const body: Record<string, string> = { username: accountForm.username.trim() }
@@ -2219,7 +2202,7 @@ export default function SettingsPage() {
                       localStorage.setItem('auth', JSON.stringify(updatedAuth))
 
                       setAccountMsg({ type: 'success', text: '✅ Account updated successfully!' })
-                      setAccountForm(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }))
+                      setAccountForm(prev => ({ ...prev, newPassword: '', confirmPassword: '' }))
                       setTimeout(() => setAccountMsg(null), 5000)
                     } catch (err) {
                       setAccountMsg({ type: 'error', text: `❌ ${err instanceof Error ? err.message : 'Something went wrong'}` })
