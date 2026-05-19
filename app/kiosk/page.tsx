@@ -304,9 +304,11 @@ export default function KioskPage() {
       const isAndroid = /android/i.test(navigator.userAgent)
 
       if (isAndroid) {
-        // Square POS API v2.0 — correct Android intent URL format
+        // Square POS API v2.0 — Android intent URL format
+        // Must use intent://result#Intent; (not intent:#Intent;) for Chrome to route correctly
         // See: developer.squareup.com/docs/pos-api/build-mobile-web
         const parts = [
+          'scheme=square-commerce-v1',
           'action=com.squareup.pos.action.CHARGE',
           'package=com.squareup',
           `S.browser_fallback_url=${encodeURIComponent('https://squareup.com/download')}`,
@@ -318,7 +320,7 @@ export default function KioskPage() {
           'S.com.squareup.pos.TENDER_TYPES=com.squareup.pos.TENDER_CARD',
           'B.com.squareup.pos.DISABLE_CNP=true',
         ]
-        return `intent:#Intent;${parts.join(';')};end`
+        return `intent://result#Intent;${parts.join(';')};end`
       } else {
         // iOS: btoa-encoded JSON (ASCII-safe only)
         const petName = (appt.pets?.name ?? 'Pet').replace(/[^\x00-\x7F]/g, '')
