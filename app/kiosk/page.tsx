@@ -331,7 +331,7 @@ export default function KioskPage() {
           transaction_id: String(appt.id),
           notes: `Grooming - ${petName} (${svcLabel})`,
           options: {
-            supported_tender_types: ['CREDIT_CARD', 'SQUARE_GIFT_CARD'],
+            supported_tender_types: ['CREDIT_CARD'],
             skip_receipt_screen: false,
             collect_signature: false,
             disable_cnp: true,
