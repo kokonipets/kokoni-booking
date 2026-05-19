@@ -77,7 +77,10 @@ export default function SettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [expandedStaffId, setExpandedStaffId] = useState<string | null>(null)
   const [showPasswordFor, setShowPasswordFor] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'staff' | 'business' | 'tags'>('staff')
+  const [activeTab, setActiveTab] = useState<'staff' | 'business' | 'tags' | 'account'>('staff')
+  const [accountForm, setAccountForm] = useState({ username: '', currentPassword: '', newPassword: '', confirmPassword: '' })
+  const [accountMsg, setAccountMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [savingAccount, setSavingAccount] = useState(false)
   const [tags, setTags] = useState<Tag[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('sky')
@@ -103,6 +106,11 @@ export default function SettingsPage() {
     loadStaff()
     loadBusinessSettings()
     loadTags()
+    // Pre-fill account form with current user's username
+    try {
+      const auth = JSON.parse(localStorage.getItem('auth') || '{}')
+      if (auth?.username) setAccountForm(prev => ({ ...prev, username: auth.username }))
+    } catch {}
   }, [])
 
   const loadTags = async () => {
@@ -401,7 +409,7 @@ export default function SettingsPage() {
       {/* Tabs */}
       <div className="bg-white border-b border-gray-100 px-6">
         <div className="flex gap-8">
-          {(['staff', 'business', 'tags'] as const).map(tab => (
+          {(['staff', 'business', 'tags', 'account'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -411,7 +419,7 @@ export default function SettingsPage() {
                   : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
-              {tab === 'staff' ? '👥 Staff' : tab === 'business' ? '🏪 Business Settings' : '🏷️ Tags'}
+              {tab === 'staff' ? '👥 Staff' : tab === 'business' ? '🏪 Business Settings' : tab === 'tags' ? '🏷️ Tags' : '🔑 My Account'}
             </button>
           ))}
         </div>
@@ -2088,6 +2096,153 @@ export default function SettingsPage() {
               </div>
             </div>
 
+          </div>
+        )}
+
+        {activeTab === 'account' && (
+          <div className="max-w-md">
+            <div className="bg-white rounded-2xl border border-gray-200 p-6">
+              <div className="mb-5">
+                <h3 className="font-bold text-gray-800 text-lg">🔑 My Account</h3>
+                <p className="text-xs text-gray-500 mt-1">Update your login username and password.</p>
+              </div>
+
+              <div className="space-y-4">
+                {/* Username */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Username</label>
+                  <input
+                    type="text"
+                    value={accountForm.username}
+                    onChange={e => setAccountForm(prev => ({ ...prev, username: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                    placeholder="Your login username"
+                  />
+                </div>
+
+                {/* Divider */}
+                <div className="border-t border-gray-100 pt-4">
+                  <p className="text-xs font-semibold text-gray-600 mb-3">Change Password <span className="text-gray-400 font-normal">(leave blank to keep current)</span></p>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Current password</label>
+                      <input
+                        type="password"
+                        value={accountForm.currentPassword}
+                        onChange={e => setAccountForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                        placeholder="Enter current password"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">New password</label>
+                      <input
+                        type="password"
+                        value={accountForm.newPassword}
+                        onChange={e => setAccountForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                        placeholder="New password"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Confirm new password</label>
+                      <input
+                        type="password"
+                        value={accountForm.confirmPassword}
+                        onChange={e => setAccountForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                        placeholder="Confirm new password"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status message */}
+                {accountMsg && (
+                  <div className={`rounded-xl px-4 py-3 text-sm font-medium ${
+                    accountMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                  }`}>
+                    {accountMsg.text}
+                  </div>
+                )}
+
+                {/* Save button */}
+                <button
+                  disabled={savingAccount}
+                  onClick={async () => {
+                    // Validate
+                    if (!accountForm.username.trim()) {
+                      setAccountMsg({ type: 'error', text: 'Username cannot be empty.' })
+                      return
+                    }
+                    const changingPassword = accountForm.newPassword || accountForm.confirmPassword || accountForm.currentPassword
+                    if (changingPassword) {
+                      if (!accountForm.currentPassword) {
+                        setAccountMsg({ type: 'error', text: 'Enter your current password to set a new one.' })
+                        return
+                      }
+                      if (!accountForm.newPassword) {
+                        setAccountMsg({ type: 'error', text: 'New password cannot be empty.' })
+                        return
+                      }
+                      if (accountForm.newPassword !== accountForm.confirmPassword) {
+                        setAccountMsg({ type: 'error', text: 'New passwords do not match.' })
+                        return
+                      }
+                    }
+
+                    setSavingAccount(true)
+                    setAccountMsg(null)
+                    try {
+                      const auth = JSON.parse(localStorage.getItem('auth') || '{}')
+                      const staffId = auth?.staff_id || auth?.id
+                      if (!staffId) throw new Error('Not logged in')
+
+                      // If changing password, verify current password first
+                      if (changingPassword) {
+                        const verifyRes = await fetch('/api/auth/login', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ username: auth.username, password: accountForm.currentPassword }),
+                        })
+                        if (!verifyRes.ok) {
+                          setAccountMsg({ type: 'error', text: 'Current password is incorrect.' })
+                          return
+                        }
+                      }
+
+                      // Save updates
+                      const body: Record<string, string> = { username: accountForm.username.trim() }
+                      if (changingPassword) body.password = accountForm.newPassword
+
+                      const res = await fetch(`/api/admin/staff/${staffId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                      })
+                      const data = await res.json()
+                      if (!res.ok) throw new Error(data.error || 'Failed to save')
+
+                      // Update localStorage so username reflects new value
+                      const updatedAuth = { ...auth, username: accountForm.username.trim() }
+                      localStorage.setItem('auth', JSON.stringify(updatedAuth))
+
+                      setAccountMsg({ type: 'success', text: '✅ Account updated successfully!' })
+                      setAccountForm(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }))
+                      setTimeout(() => setAccountMsg(null), 5000)
+                    } catch (err) {
+                      setAccountMsg({ type: 'error', text: `❌ ${err instanceof Error ? err.message : 'Something went wrong'}` })
+                    } finally {
+                      setSavingAccount(false)
+                    }
+                  }}
+                  className="w-full bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+                >
+                  {savingAccount ? '⏳ Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
