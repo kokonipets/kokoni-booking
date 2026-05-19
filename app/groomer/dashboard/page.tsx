@@ -1838,7 +1838,10 @@ export default function GroomerDashboard() {
 
                     {/* Custom price input */}
                     {popupBasePrice && !popupBaseTier && !selectedAppt.payment_amount && (
-                      <p className="text-[11px] text-sky-500 font-medium mb-1 px-1">📋 Last payment — confirm or adjust</p>
+                      <p className="text-[11px] text-sky-500 font-medium mb-1 px-1">📋 Last payment — confirm or adjust before saving</p>
+                    )}
+                    {popupBasePrice && !popupBaseTier && selectedAppt.payment_amount && popupTotalSaved && (
+                      <p className="text-[11px] text-emerald-600 font-medium mb-1 px-1">✓ Price saved — tap to update if needed</p>
                     )}
                     <div className={`flex items-center rounded-2xl border-2 overflow-hidden mb-3 transition-all ${
                       popupBasePrice && !popupBaseTier
@@ -1909,8 +1912,8 @@ export default function GroomerDashboard() {
                       </div>
                     )}
 
-                    {/* First-time discount toggle — only shown for new customers */}
-                    {subtotal > 0 && popupIsFirstTime && (
+                    {/* First-time discount toggle — always available for groomers to apply manually */}
+                    {subtotal > 0 && (
                       <button
                         onClick={() => { setPopupDiscount(d => !d); setPopupTotalSaved(false) }}
                         className={`w-full flex items-center justify-between rounded-2xl px-4 py-2.5 mb-3 border-2 transition-all ${
@@ -1971,7 +1974,8 @@ export default function GroomerDashboard() {
                             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ action: 'record-payment', payment_amount: amount, addons: popupAddOns }),
                           })
-                          if ((await res.json()).success) {
+                          const data = await res.json()
+                          if (data.success) {
                             const addonNotes = popupAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
                             const nonAddonNotes = (selectedAppt.notes_list ?? []).filter(n => !n.is_addon)
                             const updated = { ...selectedAppt, payment_amount: amount, notes_list: [...nonAddonNotes, ...addonNotes] }
@@ -1979,8 +1983,12 @@ export default function GroomerDashboard() {
                             setPopupTotalSaved(true)
                             showToast('✓ Total saved!')
                             setTimeout(() => setSelectedAppt(null), 800)
+                          } else {
+                            showToast('❌ Save failed — please try again')
                           }
-                        } catch {/**/}
+                        } catch {
+                          showToast('❌ Save failed — check connection')
+                        }
                         finally { setSavingPopupPayment(false) }
                       }}
                       className={`w-full py-2.5 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors ${
