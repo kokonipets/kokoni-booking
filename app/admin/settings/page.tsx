@@ -2126,16 +2126,6 @@ export default function SettingsPage() {
 
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">Current password</label>
-                      <input
-                        type="password"
-                        value={accountForm.currentPassword}
-                        onChange={e => setAccountForm(prev => ({ ...prev, currentPassword: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                        placeholder="Enter current password"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-xs text-gray-500 mb-1">New password</label>
                       <input
                         type="password"
