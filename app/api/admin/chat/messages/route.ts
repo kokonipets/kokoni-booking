@@ -23,15 +23,23 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ messages: data ?? [] })
 }
 
+function toTenDigits(num: string): string {
+  const digits = num.replace(/\D/g, '')
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1)
+  return digits
+}
+
 export async function POST(req: NextRequest) {
   const { phone } = await req.json()
   if (!phone) return NextResponse.json({ error: 'phone required' }, { status: 400 })
   const sb = createSupabaseServer()
+  const ten = toTenDigits(phone)
+  // Mark read by client_phone (normalized 10-digit) to catch all format variants
   await sb
     .from('sms_messages')
     .update({ read_at: new Date().toISOString() })
     .eq('direction', 'inbound')
-    .eq('from_number', phone)
+    .eq('client_phone', ten)
     .is('read_at', null)
   return NextResponse.json({ ok: true })
 }
