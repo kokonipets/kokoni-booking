@@ -37,7 +37,7 @@ export default function ChatIconButton({ iconClass = 'text-gray-700', className 
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => { setUnread(0); setOpen(true) }}
         className={`relative w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors ${className}`}
         aria-label="Messages"
       >
