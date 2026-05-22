@@ -242,9 +242,15 @@ export default function BookPageZhCn() {
         if (data.services && data.services.length > 0) {
           const withDurations = data.services.map((s: any) => {
             const serviceDef = SERVICES.find(srv => srv.id === s.id)
+            // Use Chinese name but preserve price suffix from DB name (e.g. "-Starting from $50")
+            let displayName = serviceDef?.name || s.name
+            if (serviceDef?.name && s.name?.includes('-')) {
+              const dashIdx = s.name.indexOf('-')
+              displayName = serviceDef.name + ' ' + s.name.slice(dashIdx)
+            }
             return {
               ...s,
-              name: serviceDef?.name || s.name,
+              name: displayName,
               desc: serviceDef?.desc || s.desc,
               durationMinutes: serviceDef?.durationMinutes || 0,
             }
@@ -788,7 +794,14 @@ export default function BookPageZhCn() {
                   className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-all text-left group ${service === s.id ? 'border-sky-500 bg-sky-50' : 'border-gray-100 hover:border-sky-200'}`}>
                   <span className="text-2xl mt-0.5">{s.icon}</span>
                   <div className="flex-1">
-                    <p className="font-semibold text-gray-800">{s.name}</p>
+                    <p className="font-semibold text-gray-800">
+                      {s.name.includes('-') ? (
+                        <>
+                          {s.name.split('-')[0].trim()}
+                          <span className="text-sky-400 ml-1">-{s.name.split('-')[1]}</span>
+                        </>
+                      ) : s.name}
+                    </p>
                     <p className="text-sm text-gray-400 mt-0.5 max-h-0 overflow-hidden group-hover:max-h-20 transition-all duration-200">{s.desc}</p>
                   </div>
                   {service === s.id && <CheckCircle2 className="w-5 h-5 text-sky-500 mt-1" />}
