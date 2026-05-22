@@ -2179,7 +2179,7 @@ export default function AdminPage() {
                                     <p className="text-sm text-gray-600">{appt.clients?.name}</p>
                                     <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
                                   </div>
-                                  <span className="text-xs px-2 py-1 rounded-lg bg-sky-100 text-sky-700 font-semibold flex-shrink-0">{serviceMap[appt.service] ?? appt.service}</span>
+                                  <span className="text-xs px-2 py-1 rounded-lg bg-sky-100 text-sky-700 font-semibold flex-shrink-0 max-w-[110px] truncate">{serviceMap[appt.service] ?? appt.service}</span>
                                 </div>
                                 <div className="flex gap-2">
                                   <button onClick={() => handleAction(appt.id, 'confirm')} disabled={actionLoading !== null}
