@@ -34,15 +34,34 @@ export async function POST(req: NextRequest) {
   // Normalize the customer's number to 10-digit for joining with clients.phone
   const tenDigit = toTenDigits(from)
 
-  // Log the inbound message
-  await sb.from('sms_messages').insert({
-    direction: 'inbound',
-    from_number: from,
-    to_number: to,
-    body,
-    twilio_sid: sid,
-    client_phone: tenDigit,
-  })
+  // Log the inbound message — upsert on twilio_sid to prevent duplicates
+  // (Twilio retries webhooks if it doesn't get a fast 200, which causes double-inserts)
+  if (sid) {
+    const { data: existing } = await sb
+      .from('sms_messages')
+      .select('id')
+      .eq('twilio_sid', sid)
+      .maybeSingle()
+    if (!existing) {
+      await sb.from('sms_messages').insert({
+        direction: 'inbound',
+        from_number: from,
+        to_number: to,
+        body,
+        twilio_sid: sid,
+        client_phone: tenDigit,
+      })
+    }
+  } else {
+    await sb.from('sms_messages').insert({
+      direction: 'inbound',
+      from_number: from,
+      to_number: to,
+      body,
+      twilio_sid: sid,
+      client_phone: tenDigit,
+    })
+  }
 
   // Handle keyword responses (Twilio also handles STOP automatically, but we
   // acknowledge in our own log so the chat view shows what happened)
