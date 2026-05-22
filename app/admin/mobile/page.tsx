@@ -1349,7 +1349,7 @@ export default function AdminPage() {
       )}
 
       {/* Header — white with black title (groomer.io style) */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+      <div className="bg-white border-b border-gray-200 px-4 flex items-center justify-between sticky top-0 z-40" style={{paddingTop: 'calc(env(safe-area-inset-top) + 12px)', paddingBottom: '12px'}}>
         <div className="flex items-center gap-3">
           <Image src="/logo.png" alt="Kokoni" width={36} height={36} className="rounded-full" />
           <h1 className="font-bold text-gray-900 text-lg leading-tight">
