@@ -13,5 +13,7 @@ export async function GET() {
     .eq('direction', 'inbound')
     .is('read_at', null)
     .limit(100)
-  return NextResponse.json({ count: data?.length ?? 0 })
+  return NextResponse.json({ count: data?.length ?? 0 }, {
+    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' }
+  })
 }
