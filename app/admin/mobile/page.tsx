@@ -331,6 +331,9 @@ export default function AdminPage() {
   const [expandedClient, setExpandedClient] = useState<string | null>(null)
   const [customerSearch, setCustomerSearch] = useState('')
   const [uploadingPetId, setUploadingPetId] = useState<string | null>(null)
+  const [editingClientPhone, setEditingClientPhone] = useState<string | null>(null)
+  const [editingClientNameVal, setEditingClientNameVal] = useState('')
+  const [savingClientName, setSavingClientName] = useState(false)
   const petPhotoRef = useRef<HTMLInputElement>(null)
 
   // Notes state — free-text with 3-way auto-translation
@@ -1345,6 +1348,51 @@ export default function AdminPage() {
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white px-5 py-2.5 rounded-full text-sm shadow-lg">
           {toast}
+        </div>
+      )}
+
+      {/* Edit Client Name Modal */}
+      {editingClientPhone && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-6" onClick={() => setEditingClientPhone(null)}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+            <p className="font-bold text-gray-800 text-base mb-1">Edit Client Name</p>
+            <p className="text-xs text-gray-400 mb-3">{editingClientPhone}</p>
+            <input
+              autoFocus
+              type="text"
+              value={editingClientNameVal}
+              onChange={e => setEditingClientNameVal(e.target.value)}
+              placeholder="First and last name"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-sky-300 mb-4"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setEditingClientPhone(null)}
+                className="flex-1 border border-gray-200 text-gray-500 rounded-xl py-2.5 text-sm font-medium">
+                Cancel
+              </button>
+              <button
+                disabled={savingClientName || !editingClientNameVal.trim()}
+                onClick={async () => {
+                  setSavingClientName(true)
+                  const res = await fetch('/api/admin/clients', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: editingClientPhone, name: editingClientNameVal.trim() })
+                  })
+                  if (res.ok) {
+                    setCustomers(prev => prev.map(c => c.phone === editingClientPhone ? { ...c, name: editingClientNameVal.trim() } : c))
+                    showToast('✓ Name updated')
+                    setEditingClientPhone(null)
+                  } else {
+                    showToast('Failed to save')
+                  }
+                  setSavingClientName(false)
+                }}
+                className="flex-1 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-bold">
+                {savingClientName ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -4429,7 +4477,13 @@ export default function AdminPage() {
                         onClick={() => setExpandedClient(expandedClient === client.phone ? null : client.phone)}
                       >
                         <div>
-                          <p className="font-semibold text-gray-800">{client.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-gray-800">{client.name}</p>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingClientPhone(client.phone); setEditingClientNameVal(client.name === client.phone ? '' : client.name) }}
+                              className="text-xs text-sky-400 hover:text-sky-600"
+                            >✏️</button>
+                          </div>
                           <p className="text-sm text-gray-500">{client.phone}{client.email ? ` · ${client.email}` : ''}</p>
                           <p className="text-xs text-gray-400 mt-0.5">
                             {client.pets.length} pet{client.pets.length !== 1 ? 's' : ''} · {client.appointments.length} appt{client.appointments.length !== 1 ? 's' : ''}

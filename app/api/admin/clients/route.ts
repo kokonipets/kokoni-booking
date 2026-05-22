@@ -132,10 +132,10 @@ export async function PATCH(req: NextRequest) {
   if (email !== undefined) updates.email = email || null
   if (address !== undefined) updates.address = address || null
 
+  // Upsert so synthetic clients (phone-only, no DB row) get a real row created
   const { error } = await supabase
     .from('clients')
-    .update(updates)
-    .eq('phone', phone)
+    .upsert({ phone, ...updates }, { onConflict: 'phone' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
