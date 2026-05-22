@@ -211,6 +211,27 @@ export default function KioskPage() {
     if (step === 'payment') setTipPercent(20)
   }, [step])
 
+  // Demo/bypass mode — ?demo=checkout skips to payment with a fake appointment
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('demo') === 'checkout') {
+      setMode('checkout')
+      setAppt({
+        id: 'demo',
+        appointment_time: '10:00 AM',
+        service: 'asian_fusion',
+        status: 'confirmed',
+        payment_amount: '130.00',
+        payment_method: null,
+        assigned_groomer: 'Wylie',
+        assigned_bather: null,
+        clients: { name: 'Demo Client', phone: '0000000000', email: null },
+        pets: { id: 'demo-pet', name: 'Fluffy', breed: 'Doodle', weight: '25 lbs', photo_url: null },
+      })
+      setStep('payment')
+    }
+  }, [])
+
   // Open QR modal directly if ?show=venmo or ?show=zelle is in the URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
