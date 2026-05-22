@@ -22,7 +22,7 @@ export default function ChatIconButton({ iconClass = 'text-gray-700', className 
     let cancelled = false
     async function load() {
       try {
-        const res = await fetch('/api/admin/chat/unread', { cache: 'no-store' })
+        const res = await fetch(`/api/admin/chat/unread?t=${Date.now()}`, { cache: 'no-store' })
         const json = await res.json()
         if (!cancelled) setUnread(Number(json.count ?? 0))
       } catch {
