@@ -170,6 +170,19 @@ export async function PATCH(
     return NextResponse.json({ success: true })
   }
 
+  // edit — update service, date, time, and/or notes in one call (from mobile edit modal)
+  if (action === 'edit') {
+    const { service, appointment_date, appointment_time, notes } = body
+    const updates: Record<string, string> = {}
+    if (service) updates.service = service
+    if (appointment_date) updates.appointment_date = appointment_date
+    if (appointment_time) updates.appointment_time = appointment_time
+    if (notes !== undefined) updates.notes = notes
+    const { error } = await supabase.from('appointments').update(updates).eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (action === 'update-service') {
     const { service } = body
     if (!service) return NextResponse.json({ error: 'service required' }, { status: 400 })

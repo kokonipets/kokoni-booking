@@ -288,6 +288,12 @@ export default function AdminPage() {
   // Vaccine status inline edit
   const [editingVaccineId, setEditingVaccineId] = useState<string | null>(null)
   const [savingVaccineId, setSavingVaccineId] = useState<string | null>(null)
+  const [quickVaxPetId, setQuickVaxPetId] = useState<string | null>(null)
+
+  // Edit appointment modal
+  const [editApptId, setEditApptId] = useState<string | null>(null)
+  const [editApptDraft, setEditApptDraft] = useState<{ service: string; date: string; time: string; notes: string }>({ service: '', date: '', time: '', notes: '' })
+  const [savingEditAppt, setSavingEditAppt] = useState(false)
 
   // Reschedule (per card)
   const [reschedulingId, setReschedulingId] = useState<string | null>(null)
@@ -789,6 +795,23 @@ export default function AdminPage() {
     finally { setSavingVaccineId(null) }
   }
 
+  const quickUpdateVax = async (petId: string, status: string) => {
+    setSavingVaccineId(petId)
+    try {
+      await fetch(`/api/admin/pets/${petId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vaccine_status: status }),
+      })
+      // Update both appointments list and customers list
+      setAppointments(prev => prev.map(a => a.pets?.id === petId ? { ...a, pets: { ...a.pets!, vaccine_status: status } } : a))
+      setCustomers(prev => prev.map(c => ({ ...c, pets: c.pets.map(p => p.id === petId ? { ...p, vaccine_status: status } : p) })))
+      setQuickVaxPetId(null)
+      showToast('✓ Vaccine status updated')
+    } catch { showToast('Failed to update') }
+    finally { setSavingVaccineId(null) }
+  }
+
   const deletePet = async (clientPhone: string, petId: string) => {
     setDeletingPetId(petId)
     try {
@@ -1034,7 +1057,7 @@ export default function AdminPage() {
       .catch(() => {})
   }, [authed])
 
-  // Auto-refresh Today, Pending, and Check Out tabs every 15 seconds
+  // Auto-refresh Today, Pending, and Check Out tabs every 60 seconds
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
   useEffect(() => {
     if (!authed) return
@@ -1042,14 +1065,14 @@ export default function AdminPage() {
       const iv = setInterval(() => {
         fetchAppointments()
         setLastSyncTime(new Date())
-      }, 15000)
+      }, 60000)
       return () => clearInterval(iv)
     }
     if (tab === 'checkout') {
       const iv = setInterval(() => {
         fetchCheckout()
         setLastSyncTime(new Date())
-      }, 15000)
+      }, 60000)
       return () => clearInterval(iv)
     }
   }, [authed, tab, fetchAppointments, fetchCheckout])
@@ -1348,6 +1371,65 @@ export default function AdminPage() {
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white px-5 py-2.5 rounded-full text-sm shadow-lg">
           {toast}
+        </div>
+      )}
+
+      {/* Edit Appointment Modal */}
+      {editApptId && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={() => setEditApptId(null)}>
+          <div className="bg-white rounded-t-3xl p-5 w-full max-w-lg shadow-xl pb-safe" style={{paddingBottom: 'calc(env(safe-area-inset-bottom) + 20px)'}} onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4" />
+            <p className="font-bold text-gray-800 text-base mb-4">Edit Appointment</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Service</label>
+                <select value={editApptDraft.service} onChange={e => setEditApptDraft(d => ({...d, service: e.target.value}))}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                  {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Date</label>
+                <input type="date" value={editApptDraft.date} onChange={e => setEditApptDraft(d => ({...d, date: e.target.value}))}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Time</label>
+                <select value={editApptDraft.time} onChange={e => setEditApptDraft(d => ({...d, time: e.target.value}))}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
+                  {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Notes</label>
+                <textarea value={editApptDraft.notes} onChange={e => setEditApptDraft(d => ({...d, notes: e.target.value}))}
+                  rows={2} placeholder="Optional notes…"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 resize-none" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setEditApptId(null)}
+                className="flex-1 border border-gray-200 text-gray-500 rounded-xl py-3 text-sm font-medium">Cancel</button>
+              <button disabled={savingEditAppt}
+                onClick={async () => {
+                  setSavingEditAppt(true)
+                  const res = await fetch(`/api/admin/appointments/${editApptId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'edit', service: editApptDraft.service, appointment_date: editApptDraft.date, appointment_time: editApptDraft.time, notes: editApptDraft.notes })
+                  })
+                  if (res.ok) {
+                    showToast('✓ Appointment updated')
+                    setEditApptId(null)
+                    fetchAppointments()
+                  } else { showToast('Failed to save') }
+                  setSavingEditAppt(false)
+                }}
+                className="flex-1 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white rounded-xl py-3 text-sm font-bold">
+                {savingEditAppt ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2257,8 +2339,11 @@ export default function AdminPage() {
                           {confirmAppts.map(appt => (
                             <div key={appt.id} className="bg-white rounded-2xl border border-sky-100 overflow-hidden shadow-sm">
                               <div className="bg-sky-50 px-4 py-2 flex items-center justify-between border-b border-sky-100">
-                                <span className="text-xs font-semibold text-sky-700">{serviceMap[appt.service] ?? appt.service}</span>
-                                <span className="text-xs text-sky-500">{formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
+                                <span className="text-xs font-semibold text-sky-700 flex-1 truncate mr-2">{serviceMap[appt.service] ?? appt.service}</span>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="text-xs text-sky-500">{formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
+                                  <button onClick={() => { setEditApptId(appt.id); setEditApptDraft({ service: appt.service, date: appt.appointment_date, time: appt.appointment_time, notes: appt.notes ?? '' }) }} className="text-sky-400 hover:text-sky-600 text-sm">✏️</button>
+                                </div>
                               </div>
                               <div className="px-4 py-3">
                                 <div className="flex items-center gap-3 mb-3">
@@ -2271,10 +2356,24 @@ export default function AdminPage() {
                                     </p>
                                     <p className="text-sm text-gray-600">{appt.clients?.name} · <span className="text-gray-400">{appt.clients?.phone}</span></p>
                                   </div>
-                                  {appt.pets?.vaccine_status && (
-                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${VACCINE_COLORS[appt.pets.vaccine_status] ?? 'bg-gray-100 text-gray-500'}`}>
-                                      {appt.pets.vaccine_status === 'verified' ? '✓ Vax' : '⚠️ No Vax'}
-                                    </span>
+                                  {appt.pets?.id && (
+                                    quickVaxPetId === appt.pets.id ? (
+                                      <div className="flex flex-col gap-1 flex-shrink-0">
+                                        {(['verified','pending','email_sent'] as const).map(s => (
+                                          <button key={s} disabled={savingVaccineId === appt.pets!.id}
+                                            onClick={() => quickUpdateVax(appt.pets!.id, s)}
+                                            className={`text-xs px-2 py-0.5 rounded-full font-medium border transition-all disabled:opacity-50 ${s==='verified' ? 'bg-green-500 text-white border-green-500' : s==='email_sent' ? 'bg-yellow-400 text-white border-yellow-400' : 'bg-red-400 text-white border-red-400'}`}>
+                                            {s==='verified'?'✓ Vax':s==='email_sent'?'Pending':'No Vax'}
+                                          </button>
+                                        ))}
+                                        <button onClick={() => setQuickVaxPetId(null)} className="text-xs text-gray-400 text-center">✕</button>
+                                      </div>
+                                    ) : (
+                                      <button onClick={() => setQuickVaxPetId(appt.pets!.id)}
+                                        className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${VACCINE_COLORS[appt.pets?.vaccine_status ?? ''] ?? 'bg-gray-100 text-gray-500'}`}>
+                                        {appt.pets?.vaccine_status === 'verified' ? '✓ Vax' : '⚠️ No Vax'}
+                                      </button>
+                                    )
                                   )}
                                 </div>
                                 <div className="flex gap-2">
