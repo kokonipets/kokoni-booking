@@ -206,6 +206,11 @@ export default function KioskPage() {
     if (cashPollRef.current) { clearInterval(cashPollRef.current); cashPollRef.current = null }
   }, [])
 
+  // Pre-select 20% tip when entering the payment step
+  useEffect(() => {
+    if (step === 'payment') setTipPercent(20)
+  }, [step])
+
   // Open QR modal directly if ?show=venmo or ?show=zelle is in the URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
