@@ -233,7 +233,7 @@ export default function SettingsPage() {
 
   const loadStaff = async () => {
     try {
-      const res = await fetch('/api/admin/staff')
+      const res = await fetch('/api/admin/staff', { cache: 'no-store' })
       if (!res.ok) {
         throw new Error(`Failed to load staff: ${res.statusText}`)
       }
@@ -322,6 +322,16 @@ export default function SettingsPage() {
           const error = await res.json()
           throw new Error(error.error || `Failed to update staff: ${res.statusText}`)
         }
+        // Optimistic update — reflect changes immediately in the UI
+        setStaff(prev => prev.map(s => s.id === editingId ? {
+          ...s,
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          name: `${formData.first_name || ''} ${formData.last_name || ''}`.trim(),
+          username: formData.username || s.username,
+          email: formData.email || s.email,
+          role: formData.role || s.role,
+        } : s))
         await loadStaff()
         setEditingId(null)
         setSavingButton('staff_done')
