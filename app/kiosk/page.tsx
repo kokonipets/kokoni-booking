@@ -206,6 +206,15 @@ export default function KioskPage() {
     if (cashPollRef.current) { clearInterval(cashPollRef.current); cashPollRef.current = null }
   }, [])
 
+  // Open QR modal directly if ?show=venmo or ?show=zelle is in the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const show = params.get('show')
+    if (show === 'venmo' || show === 'zelle') {
+      setQrModal(show)
+    }
+  }, [])
+
   // Load service names from settings on mount
   useEffect(() => {
     fetch('/api/admin/settings').then(r => r.json()).then(d => {
