@@ -1376,7 +1376,7 @@ export default function AdminPage() {
 
       {/* Edit Appointment Modal */}
       {editApptId && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={() => setEditApptId(null)}>
+        <div className="fixed inset-0 z-[99999] bg-black/40 flex items-end justify-center" onClick={() => setEditApptId(null)}>
           <div className="bg-white rounded-t-3xl p-5 w-full max-w-lg shadow-xl pb-safe" style={{paddingBottom: 'calc(env(safe-area-inset-bottom) + 20px)'}} onClick={e => e.stopPropagation()}>
             <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4" />
             <p className="font-bold text-gray-800 text-base mb-4">Edit Appointment</p>
