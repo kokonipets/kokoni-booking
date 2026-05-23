@@ -173,6 +173,14 @@ export async function PATCH(
   // edit — update service, date, time, and/or notes in one call (from mobile edit modal)
   if (action === 'edit') {
     const { service, appointment_date, appointment_time, notes } = body
+
+    // Fetch original to detect date/time changes for SMS
+    const { data: original } = await supabase
+      .from('appointments')
+      .select('appointment_date, appointment_time, client_phone, clients(name, sms_consent), pets!pet_id(name)')
+      .eq('id', id)
+      .single()
+
     const updates: Record<string, string> = {}
     if (service) updates.service = service
     if (appointment_date) updates.appointment_date = appointment_date
@@ -180,6 +188,28 @@ export async function PATCH(
     if (notes !== undefined) updates.notes = notes
     const { error } = await supabase.from('appointments').update(updates).eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Send reschedule SMS if date or time changed and client opted in
+    if (original) {
+      const a = original as any
+      const dateChanged = appointment_date && appointment_date !== a.appointment_date
+      const timeChanged = appointment_time && appointment_time !== a.appointment_time
+      if ((dateChanged || timeChanged) && a.clients?.sms_consent) {
+        const newDate = appointment_date ?? a.appointment_date
+        const newTime = appointment_time ?? a.appointment_time
+        const dateLabel = new Date(newDate + 'T12:00:00').toLocaleDateString('en-US', {
+          weekday: 'long', month: 'long', day: 'numeric',
+        })
+        notifyClientRescheduled({
+          to: a.client_phone,
+          clientName: a.clients?.name ?? 'there',
+          petName: a.pets?.name ?? 'your pet',
+          date: dateLabel,
+          time: newTime,
+        }).catch((e: unknown) => console.error('Edit reschedule SMS failed:', e))
+      }
+    }
+
     return NextResponse.json({ success: true })
   }
 
