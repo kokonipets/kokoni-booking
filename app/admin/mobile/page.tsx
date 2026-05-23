@@ -3657,6 +3657,32 @@ export default function AdminPage() {
                         </div>
                       )}
 
+                      {/* Reschedule & Delete */}
+                      <div className="space-y-2 pt-1">
+                        <button
+                          onClick={() => {
+                            setEditApptId(a.id)
+                            setEditApptDraft({ service: a.service, date: a.appointment_date, time: a.appointment_time, notes: (a as any).notes ?? '' })
+                            setCalendarDetailAppt(null)
+                          }}
+                          className="w-full border-2 border-dashed border-sky-300 hover:border-sky-400 text-sky-600 hover:text-sky-700 font-semibold py-2.5 rounded-xl text-sm transition-colors"
+                        >
+                          📅 Reschedule
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Delete this appointment permanently? This cannot be undone.')) {
+                              deleteAppointment(a.id)
+                              setCalendarDetailAppt(null)
+                            }
+                          }}
+                          disabled={!!deletingApptId}
+                          className="w-full bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-semibold py-2.5 rounded-xl text-sm transition-colors disabled:opacity-50"
+                        >
+                          {deletingApptId === a.id ? '⏳ Deleting…' : '🗑 Delete Appointment'}
+                        </button>
+                      </div>
+
                       <div className="h-4" />
                     </>)}
 
