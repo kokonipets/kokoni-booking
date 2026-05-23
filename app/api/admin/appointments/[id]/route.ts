@@ -202,7 +202,7 @@ export async function PATCH(
         })
         notifyClientRescheduled({
           to: a.client_phone,
-          clientName: a.clients?.name ?? 'there',
+          clientName: (a.clients?.name ?? 'there').split(' ')[0],
           petName: a.pets?.name ?? 'your pet',
           date: dateLabel,
           time: newTime,
