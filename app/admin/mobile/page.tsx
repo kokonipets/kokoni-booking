@@ -2298,6 +2298,8 @@ export default function AdminPage() {
                               <div className="bg-amber-50 px-4 py-2 flex items-center gap-2 border-b border-amber-100">
                                 <span className="text-xs font-bold text-amber-700">🆕 First Visit</span>
                                 <span className="text-xs text-amber-500 ml-auto">{formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
+                                <button onClick={() => { setEditApptId(appt.id); setEditApptDraft({ service: appt.service, date: appt.appointment_date, time: appt.appointment_time, notes: (appt as any).notes ?? '' }) }} className="text-amber-400 hover:text-amber-600 text-sm ml-1">✏️</button>
+                                <button onClick={() => { if (confirm('Delete this appointment permanently?')) deleteAppointment(appt.id) }} disabled={!!deletingApptId} className="text-gray-300 hover:text-rose-500 text-sm ml-0.5">🗑️</button>
                               </div>
                               <div className="px-4 py-3">
                                 <div className="flex items-center gap-3 mb-3">
@@ -2343,6 +2345,7 @@ export default function AdminPage() {
                                 <div className="flex items-center gap-2 flex-shrink-0">
                                   <span className="text-xs text-sky-500">{formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
                                   <button onClick={() => { setEditApptId(appt.id); setEditApptDraft({ service: appt.service, date: appt.appointment_date, time: appt.appointment_time, notes: appt.notes ?? '' }) }} className="text-sky-400 hover:text-sky-600 text-sm">✏️</button>
+                                  <button onClick={() => { if (confirm('Delete this appointment permanently?')) deleteAppointment(appt.id) }} disabled={!!deletingApptId} className="text-gray-300 hover:text-rose-500 text-sm">🗑️</button>
                                 </div>
                               </div>
                               <div className="px-4 py-3">
@@ -2405,7 +2408,11 @@ export default function AdminPage() {
                             <div key={appt.id} className="bg-white rounded-2xl border border-violet-100 overflow-hidden shadow-sm">
                               <div className="bg-violet-50 px-4 py-2 flex items-center justify-between border-b border-violet-100">
                                 <span className="text-xs font-semibold text-violet-700">{serviceMap[appt.service] ?? appt.service}</span>
-                                <span className="text-xs text-violet-500">{formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="text-xs text-violet-500">{formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
+                                  <button onClick={() => { setEditApptId(appt.id); setEditApptDraft({ service: appt.service, date: appt.appointment_date, time: appt.appointment_time, notes: (appt as any).notes ?? '' }) }} className="text-violet-400 hover:text-violet-600 text-sm">✏️</button>
+                                  <button onClick={() => { if (confirm('Delete this appointment permanently?')) deleteAppointment(appt.id) }} disabled={!!deletingApptId} className="text-gray-300 hover:text-rose-500 text-sm">🗑️</button>
+                                </div>
                               </div>
                               <div className="px-4 py-3">
                                 <div className="flex items-center gap-3 mb-3">
@@ -2458,7 +2465,11 @@ export default function AdminPage() {
                             <div key={appt.id} className="bg-white rounded-2xl border border-orange-100 overflow-hidden shadow-sm">
                               <div className="bg-orange-50 px-4 py-2 flex items-center justify-between border-b border-orange-100">
                                 <span className="text-xs font-semibold text-orange-700">{serviceMap[appt.service] ?? appt.service}</span>
+                                <div className="flex items-center gap-2 flex-shrink-0">
                                 <span className="text-xs text-orange-500">{formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
+                                <button onClick={() => { setEditApptId(appt.id); setEditApptDraft({ service: appt.service, date: appt.appointment_date, time: appt.appointment_time, notes: (appt as any).notes ?? '' }) }} className="text-orange-400 hover:text-orange-600 text-sm">✏️</button>
+                                <button onClick={() => { if (confirm('Delete this appointment permanently?')) deleteAppointment(appt.id) }} disabled={!!deletingApptId} className="text-gray-300 hover:text-rose-500 text-sm">🗑️</button>
+                                </div>
                               </div>
                               <div className="px-4 py-3">
                                 <div className="flex items-center gap-3">
