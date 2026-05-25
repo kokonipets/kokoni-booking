@@ -164,7 +164,7 @@ export default function KioskPage() {
   const [appointments, setAppointments] = useState<KioskAppointment[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [tipPercent, setTipPercent] = useState<number | null>(null)
+  const [tipPercent, setTipPercent] = useState<number | null>(20)
   const [customTip, setCustomTip] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle' | null>(null)
   const [qrModal, setQrModal] = useState<QRModal>(null)
