@@ -351,7 +351,8 @@ export default function KioskPage() {
           `i.com.squareup.pos.TOTAL_AMOUNT=${amountCents}`,
           'S.com.squareup.pos.CURRENCY_CODE=USD',
           'S.com.squareup.pos.TENDER_TYPES=com.squareup.pos.TENDER_CARD',
-          'B.com.squareup.pos.DISABLE_CNP=true',
+          // Removed DISABLE_CNP=true — it caused "No card readers connected" on Android
+          // because the Bluetooth reader handshake isn't instant when Square opens via POS API
         ]
         return `intent:#Intent;${parts.join(';')};end`
       } else {
