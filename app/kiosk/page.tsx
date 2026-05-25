@@ -382,17 +382,19 @@ export default function KioskPage() {
     }
   }
 
-  const handleSquareCardPayment = (grandTotal: number | null) => {
+  const handleSquareCardPayment = () => {
+    // Always compute tip + total fresh from current state to avoid stale closure issues
+    const sub = appt?.payment_amount ? parseFloat(appt.payment_amount) : null
+    const custAmt = customTip !== '' ? parseFloat(customTip) : NaN
+    const tip = sub !== null && tipPercent !== null
+      ? (tipPercent === -1 ? (isNaN(custAmt) ? 0 : custAmt) : sub * tipPercent / 100)
+      : null
+    const total = sub !== null && tip !== null ? sub + tip : sub
+
     if (appt) {
-      // Compute tip to save alongside appt so Square callback can record it
-      const sub = appt.payment_amount ? parseFloat(appt.payment_amount) : null
-      const custAmt = customTip !== '' ? parseFloat(customTip) : NaN
-      const tip = sub !== null && tipPercent !== null
-        ? (tipPercent === -1 ? (isNaN(custAmt) ? 0 : custAmt) : sub * tipPercent / 100)
-        : null
       localStorage.setItem('square_pending_appt', JSON.stringify({ apptId: appt.id, appt, tipAmount: tip, timestamp: Date.now() }))
     }
-    const url = buildSquareUrl(grandTotal)
+    const url = buildSquareUrl(total)
     if (url) {
       window.location.href = url
     }
@@ -835,7 +837,7 @@ export default function KioskPage() {
                         if (key === 'card' && (!grandTotal || grandTotal <= 0)) return
                         setPaymentMethod(key)
                         if (key === 'card') {
-                          handleSquareCardPayment(grandTotal)
+                          handleSquareCardPayment()
                         } else {
                           setQrModal(key as QRModal)
                         }
