@@ -362,6 +362,7 @@ export default function KioskPage() {
       if (isAndroid) {
         // Square POS API v2.0 — Android intent URL format
         // See: developer.squareup.com/docs/pos-api/build-mobile-web
+        const locationId = process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID
         const parts = [
           'action=com.squareup.pos.action.CHARGE',
           'package=com.squareup',
@@ -373,6 +374,7 @@ export default function KioskPage() {
           'S.com.squareup.pos.CURRENCY_CODE=USD',
           'S.com.squareup.pos.TENDER_TYPES=com.squareup.pos.TENDER_CARD',
           'B.com.squareup.pos.DISABLE_CNP=true',
+          ...(locationId ? [`S.com.squareup.pos.LOCATION_ID=${encodeURIComponent(locationId)}`] : []),
         ]
         return `intent:#Intent;${parts.join(';')};end`
       } else {
