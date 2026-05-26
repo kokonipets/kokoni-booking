@@ -187,6 +187,7 @@ export default function KioskPage() {
   const [cashPendingSignaled, setCashPendingSignaled] = useState(false)
   const cashPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [squareWaiting, setSquareWaiting] = useState(false)
+  const [selectedAppts, setSelectedAppts] = useState<KioskAppointment[]>([])
   const [venmoZelleWaiting, setVenmoZelleWaiting] = useState(false)
   const [venmoZelleSignaled, setVenmoZelleSignaled] = useState(false)
   const venmoZellePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -196,8 +197,10 @@ export default function KioskPage() {
     ...Object.fromEntries(serviceDefs.filter(s => s.name).map(s => [s.id, s.name])),
   }
 
-  // Calculate grand total for payment panels
-  const subtotal = appt?.payment_amount ? parseFloat(appt.payment_amount) : null
+  // Calculate grand total for payment panels — multi-pet sums all selected appointments
+  const subtotal = selectedAppts.length > 0
+    ? selectedAppts.reduce((sum, a) => sum + (a.payment_amount ? parseFloat(a.payment_amount) : 0), 0)
+    : (appt?.payment_amount ? parseFloat(appt.payment_amount) : null)
   const customTipAmt = customTip !== '' ? parseFloat(customTip) : NaN
   const tipAmt = subtotal !== null && tipPercent !== null
     ? (tipPercent === -1 ? (isNaN(customTipAmt) ? 0 : customTipAmt) : subtotal * tipPercent / 100)
@@ -218,6 +221,7 @@ export default function KioskPage() {
     setQrModal(null)
     setPaymentApproved(false)
     setCashPendingSignaled(false)
+    setSelectedAppts([])
     if (cashPollRef.current) { clearInterval(cashPollRef.current); cashPollRef.current = null }
   }, [])
 
@@ -288,19 +292,38 @@ export default function KioskPage() {
   }, [step, reset])
 
   // ── Square success handler (shared by callback + cross-tab storage event) ──
-  const handleSquareSuccess = useCallback((pending: { apptId: string; appt: KioskAppointment; tipAmount: number | null }) => {
-    fetch('/api/kiosk/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'checkout',
-        appointmentId: pending.apptId,
-        paymentMethod: 'card',
-        tipAmount: pending.tipAmount ?? null,
-      }),
-    }).catch(() => {})
+  const handleSquareSuccess = useCallback((pending: {
+    apptId?: string; appt?: KioskAppointment
+    apptIds?: string[]; appts?: KioskAppointment[]
+    tipAmount: number | null
+  }) => {
+    // Support both single and multi-pet pending payloads
+    const ids = pending.apptIds ?? (pending.apptId ? [pending.apptId] : [])
+    const appts = pending.appts ?? (pending.appt ? [pending.appt] : [])
+    const totalSub = appts.reduce((s, a) => s + (a.payment_amount ? parseFloat(a.payment_amount) : 0), 0)
+
+    ids.forEach((id, i) => {
+      const a = appts[i]
+      // Split tip proportionally by each appointment's share of the subtotal
+      const apptSub = a?.payment_amount ? parseFloat(a.payment_amount) : 0
+      const tipShare = totalSub > 0 && pending.tipAmount !== null
+        ? pending.tipAmount! * (apptSub / totalSub)
+        : pending.tipAmount
+      fetch('/api/kiosk/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'checkout',
+          appointmentId: id,
+          paymentMethod: 'card',
+          tipAmount: tipShare ?? null,
+        }),
+      }).catch(() => {})
+    })
+
     setSquareWaiting(false)
-    setAppt(pending.appt)
+    setAppt(appts[0] ?? null)
+    if (appts.length > 1) setSelectedAppts(appts)
     setMode('checkout')
     setPaymentApproved(true)
     setTimeout(() => {
@@ -420,19 +443,22 @@ export default function KioskPage() {
 
   const handleSquareCardPayment = () => {
     // Always compute tip + total fresh from current state to avoid stale closure issues
-    const sub = appt?.payment_amount ? parseFloat(appt.payment_amount) : null
+    const activeAppts = selectedAppts.length > 0 ? selectedAppts : (appt ? [appt] : [])
+    const sub = activeAppts.reduce((s, a) => s + (a.payment_amount ? parseFloat(a.payment_amount) : 0), 0) || null
     const custAmt = customTip !== '' ? parseFloat(customTip) : NaN
     const tip = sub !== null && tipPercent !== null
       ? (tipPercent === -1 ? (isNaN(custAmt) ? 0 : custAmt) : sub * tipPercent / 100)
       : null
     const total = sub !== null && tip !== null ? sub + tip : sub
 
-    if (appt) {
-      localStorage.setItem('square_pending_appt', JSON.stringify({ apptId: appt.id, appt, tipAmount: tip, timestamp: Date.now() }))
-    }
+    localStorage.setItem('square_pending_appt', JSON.stringify({
+      apptIds: activeAppts.map(a => a.id),
+      appts: activeAppts,
+      tipAmount: tip,
+      timestamp: Date.now(),
+    }))
     const url = buildSquareUrl(total)
     if (url) {
-      setSquareWaiting(true)
       window.location.href = url
     }
   }
@@ -676,11 +702,47 @@ export default function KioskPage() {
             </h2>
           </div>
 
+          {/* ── Pay/check-in all together ── */}
+          {appointments.length > 1 && (
+            <button
+              disabled={submitting}
+              onClick={async () => {
+                if (mode === 'checkin') {
+                  // Check in all pets at once
+                  setSubmitting(true)
+                  try {
+                    await Promise.all(appointments.map(a =>
+                      fetch('/api/kiosk/action', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'checkin', appointmentId: a.id }),
+                      })
+                    ))
+                    setAppt(appointments[0])
+                    setSelectedAppts(appointments)
+                    setStep('success')
+                  } catch { setError('Network error — please see the front desk') }
+                  setSubmitting(false)
+                } else {
+                  // Pay for all pets together
+                  setSelectedAppts(appointments)
+                  setAppt(appointments[0])
+                  setStep('payment')
+                }
+              }}
+              className={`w-full text-white font-black py-8 rounded-3xl text-3xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-4 disabled:opacity-40 ${accentBg}`}
+            >
+              <span className="text-4xl">{mode === 'checkin' ? '🐾' : '💳'}</span>
+              <span>{mode === 'checkin' ? `Check in all ${appointments.length} pets` : `Pay for all ${appointments.length} pets together`}</span>
+            </button>
+          )}
+
+          <p className="text-gray-400 text-xl text-center font-medium">— or select one pet —</p>
+
           <div className="flex flex-col gap-4 w-full">
             {appointments.map((a) => (
               <button
                 key={a.id}
-                onClick={() => { setAppt(a); setStep(mode === 'checkin' ? 'found' : 'payment') }}
+                onClick={() => { setSelectedAppts([]); setAppt(a); setStep(mode === 'checkin' ? 'found' : 'payment') }}
                 className="bg-white rounded-3xl shadow-md border-2 border-gray-100 hover:border-violet-300 active:scale-95 transition-all overflow-hidden w-full text-left"
               >
                 <div className="flex items-center gap-6 px-8 py-6">
@@ -779,6 +841,11 @@ export default function KioskPage() {
                 💳 Payment
               </span>
               <h2 className="text-5xl font-black text-gray-800">How would you like to pay?</h2>
+              {selectedAppts.length > 1 && (
+                <p className="text-2xl text-violet-600 font-semibold mt-2">
+                  {selectedAppts.map(a => a.pets?.name).filter(Boolean).join(' & ')}
+                </p>
+              )}
             </div>
 
             <div className="bg-white rounded-3xl shadow-xl overflow-hidden w-full border border-gray-100 px-8 py-7 space-y-6">
@@ -1038,38 +1105,6 @@ export default function KioskPage() {
         </div>
       )}
 
-      {/* ── SQUARE WAITING OVERLAY ────────────────────────────────────────── */}
-      {squareWaiting && (
-        <div className="fixed inset-0 z-[55] flex flex-col items-center justify-center bg-white gap-8 px-10 text-center">
-          <div className="text-[8rem] leading-none animate-pulse">💳</div>
-          <div>
-            <p className="text-4xl font-black text-gray-800">Processing payment…</p>
-            <p className="text-xl text-gray-500 mt-3">Complete your payment in Square, then return here</p>
-          </div>
-          <button
-            onClick={() => {
-              const pendingRaw = localStorage.getItem('square_pending_appt')
-              if (pendingRaw) {
-                const pending = JSON.parse(pendingRaw)
-                localStorage.removeItem('square_pending_appt')
-                handleSquareSuccess(pending)
-              } else {
-                setSquareWaiting(false)
-                setStep('success')
-              }
-            }}
-            className="w-full max-w-md bg-green-500 text-white font-black py-6 rounded-2xl text-2xl shadow-lg active:scale-95 transition-transform"
-          >
-            ✓ Payment Done — Return to Kiosk
-          </button>
-          <button
-            onClick={() => { setSquareWaiting(false); setPaymentMethod(null) }}
-            className="text-gray-400 text-lg font-medium underline"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
 
       {/* ── PAYMENT APPROVED OVERLAY (Square POS return) ─────────────────── */}
       {paymentApproved && (
@@ -1096,20 +1131,28 @@ export default function KioskPage() {
               <>
                 <h2 className="text-6xl font-black text-gray-800 mb-4">You&apos;re checked in!</h2>
                 <p className="text-3xl text-gray-500">
-                  <span className="text-gray-800 font-bold">{appt.pets?.name}</span> is all set. 🛁✂️
+                  <span className="text-gray-800 font-bold">
+                    {selectedAppts.length > 1
+                      ? selectedAppts.map(a => a.pets?.name).filter(Boolean).join(' & ')
+                      : appt.pets?.name}
+                  </span> {selectedAppts.length > 1 ? 'are' : 'is'} all set. 🛁✂️
                 </p>
                 <p className="text-gray-400 text-2xl mt-4">
-                  We&apos;ll send you a text when <span className="font-semibold text-gray-600">{appt.pets?.name}</span> is ready for pickup.
+                  We&apos;ll send you a text when your {selectedAppts.length > 1 ? 'pets are' : `${appt.pets?.name} is`} ready for pickup.
                 </p>
               </>
             ) : (
               <>
                 <h2 className="text-6xl font-black text-gray-800 mb-4">See you next time!</h2>
                 <p className="text-3xl text-gray-500">
-                  <span className="text-gray-800 font-bold">{appt.pets?.name}</span> is heading home! 🎉
+                  <span className="text-gray-800 font-bold">
+                    {selectedAppts.length > 1
+                      ? selectedAppts.map(a => a.pets?.name).filter(Boolean).join(' & ')
+                      : appt.pets?.name}
+                  </span> {selectedAppts.length > 1 ? 'are' : 'is'} heading home! 🎉
                 </p>
                 <p className="text-gray-400 text-2xl mt-4">
-                  Thank you for choosing Kokoni Pet Grooming Salon. We hope to see you and {appt.pets?.name} again soon! 🦄
+                  Thank you for choosing Kokoni Pet Grooming Salon. We hope to see you again soon! 🦄
                 </p>
                 <button
                   onClick={() => {
