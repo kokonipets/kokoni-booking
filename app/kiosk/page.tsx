@@ -172,7 +172,6 @@ export default function KioskPage() {
   const [squareUrl, setSquareUrl] = useState<string | null>(null)
   const [cashPendingSignaled, setCashPendingSignaled] = useState(false)
   const cashPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [squareDebug, setSquareDebug] = useState<string | null>(null)
   const [venmoZelleWaiting, setVenmoZelleWaiting] = useState(false)
   const [venmoZelleSignaled, setVenmoZelleSignaled] = useState(false)
   const venmoZellePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -399,21 +398,13 @@ export default function KioskPage() {
       localStorage.setItem('square_pending_appt', JSON.stringify({ apptId: appt.id, appt, tipAmount: tip, timestamp: Date.now() }))
     }
     const url = buildSquareUrl(total)
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
-    const debugMsg = `Platform: ${isIOS ? 'iOS' : 'Android'}\nUA: ${navigator.userAgent.slice(0, 80)}\nURL: ${url?.slice(0, 100)}`
-    setSquareDebug(debugMsg)
-    console.log('[Square] UA:', navigator.userAgent)
-    console.log('[Square] URL:', url)
     if (url) {
-      setTimeout(() => {
-        setSquareDebug(null)
-        const a = document.createElement('a')
-        a.href = url
-        a.style.display = 'none'
-        document.body.appendChild(a)
-        a.click()
-        setTimeout(() => document.body.removeChild(a), 500)
-      }, 3000)
+      const a = document.createElement('a')
+      a.href = url
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      setTimeout(() => document.body.removeChild(a), 500)
     }
   }
 
@@ -499,16 +490,6 @@ export default function KioskPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 flex flex-col items-center justify-center px-10 py-10 select-none overflow-hidden"
       style={{ fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* Square debug overlay — remove once Square is working */}
-      {squareDebug && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4 shadow-2xl">
-            <p className="text-2xl font-black text-gray-800 mb-4">🔍 Square Debug</p>
-            <pre className="text-sm bg-gray-100 rounded-xl p-4 whitespace-pre-wrap break-all text-gray-700">{squareDebug}</pre>
-            <p className="text-gray-400 text-lg mt-4 text-center">Launching Square in 3 seconds…</p>
-          </div>
-        </div>
-      )}
 
       {/* Decorative background blobs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
