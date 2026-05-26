@@ -172,7 +172,7 @@ export default function KioskPage() {
   const [squareUrl, setSquareUrl] = useState<string | null>(null)
   const [cashPendingSignaled, setCashPendingSignaled] = useState(false)
   const cashPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [squareDebug, setSquareDebug] = useState<string | null>(null)
+  const [squareWaiting, setSquareWaiting] = useState(false)
   const [venmoZelleWaiting, setVenmoZelleWaiting] = useState(false)
   const [venmoZelleSignaled, setVenmoZelleSignaled] = useState(false)
   const venmoZellePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -273,7 +273,29 @@ export default function KioskPage() {
     return () => clearTimeout(t)
   }, [step, reset])
 
-  // ── Square POS callback handler ────────────────────────────────────────────
+  // ── Square success handler (shared by callback + cross-tab storage event) ──
+  const handleSquareSuccess = useCallback((pending: { apptId: string; appt: KioskAppointment; tipAmount: number | null }) => {
+    fetch('/api/kiosk/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'checkout',
+        appointmentId: pending.apptId,
+        paymentMethod: 'card',
+        tipAmount: pending.tipAmount ?? null,
+      }),
+    }).catch(() => {})
+    setSquareWaiting(false)
+    setAppt(pending.appt)
+    setMode('checkout')
+    setPaymentApproved(true)
+    setTimeout(() => {
+      setPaymentApproved(false)
+      setStep('success')
+    }, 2500)
+  }, [])
+
+  // ── Square POS callback handler (fires when Square redirects back to this URL) ─
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
@@ -292,7 +314,7 @@ export default function KioskPage() {
     const pending = JSON.parse(pendingRaw)
     localStorage.removeItem('square_pending_appt')
 
-    // Determine success: v2.0 uses status=ok, v1.3 uses decoded JSON
+    // Determine success
     let isSuccess = false
     try {
       if (statusParam) {
@@ -304,31 +326,29 @@ export default function KioskPage() {
     } catch { isSuccess = false }
 
     if (isSuccess) {
-      // Mark checkout in database then show success
-      fetch('/api/kiosk/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'checkout',
-          appointmentId: pending.apptId,
-          paymentMethod: 'card',
-          tipAmount: pending.tipAmount ?? null,
-        }),
-      }).catch(() => {})
-      // Flash "Payment Approved" overlay, then go to success screen
-      setAppt(pending.appt)
-      setMode('checkout')
-      setPaymentApproved(true)
-      setTimeout(() => {
-        setPaymentApproved(false)
-        setStep('success')
-      }, 2500)
+      // Broadcast to other tabs/PWA via localStorage so the waiting screen picks it up
+      localStorage.setItem('square_payment_result', JSON.stringify({ ...pending, timestamp: Date.now() }))
+      handleSquareSuccess(pending)
     } else {
-      // Payment was cancelled or failed — go back to welcome
       setError('Payment was not completed. Please try again.')
       setStep('welcome')
     }
-  }, [])
+  }, [handleSquareSuccess])
+
+  // ── Cross-tab listener: PWA picks up callback that fired in Chrome tab ──────
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'square_payment_result' || !e.newValue) return
+      try {
+        const result = JSON.parse(e.newValue)
+        if (Date.now() - result.timestamp > 60_000) return // ignore stale (>60s)
+        localStorage.removeItem('square_payment_result')
+        handleSquareSuccess(result)
+      } catch {/**/}
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [handleSquareSuccess])
 
   // ── Square POS launch ──────────────────────────────────────────────────────
   const buildSquareUrl = (grandTotal: number | null): string | null => {
@@ -355,8 +375,8 @@ export default function KioskPage() {
           `i.com.squareup.pos.TOTAL_AMOUNT=${amountCents}`,
           'S.com.squareup.pos.CURRENCY_CODE=USD',
           'S.com.squareup.pos.TENDER_TYPES=com.squareup.pos.TENDER_CARD',
-          // Removed DISABLE_CNP=true — it caused "No card readers connected" on Android
-          // because the Bluetooth reader handshake isn't instant when Square opens via POS API
+          // Auto-return to kiosk 3.2 s after Square shows the receipt screen
+          'i.com.squareup.pos.AUTO_RETURN_TIMEOUT_MS=3200',
         ]
         return `intent:#Intent;${parts.join(';')};end`
       } else {
@@ -399,21 +419,14 @@ export default function KioskPage() {
       localStorage.setItem('square_pending_appt', JSON.stringify({ apptId: appt.id, appt, tipAmount: tip, timestamp: Date.now() }))
     }
     const url = buildSquareUrl(total)
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
-    const debugMsg = `Platform: ${isIOS ? 'iOS' : 'Android'}\nUA: ${navigator.userAgent.slice(0, 80)}\nURL: ${url?.slice(0, 100)}`
-    setSquareDebug(debugMsg)
-    console.log('[Square] UA:', navigator.userAgent)
-    console.log('[Square] URL:', url)
     if (url) {
-      setTimeout(() => {
-        setSquareDebug(null)
-        const a = document.createElement('a')
-        a.href = url
-        a.style.display = 'none'
-        document.body.appendChild(a)
-        a.click()
-        setTimeout(() => document.body.removeChild(a), 500)
-      }, 3000)
+      setSquareWaiting(true)
+      const a = document.createElement('a')
+      a.href = url
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      setTimeout(() => document.body.removeChild(a), 500)
     }
   }
 
@@ -499,16 +512,6 @@ export default function KioskPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 flex flex-col items-center justify-center px-10 py-10 select-none overflow-hidden"
       style={{ fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* Square debug overlay — remove once Square is working */}
-      {squareDebug && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4 shadow-2xl">
-            <p className="text-2xl font-black text-gray-800 mb-4">🔍 Square Debug</p>
-            <pre className="text-sm bg-gray-100 rounded-xl p-4 whitespace-pre-wrap break-all text-gray-700">{squareDebug}</pre>
-            <p className="text-gray-400 text-lg mt-4 text-center">Launching Square in 3 seconds…</p>
-          </div>
-        </div>
-      )}
 
       {/* Decorative background blobs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
@@ -1025,6 +1028,39 @@ export default function KioskPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── SQUARE WAITING OVERLAY ────────────────────────────────────────── */}
+      {squareWaiting && (
+        <div className="fixed inset-0 z-[55] flex flex-col items-center justify-center bg-white gap-8 px-10 text-center">
+          <div className="text-[8rem] leading-none animate-pulse">💳</div>
+          <div>
+            <p className="text-4xl font-black text-gray-800">Processing payment…</p>
+            <p className="text-xl text-gray-500 mt-3">Complete your payment in Square, then return here</p>
+          </div>
+          <button
+            onClick={() => {
+              const pendingRaw = localStorage.getItem('square_pending_appt')
+              if (pendingRaw) {
+                const pending = JSON.parse(pendingRaw)
+                localStorage.removeItem('square_pending_appt')
+                handleSquareSuccess(pending)
+              } else {
+                setSquareWaiting(false)
+                setStep('success')
+              }
+            }}
+            className="w-full max-w-md bg-green-500 text-white font-black py-6 rounded-2xl text-2xl shadow-lg active:scale-95 transition-transform"
+          >
+            ✓ Payment Done — Return to Kiosk
+          </button>
+          <button
+            onClick={() => { setSquareWaiting(false); setPaymentMethod(null) }}
+            className="text-gray-400 text-lg font-medium underline"
+          >
+            Cancel
+          </button>
         </div>
       )}
 
