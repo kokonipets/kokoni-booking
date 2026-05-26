@@ -10,6 +10,20 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   })
 }
 
+// Keep screen awake so the Square reader never goes to sleep
+if (typeof window !== 'undefined' && 'wakeLock' in navigator) {
+  const requestWakeLock = async () => {
+    try {
+      await (navigator as any).wakeLock.request('screen')
+    } catch { /* silently ignore if not supported */ }
+  }
+  window.addEventListener('load', requestWakeLock)
+  // Re-acquire wake lock when tab becomes visible again
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestWakeLock()
+  })
+}
+
 type Mode = 'checkin' | 'checkout'
 type Step = 'welcome' | 'phone' | 'loading' | 'select' | 'found' | 'payment' | 'not-found' | 'success'
 type QRModal = 'venmo' | 'zelle' | 'card' | 'cash' | null
