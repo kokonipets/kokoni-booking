@@ -398,8 +398,16 @@ export default function KioskPage() {
       localStorage.setItem('square_pending_appt', JSON.stringify({ apptId: appt.id, appt, tipAmount: tip, timestamp: Date.now() }))
     }
     const url = buildSquareUrl(total)
+    console.log('[Square] UA:', navigator.userAgent)
+    console.log('[Square] URL:', url)
     if (url) {
-      window.location.href = url
+      // Use anchor click — more reliable than window.location.href for intent:// URLs on some Android builds
+      const a = document.createElement('a')
+      a.href = url
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      setTimeout(() => document.body.removeChild(a), 500)
     }
   }
 
