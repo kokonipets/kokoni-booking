@@ -418,7 +418,6 @@ export default function KioskPage() {
     }
     const url = buildSquareUrl(total)
     if (url) {
-      setSquareWaiting(true)
       window.location.href = url
     }
   }
@@ -1024,38 +1023,6 @@ export default function KioskPage() {
         </div>
       )}
 
-      {/* ── SQUARE WAITING OVERLAY ────────────────────────────────────────── */}
-      {squareWaiting && (
-        <div className="fixed inset-0 z-[55] flex flex-col items-center justify-center bg-white gap-8 px-10 text-center">
-          <div className="text-[8rem] leading-none animate-pulse">💳</div>
-          <div>
-            <p className="text-4xl font-black text-gray-800">Processing payment…</p>
-            <p className="text-xl text-gray-500 mt-3">Complete your payment in Square, then return here</p>
-          </div>
-          <button
-            onClick={() => {
-              const pendingRaw = localStorage.getItem('square_pending_appt')
-              if (pendingRaw) {
-                const pending = JSON.parse(pendingRaw)
-                localStorage.removeItem('square_pending_appt')
-                handleSquareSuccess(pending)
-              } else {
-                setSquareWaiting(false)
-                setStep('success')
-              }
-            }}
-            className="w-full max-w-md bg-green-500 text-white font-black py-6 rounded-2xl text-2xl shadow-lg active:scale-95 transition-transform"
-          >
-            ✓ Payment Done — Return to Kiosk
-          </button>
-          <button
-            onClick={() => { setSquareWaiting(false); setPaymentMethod(null) }}
-            className="text-gray-400 text-lg font-medium underline"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
 
       {/* ── PAYMENT APPROVED OVERLAY (Square POS return) ─────────────────── */}
       {paymentApproved && (
