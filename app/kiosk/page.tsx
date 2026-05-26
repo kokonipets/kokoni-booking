@@ -336,7 +336,10 @@ export default function KioskPage() {
       if (!appId || !appt) return null
       const amountCents = grandTotal ? Math.round(grandTotal * 100) : 0
       const callbackUrl = `${window.location.origin}/kiosk`
-      const isAndroid = /android/i.test(navigator.userAgent)
+      // Treat anything that isn't clearly iOS as Android — RK3399 and other custom
+      // Android POS hardware often omit "android" from the user-agent string.
+      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+      const isAndroid = !isIOS
 
       if (isAndroid) {
         // Square POS API v2.0 — Android intent URL format
