@@ -375,8 +375,7 @@ export default function KioskPage() {
           `i.com.squareup.pos.TOTAL_AMOUNT=${amountCents}`,
           'S.com.squareup.pos.CURRENCY_CODE=USD',
           'S.com.squareup.pos.TENDER_TYPES=com.squareup.pos.TENDER_CARD',
-          // Auto-return to kiosk 3.2 s after Square shows the receipt screen
-          'i.com.squareup.pos.AUTO_RETURN_TIMEOUT_MS=3200',
+          'B.com.squareup.pos.DISABLE_CNP=true',
         ]
         return `intent:#Intent;${parts.join(';')};end`
       } else {
