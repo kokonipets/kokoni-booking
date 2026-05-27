@@ -132,14 +132,15 @@ export async function PATCH(req: NextRequest) {
   if (email !== undefined) updates.email = email || null
   if (address !== undefined) updates.address = address || null
 
-  // If phone number is changing, update all linked tables first
+  // If phone number is changing, migrate all linked tables then upsert new record
   if (newPhone && newPhone !== phone) {
     await supabase.from('pets').update({ client_phone: newPhone }).eq('client_phone', phone)
     await supabase.from('appointments').update({ client_phone: newPhone }).eq('client_phone', phone)
     await supabase.from('authorized_pickups').update({ client_phone: newPhone }).eq('client_phone', phone)
-    // Update the clients row phone directly
-    const { error } = await supabase.from('clients').update({ phone: newPhone, ...updates }).eq('phone', phone)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // Upsert new phone record, then delete old one
+    const { error: upsertErr } = await supabase.from('clients').upsert({ phone: newPhone, ...updates }, { onConflict: 'phone' })
+    if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 })
+    await supabase.from('clients').delete().eq('phone', phone)
     return NextResponse.json({ success: true })
   }
 
