@@ -330,7 +330,7 @@ export default function DeskAdmin() {
 
   // Client editing
   const [editingClient, setEditingClient] = useState<string | null>(null)
-  const [clientEditData, setClientEditData] = useState<{ firstName: string; lastName: string; email: string; address: string } | null>(null)
+  const [clientEditData, setClientEditData] = useState<{ firstName: string; lastName: string; phone: string; email: string; address: string } | null>(null)
   const [savingClient, setSavingClient] = useState(false)
   const [newPickupName, setNewPickupName] = useState('')
   const [newPickupRel, setNewPickupRel] = useState('')
@@ -672,16 +672,18 @@ export default function DeskAdmin() {
   const saveClientEdit = async (phone: string) => {
     if (!clientEditData) return
     setSavingClient(true)
+    const newPhone = clientEditData.phone.replace(/\D/g, '')
     try {
       const res = await fetch('/api/admin/clients', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, name: `${clientEditData.firstName.trim()} ${clientEditData.lastName.trim()}`.trim(), email: clientEditData.email, address: clientEditData.address }),
+        body: JSON.stringify({ phone, newPhone: newPhone !== phone ? newPhone : undefined, name: `${clientEditData.firstName.trim()} ${clientEditData.lastName.trim()}`.trim(), email: clientEditData.email, address: clientEditData.address }),
       })
       const data = await res.json()
       if (data.success) {
         const fullName = `${clientEditData.firstName.trim()} ${clientEditData.lastName.trim()}`.trim()
-        setClients(prev => prev.map(c => c.phone === phone ? { ...c, name: fullName, email: clientEditData!.email, address: clientEditData!.address } : c))
+        const effectivePhone = newPhone !== phone ? newPhone : phone
+        setClients(prev => prev.map(c => c.phone === phone ? { ...c, phone: effectivePhone, name: fullName, email: clientEditData!.email, address: clientEditData!.address } : c))
         setEditingClient(null)
         setClientEditData(null)
         showToast('Client info saved!')
@@ -4843,7 +4845,7 @@ export default function DeskAdmin() {
                                           </div>
                                         : <button onClick={() => {
                                               setEditingClient(client.phone)
-                                              setClientEditData({ firstName: client.name?.split(' ')[0] || '', lastName: client.name?.split(' ').slice(1).join(' ') || '', email: client.email||'', address: client.address||'' })
+                                              setClientEditData({ firstName: client.name?.split(' ')[0] || '', lastName: client.name?.split(' ').slice(1).join(' ') || '', phone: client.phone||'', email: client.email||'', address: client.address||'' })
                                             }}
                                             className="text-xs px-3 py-1 rounded-lg border border-sky-200 text-sky-600 hover:bg-sky-100">✏️ Edit</button>
                                       }
@@ -4863,6 +4865,7 @@ export default function DeskAdmin() {
                                           </div>
                                         </div>
                                         {[
+                                          { label: 'Phone', key: 'phone' as const },
                                           { label: 'Email', key: 'email' as const },
                                           { label: 'Address', key: 'address' as const },
                                         ].map(f => (
