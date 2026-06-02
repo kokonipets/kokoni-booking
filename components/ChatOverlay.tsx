@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 type Thread = {
   phone: string
@@ -198,7 +199,7 @@ export default function ChatOverlay({ open, onClose }: Props) {
 
   if (!open) return null
 
-  return (
+  const overlay = (
     <div className="fixed inset-0 z-[9999] bg-white flex flex-col" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {view === 'list' ? (
         <>
@@ -367,4 +368,6 @@ export default function ChatOverlay({ open, onClose }: Props) {
       )}
     </div>
   )
+
+  return createPortal(overlay, document.body)
 }

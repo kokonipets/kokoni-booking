@@ -1776,6 +1776,15 @@ export default function AdminPage() {
                             </div>
                           )}
 
+                          {/* 20% new customer discount toggle */}
+                          {subtotalAmt > 0 && (
+                            <button onClick={() => { setEditDraftDiscount(d => !d); setEditDraftTotalSaved(false) }}
+                              className={`w-full flex items-center justify-between rounded-xl px-3 py-2 border-2 transition-all ${editDraftDiscount ? 'bg-pink-50 border-pink-300 text-pink-700' : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200'}`}>
+                              <span className="font-bold text-xs">🎉 New customer 20% off</span>
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${editDraftDiscount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>{editDraftDiscount ? 'ON' : 'OFF'}</span>
+                            </button>
+                          )}
+
                           {/* Total breakdown */}
                           {(editDraftBasePrice || editDraftAddOns.length > 0) && (
                             <div className="bg-gray-50 rounded-xl px-3 py-2 space-y-1 border border-gray-100">
@@ -1791,9 +1800,15 @@ export default function AdminPage() {
                                   <span className="font-semibold">${a.price || '0'}</span>
                                 </div>
                               ))}
+                              {discountAmt > 0 && (
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-pink-500 font-semibold">🎉 20% off</span>
+                                  <span className="font-bold text-pink-500">−${discountAmt.toFixed(2)}</span>
+                                </div>
+                              )}
                               <div className="flex justify-between text-sm font-bold text-gray-800 pt-1 border-t border-gray-200">
                                 <span>Total</span>
-                                <span className={editDraftTotalSaved && grandTotal > 0 ? 'text-emerald-600' : 'text-gray-800'}>${grandTotal}</span>
+                                <span className={editDraftTotalSaved && grandTotal > 0 ? 'text-emerald-600' : editDraftDiscount ? 'text-pink-600' : 'text-gray-800'}>${grandTotal.toFixed(2)}</span>
                               </div>
                             </div>
                           )}
@@ -2674,7 +2689,9 @@ export default function AdminPage() {
               const otherServices = services.filter(s => s.id !== appt.service)
               const addOnTotal = popupAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
               const baseAmt = parseFloat(popupBasePrice) || 0
-              const grandTotal = baseAmt + addOnTotal
+              const subtotalAmt = baseAmt + addOnTotal
+              const discountAmt = popupDiscount ? Math.round(subtotalAmt * 0.20 * 100) / 100 : 0
+              const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
               return (
                 <div className="rounded-2xl p-4 border border-sky-200 bg-sky-50 mb-3">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">💰 Set Price</p>
@@ -2767,6 +2784,15 @@ export default function AdminPage() {
                     </div>
                   )}
 
+                  {/* 20% new customer discount toggle */}
+                  {subtotalAmt > 0 && (
+                    <button onClick={() => { setPopupDiscount(d => !d); setPopupTotalSaved(false) }}
+                      className={`w-full flex items-center justify-between rounded-xl px-3 py-2 border-2 transition-all mb-2 ${popupDiscount ? 'bg-pink-50 border-pink-300 text-pink-700' : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200'}`}>
+                      <span className="font-bold text-xs">🎉 New customer 20% off</span>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${popupDiscount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>{popupDiscount ? 'ON' : 'OFF'}</span>
+                    </button>
+                  )}
+
                   {/* Total breakdown */}
                   {(popupBasePrice || popupAddOns.length > 0) && (
                     <div className="bg-white rounded-xl px-3 py-2 mb-3 space-y-1 border border-gray-100">
@@ -2782,9 +2808,15 @@ export default function AdminPage() {
                           <span className="font-semibold">${a.price || '0'}</span>
                         </div>
                       ))}
+                      {discountAmt > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-pink-500 font-semibold">🎉 20% off</span>
+                          <span className="font-bold text-pink-500">−${discountAmt.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-sm font-bold text-gray-800 pt-1 border-t border-gray-200">
                         <span>Total</span>
-                        <span className={popupTotalSaved && grandTotal > 0 ? 'text-emerald-600' : 'text-gray-800'}>${grandTotal}</span>
+                        <span className={popupTotalSaved && grandTotal > 0 ? 'text-emerald-600' : popupDiscount ? 'text-pink-600' : 'text-gray-800'}>${grandTotal.toFixed(2)}</span>
                       </div>
                     </div>
                   )}
