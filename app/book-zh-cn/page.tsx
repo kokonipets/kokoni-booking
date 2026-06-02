@@ -85,10 +85,10 @@ const TIME_SLOTS = [
 ]
 
 const WEIGHT_OPTIONS = [
-  { en: 'Small (under 10 lbs)', zh: '小型（10磅以下）' },
-  { en: 'Medium (11–25 lbs)', zh: '中型（11–25磅）' },
-  { en: 'Large (26–45 lbs)', zh: '大型（26–45磅）' },
-  { en: 'XL (45+ lbs)', zh: '超大型（45磅以上）' },
+  { en: 'Small (under 15 lbs)', zh: '小型（15磅以下）' },
+  { en: 'Medium (16–30 lbs)', zh: '中型（16–30磅）' },
+  { en: 'Large (31–50 lbs)', zh: '大型（31–50磅）' },
+  { en: 'XL (51–70 lbs)', zh: '超大型（51–70磅）' },
 ]
 
 const TERMS_OF_SERVICE_ZH_CN = `Kokoni Grooming Salon — 服务条款

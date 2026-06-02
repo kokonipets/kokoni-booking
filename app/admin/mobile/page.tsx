@@ -156,9 +156,9 @@ const BREED_SUGGESTIONS = [
 ]
 
 const WEIGHT_OPTIONS = [
-  'Small (under 10 lbs)',
-  'Medium (11–25 lbs)',
-  'Large (26–45 lbs)',
+  'Small (under 15 lbs)',
+  'Medium (16–30 lbs)',
+  'Large (31–50 lbs)',
   'X-Large (46–70 lbs)',
   'XX-Large (71+ lbs)',
 ]

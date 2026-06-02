@@ -34,7 +34,7 @@ type PriceTier = { label: string; price: string; duration: string }
 type ServiceDef = { id: string; name: string; desc: string; price?: string; duration?: string; tiers: PriceTier[]; visible?: boolean; usesSizeCategories?: boolean }
 
 const DEFAULT_TIERS: PriceTier[] = [
-  { label: 'Small (under 10 lbs)', price: '45', duration: '1.5h' },
+  { label: 'Small (under 15 lbs)', price: '45', duration: '1.5h' },
   { label: 'Medium (11-25 lbs)', price: '55', duration: '1.5h' },
   { label: 'Large (25-45 lbs)', price: '65', duration: '2h' },
   { label: 'XLarge (46-65 lbs)', price: '75', duration: '1.5h' },
@@ -1576,7 +1576,7 @@ export default function SettingsPage() {
                               <label className="text-xs text-gray-600 block mb-1">Size Category</label>
                               <input
                                 type="text"
-                                placeholder="e.g., Small (under 10 lbs)"
+                                placeholder="e.g., Small (under 15 lbs)"
                                 value={tier.label}
                                 onChange={e => {
                                   const newTiers = [...serviceFormData.tiers]
@@ -1857,7 +1857,7 @@ export default function SettingsPage() {
                                             <label className="text-xs text-gray-600 block mb-1">Size Category</label>
                                             <input
                                               type="text"
-                                              placeholder="e.g., Small (under 10 lbs)"
+                                              placeholder="e.g., Small (under 15 lbs)"
                                               value={tier.label}
                                               onChange={e => {
                                                 const newTiers = [...serviceFormData.tiers]

@@ -63,7 +63,7 @@ const TIME_OPTIONS = [
   '8:00 PM',
 ]
 
-const WEIGHT_OPTIONS = ['Small (under 10 lbs)', 'Medium (10-25 lbs)', 'Large (25-60 lbs)', 'XLarge (60+ lbs)']
+const WEIGHT_OPTIONS = ['Small (under 15 lbs)', 'Medium (10-25 lbs)', 'Large (25-60 lbs)', 'XLarge (60+ lbs)']
 
 // ─── Quality Check Config (Bilingual EN / ZH) ─────────────────────────────
 const QUALITY_CHECK_ITEMS = [

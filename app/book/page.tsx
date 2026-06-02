@@ -778,7 +778,7 @@ export default function BookPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Weight <span className="text-rose-500">*</span></label>
                 <div className="grid grid-cols-2 gap-2">
-                  {['Small (under 10 lbs)', 'Medium (11–25 lbs)', 'Large (26–45 lbs)', 'XL (45+ lbs)'].map(w => (
+                  {['Small (under 15 lbs)', 'Medium (16–30 lbs)', 'Large (31–50 lbs)', 'XL (51–70 lbs)'].map(w => (
                     <button key={w} type="button" onClick={() => setNewPetWeight(newPetWeight === w ? '' : w)}
                       className={`py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${newPetWeight === w ? 'border-sky-500 bg-sky-50 text-sky-700' : 'border-gray-200 text-gray-600 hover:border-sky-300'}`}>
                       {w}
@@ -906,7 +906,7 @@ export default function BookPage() {
                 <div>
                   <p className="text-sm font-medium text-gray-700 mb-2">Weight <span className="text-rose-500">*</span></p>
                   <div className="grid grid-cols-2 gap-2">
-                    {['Small (under 10 lbs)', 'Medium (11–25 lbs)', 'Large (26–45 lbs)', 'XL (45+ lbs)'].map(w => (
+                    {['Small (under 15 lbs)', 'Medium (16–30 lbs)', 'Large (31–50 lbs)', 'XL (51–70 lbs)'].map(w => (
                       <button key={w} type="button" onClick={() => setNewPetWeight(newPetWeight === w ? '' : w)}
                         className={`py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${newPetWeight === w ? 'border-sky-500 bg-sky-50 text-sky-700' : 'border-gray-200 text-gray-600 hover:border-sky-300'}`}>
                         {w}

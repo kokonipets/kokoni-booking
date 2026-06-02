@@ -468,10 +468,10 @@ export default function DeskAdmin() {
   type PriceTier = { label: string; price: string; duration: string }
   type ServicePricingMap = Record<string, PriceTier[]>
   const DEFAULT_TIERS: PriceTier[] = [
-    { label: 'Small (under 10 lbs)', price: '', duration: '' },
-    { label: 'Medium (11–25 lbs)',  price: '', duration: '' },
-    { label: 'Large (26–45 lbs)',   price: '', duration: '' },
-    { label: 'XL (45+ lbs)',        price: '', duration: '' },
+    { label: 'Small (under 15 lbs)', price: '', duration: '' },
+    { label: 'Medium (16–30 lbs)',  price: '', duration: '' },
+    { label: 'Large (31–50 lbs)',   price: '', duration: '' },
+    { label: 'XL (51–70 lbs)',        price: '', duration: '' },
   ]
   const [servicePricing, setServicePricing] = useState<ServicePricingMap>({
     simply_cute:  DEFAULT_TIERS.map(t => ({...t})),
@@ -1270,10 +1270,10 @@ export default function DeskAdmin() {
   }
 
   const WEIGHT_OPTIONS = [
-    'Small (under 10 lbs)',
-    'Medium (11–25 lbs)',
-    'Large (26–45 lbs)',
-    'XL (45+ lbs)',
+    'Small (under 15 lbs)',
+    'Medium (16–30 lbs)',
+    'Large (31–50 lbs)',
+    'XL (51–70 lbs)',
   ]
 
   const updatePetWeight = async (petId: string, weight: string, clientPhone?: string) => {
@@ -7601,7 +7601,7 @@ export default function DeskAdmin() {
                               <div key={ti} className="grid grid-cols-3 gap-2 items-center">
                                 <input type="text" value={tier.label}
                                   onChange={e => setServices(prev => prev.map((s, i) => i === idx ? { ...s, tiers: (s.tiers||[]).map((t, j) => j === ti ? { ...t, label: e.target.value } : t) } : s))}
-                                  placeholder="e.g. Small (under 10 lbs)"
+                                  placeholder="e.g. Small (under 15 lbs)"
                                   className="border border-gray-100 rounded-lg px-3 py-1.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sky-200" />
                                 <div className="flex items-center gap-1 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white">
                                   <span className="text-gray-400 text-xs">$</span>

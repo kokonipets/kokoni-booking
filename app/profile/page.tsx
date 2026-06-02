@@ -975,7 +975,7 @@ export default function ProfilePage() {
               <div>
                 <p className="text-xs font-semibold text-sky-800 mb-1.5">Weight</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {['Small (under 10 lbs)', 'Medium (11–25 lbs)', 'Large (26–45 lbs)', 'XL (45+ lbs)'].map(w => (
+                  {['Small (under 15 lbs)', 'Medium (16–30 lbs)', 'Large (31–50 lbs)', 'XL (51–70 lbs)'].map(w => (
                     <button
                       key={w}
                       type="button"
