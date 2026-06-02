@@ -2109,7 +2109,12 @@ export default function AdminPage() {
                       </div>
                       {/* Row 2: breed · weight */}
                       {(appt.pets?.breed || appt.pets?.weight) && (
-                        <p className="text-[11px] text-gray-400 mt-0.5">{[appt.pets?.breed, appt.pets?.weight].filter(Boolean).join(' · ')}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          {appt.pets?.breed && <p className="text-[11px] text-gray-400">{appt.pets.breed}</p>}
+                          {appt.pets?.weight && (
+                            <span className="text-[11px] font-black text-white bg-orange-400 px-2 py-0.5 rounded-full">⚖️ {appt.pets.weight}</span>
+                          )}
+                        </div>
                       )}
                       {/* Row 3: service + staff tags */}
                       <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
@@ -2307,7 +2312,10 @@ export default function AdminPage() {
                                     ? <img src={appt.pets.photo_url} className="w-11 h-11 rounded-full object-cover flex-shrink-0" alt="" />
                                     : <div className="w-11 h-11 rounded-full bg-amber-100 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-gray-800">{appt.pets?.name} <span className="font-normal text-gray-400 text-sm">{appt.pets?.breed}</span></p>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <p className="font-bold text-gray-800">{appt.pets?.name} <span className="font-normal text-gray-400 text-sm">{appt.pets?.breed}</span></p>
+                                      {appt.pets?.weight && <span className="text-[11px] font-black text-white bg-orange-400 px-2 py-0.5 rounded-full">⚖️ {appt.pets.weight}</span>}
+                                    </div>
                                     <p className="text-sm text-gray-600">{appt.clients?.name}</p>
                                     <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
                                   </div>

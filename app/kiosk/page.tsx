@@ -187,6 +187,8 @@ export default function KioskPage() {
   const [cashPendingSignaled, setCashPendingSignaled] = useState(false)
   const cashPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [squareWaiting, setSquareWaiting] = useState(false)
+  const [terminalWaiting, setTerminalWaiting] = useState(false)
+  const terminalPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [selectedAppts, setSelectedAppts] = useState<KioskAppointment[]>([])
   const [venmoZelleWaiting, setVenmoZelleWaiting] = useState(false)
   const [venmoZelleSignaled, setVenmoZelleSignaled] = useState(false)
@@ -441,8 +443,7 @@ export default function KioskPage() {
     }
   }
 
-  const handleSquareCardPayment = () => {
-    // Always compute tip + total fresh from current state to avoid stale closure issues
+  const handleSquareCardPayment = async () => {
     const activeAppts = selectedAppts.length > 0 ? selectedAppts : (appt ? [appt] : [])
     const sub = activeAppts.reduce((s, a) => s + (a.payment_amount ? parseFloat(a.payment_amount) : 0), 0) || null
     const custAmt = customTip !== '' ? parseFloat(customTip) : NaN
@@ -450,7 +451,55 @@ export default function KioskPage() {
       ? (tipPercent === -1 ? (isNaN(custAmt) ? 0 : custAmt) : sub * tipPercent / 100)
       : null
     const total = sub !== null && tip !== null ? sub + tip : sub
+    const amountCents = total ? Math.round(total * 100) : 0
+    const firstAppt = activeAppts[0]
+    if (!firstAppt) return
 
+    // ── Try Square Terminal API first (WiFi Terminal) ──────────────────────
+    try {
+      const petName = firstAppt.pets?.name ?? 'Pet'
+      const svcLabel = serviceMap[firstAppt.service] ?? firstAppt.service
+      const res = await fetch('/api/kiosk/terminal-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointmentId: firstAppt.id,
+          amountCents,
+          note: `${petName} - ${svcLabel}`,
+        }),
+      })
+      const data = await res.json()
+      if (data.checkoutId) {
+        setTerminalWaiting(true)
+        // Poll every 3s for Terminal payment completion
+        if (terminalPollRef.current) clearInterval(terminalPollRef.current)
+        terminalPollRef.current = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`/api/kiosk/terminal-checkout?id=${data.checkoutId}`)
+            const pollData = await pollRes.json()
+            if (pollData.status === 'COMPLETED') {
+              if (terminalPollRef.current) { clearInterval(terminalPollRef.current); terminalPollRef.current = null }
+              // Mark appointment paid in our system
+              await fetch('/api/kiosk/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'checkout', appointmentId: firstAppt.id, paymentMethod: 'card', tipAmount: tip }),
+              })
+              setTerminalWaiting(false)
+              setPaymentApproved(true)
+              setTimeout(() => { setPaymentApproved(false); setStep('success') }, 2500)
+            } else if (pollData.status === 'CANCELLED' || pollData.status === 'CANCEL_REQUESTED') {
+              if (terminalPollRef.current) { clearInterval(terminalPollRef.current); terminalPollRef.current = null }
+              setTerminalWaiting(false)
+              setError('Payment was cancelled. Please try again.')
+            }
+          } catch {/**/}
+        }, 3000)
+        return
+      }
+    } catch {/**/}
+
+    // ── Fallback: Android intent (old Bluetooth reader) ────────────────────
     localStorage.setItem('square_pending_appt', JSON.stringify({
       apptIds: activeAppts.map(a => a.id),
       appts: activeAppts,
@@ -459,6 +508,7 @@ export default function KioskPage() {
     }))
     const url = buildSquareUrl(total)
     if (url) {
+      setSquareWaiting(true)
       window.location.href = url
     }
   }
@@ -1105,6 +1155,34 @@ export default function KioskPage() {
         </div>
       )}
 
+
+      {/* ── TERMINAL WAITING OVERLAY ─────────────────────────────────────── */}
+      {terminalWaiting && (
+        <div className="fixed inset-0 z-[55] flex flex-col items-center justify-center bg-white gap-8 px-10 text-center">
+          <div className="text-[8rem] leading-none animate-pulse">💳</div>
+          <div>
+            <p className="text-4xl font-black text-gray-800">Please tap or insert your card</p>
+            <p className="text-xl text-gray-500 mt-3">on the Square Terminal next to the counter</p>
+          </div>
+          <div className="flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-2xl px-8 py-5">
+            <svg className="animate-spin h-6 w-6 text-sky-500" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <p className="text-sky-700 font-bold text-lg">Waiting for payment…</p>
+          </div>
+          <button
+            onClick={() => {
+              if (terminalPollRef.current) { clearInterval(terminalPollRef.current); terminalPollRef.current = null }
+              setTerminalWaiting(false)
+              setPaymentMethod(null)
+            }}
+            className="text-gray-400 text-lg font-medium underline"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* ── PAYMENT APPROVED OVERLAY (Square POS return) ─────────────────── */}
       {paymentApproved && (
