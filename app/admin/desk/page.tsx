@@ -496,7 +496,7 @@ export default function DeskAdmin() {
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
 
   // Reports
-  const [reportsRange, setReportsRange] = useState<'week' | 'month' | 'all' | 'custom'>('month')
+  const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'month' | 'last_month' | 'all' | 'custom'>('month')
   const [reportsCustomStart, setReportsCustomStart] = useState('')
   const [reportsCustomEnd, setReportsCustomEnd] = useState('')
   const [reportsAppts, setReportsAppts] = useState<Appointment[]>([])
@@ -6336,10 +6336,16 @@ export default function DeskAdmin() {
             const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6)
             const weekAgoStr = `${weekAgo.getFullYear()}-${String(weekAgo.getMonth()+1).padStart(2,'0')}-${String(weekAgo.getDate()).padStart(2,'0')}`
             const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
+            const lastMonthStart = now.getMonth() === 0
+              ? `${now.getFullYear()-1}-12-01`
+              : `${now.getFullYear()}-${String(now.getMonth()).padStart(2,'0')}-01`
+            const lastMonthEnd = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
 
             const inRange = (date: string) => {
+              if (reportsRange === 'today') return date === todayStr
               if (reportsRange === 'week') return date >= weekAgoStr
               if (reportsRange === 'month') return date >= monthStart
+              if (reportsRange === 'last_month') return date >= lastMonthStart && date < lastMonthEnd
               if (reportsRange === 'custom') {
                 if (reportsCustomStart && date < reportsCustomStart) return false
                 if (reportsCustomEnd && date > reportsCustomEnd) return false
@@ -6382,7 +6388,7 @@ export default function DeskAdmin() {
             const totalAppts = rows.reduce((s, r) => s + r.count, 0)
 
             const rangeLabelMap: Record<string, string> = {
-              week: 'This Week', month: 'This Month', all: 'All Time',
+              today: 'Today', week: 'This Week', month: 'This Month', last_month: 'Last Month', all: 'All Time',
               custom: reportsCustomStart && reportsCustomEnd ? `${reportsCustomStart} → ${reportsCustomEnd}` : 'Custom Range'
             }
 
@@ -6672,13 +6678,13 @@ export default function DeskAdmin() {
                 {/* Date range selector */}
                 <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {(['week', 'month', 'all', 'custom'] as const).map(r => (
+                    {(['today', 'week', 'month', 'last_month', 'all', 'custom'] as const).map(r => (
                       <button
                         key={r}
                         onClick={() => setReportsRange(r)}
                         className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${reportsRange === r ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}`}
                       >
-                        {r === 'week' ? 'This Week' : r === 'month' ? 'This Month' : r === 'all' ? 'All Time' : '📅 Custom'}
+                        {r === 'today' ? 'Today' : r === 'week' ? 'This Week' : r === 'month' ? 'This Month' : r === 'last_month' ? 'Last Month' : r === 'all' ? 'All Time' : '📅 Custom'}
                       </button>
                     ))}
                     <div className="ml-auto flex items-center gap-2">
