@@ -13,6 +13,7 @@ type Review = {
   created_at: string
   admin_notes?: string | null
   follow_up_flagged?: boolean
+  review_link_sent?: string | null
 }
 
 type Metrics = {
@@ -237,9 +238,14 @@ export default function ReviewsPage() {
                     <span className="text-xs text-gray-400">{formatPhone(review.client_phone)}</span>
                     {statusBadge(review)}
                   </div>
-                  <div className="text-xs text-gray-400 mt-0.5">
-                    Sent {formatDate(review.review_request_sent_at)}
-                    {review.rating_received_at && <> · Replied {formatDate(review.rating_received_at)}</>}
+                  <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span>Sent {formatDate(review.review_request_sent_at)}</span>
+                    {review.rating_received_at && <span>· Replied {formatDate(review.rating_received_at)}</span>}
+                    {review.review_link_sent && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[10px] font-semibold">
+                        🔗 Google/Yelp link sent
+                      </span>
+                    )}
                   </div>
                 </div>
 

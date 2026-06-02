@@ -304,6 +304,8 @@ export default function ChatOverlay({ open, onClose }: Props) {
             {messages.map((m, i) => {
               const prev = messages[i - 1]
               const showTimestamp = !prev || (new Date(m.created_at).getTime() - new Date(prev.created_at).getTime()) > 5 * 60 * 1000
+              const isReviewRequest = m.direction === 'outbound' && m.body.includes('1-5')
+              const isReviewLink = m.direction === 'outbound' && (m.body.includes('g.page') || m.body.includes('yelp.com/writeareview'))
               return (
                 <div key={m.id}>
                   {showTimestamp && (
@@ -314,11 +316,17 @@ export default function ChatOverlay({ open, onClose }: Props) {
                   <div className={`flex ${m.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
                     <div
                       className={`max-w-[78%] rounded-2xl px-3.5 py-2 ${
-                        m.direction === 'outbound'
+                        isReviewLink
+                          ? 'bg-amber-400 text-white rounded-br-md'
+                          : isReviewRequest
+                          ? 'bg-violet-500 text-white rounded-br-md'
+                          : m.direction === 'outbound'
                           ? 'bg-sky-500 text-white rounded-br-md'
                           : 'bg-white text-gray-900 border border-gray-200 rounded-bl-md'
                       }`}
                     >
+                      {isReviewLink && <p className="text-[10px] font-bold text-white/80 mb-1">⭐ Google/Yelp link sent</p>}
+                      {isReviewRequest && <p className="text-[10px] font-bold text-white/80 mb-1">📋 Review request</p>}
                       <div className="text-[15px] whitespace-pre-wrap leading-snug">{m.body}</div>
                     </div>
                   </div>
