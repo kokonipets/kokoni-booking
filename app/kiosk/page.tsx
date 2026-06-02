@@ -479,12 +479,14 @@ export default function KioskPage() {
             const pollData = await pollRes.json()
             if (pollData.status === 'COMPLETED') {
               if (terminalPollRef.current) { clearInterval(terminalPollRef.current); terminalPollRef.current = null }
-              // Mark appointment paid in our system
-              await fetch('/api/kiosk/action', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'checkout', appointmentId: firstAppt.id, paymentMethod: 'card', tipAmount: tip }),
-              })
+              // Mark ALL appointments paid in our system
+              await Promise.all(activeAppts.map((a, i) =>
+                fetch('/api/kiosk/action', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'checkout', appointmentId: a.id, paymentMethod: 'card', tipAmount: i === 0 ? tip : 0 }),
+                })
+              ))
               setTerminalWaiting(false)
               setPaymentApproved(true)
               setTimeout(() => { setPaymentApproved(false); setStep('success') }, 2500)
@@ -557,23 +559,28 @@ export default function KioskPage() {
   const confirm = async () => {
     if (!appt) return
     setSubmitting(true)
-    // Compute tip for saving
-    const subtotal = appt.payment_amount ? parseFloat(appt.payment_amount) : null
+    // All appointments being confirmed (multi-pet checkout)
+    const activeAppts = selectedAppts.length > 0 ? selectedAppts : [appt]
+    const totalSub = activeAppts.reduce((s, a) => s + (a.payment_amount ? parseFloat(a.payment_amount) : 0), 0)
     const customTipAmt = customTip !== '' ? parseFloat(customTip) : NaN
-    const tipAmt = subtotal !== null && tipPercent !== null
-      ? (tipPercent === -1 ? (isNaN(customTipAmt) ? 0 : customTipAmt) : subtotal * tipPercent / 100)
+    const totalTip = totalSub > 0 && tipPercent !== null
+      ? (tipPercent === -1 ? (isNaN(customTipAmt) ? 0 : customTipAmt) : totalSub * tipPercent / 100)
       : null
     try {
-      const res = await fetch('/api/kiosk/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: mode, appointmentId: appt.id, paymentMethod, tipAmount: tipAmt }),
-      })
-      const data = await res.json()
-      if (data.success || !data.error) {
+      // Confirm each appointment — tip goes on first, rest get 0 tip
+      const results = await Promise.all(activeAppts.map((a, i) => {
+        const apptTip = i === 0 ? totalTip : 0
+        return fetch('/api/kiosk/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: mode, appointmentId: a.id, paymentMethod, tipAmount: apptTip }),
+        }).then(r => r.json())
+      }))
+      const anyError = results.find(d => d.error)
+      if (!anyError) {
         setStep('success')
       } else {
-        setError(data.error || 'Something went wrong')
+        setError(anyError.error || 'Something went wrong')
       }
     } catch {
       setError('Network error — please see the front desk')
@@ -1123,18 +1130,22 @@ export default function KioskPage() {
                   onClick={async () => {
                     if (!appt) return
                     setSubmitting(true)
-                    const subtotal = appt.payment_amount ? parseFloat(appt.payment_amount) : null
+                    const activeAppts = selectedAppts.length > 0 ? selectedAppts : [appt]
+                    const totalSub = activeAppts.reduce((s, a) => s + (a.payment_amount ? parseFloat(a.payment_amount) : 0), 0)
                     const customTipAmt = customTip !== '' ? parseFloat(customTip) : NaN
-                    const tipAmt = subtotal !== null && tipPercent !== null
-                      ? (tipPercent === -1 ? (isNaN(customTipAmt) ? 0 : customTipAmt) : subtotal * tipPercent / 100)
+                    const tipAmt = totalSub > 0 && tipPercent !== null
+                      ? (tipPercent === -1 ? (isNaN(customTipAmt) ? 0 : customTipAmt) : totalSub * tipPercent / 100)
                       : null
                     try {
-                      const res = await fetch('/api/kiosk/action', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'checkout', appointmentId: appt.id, paymentMethod, tipAmount: tipAmt }),
-                      })
-                      const data = await res.json()
+                      // Checkout ALL appointments
+                      const results = await Promise.all(activeAppts.map((a, i) =>
+                        fetch('/api/kiosk/action', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'checkout', appointmentId: a.id, paymentMethod, tipAmount: i === 0 ? tipAmt : 0 }),
+                        }).then(r => r.json())
+                      ))
+                      const data = results[0]
                       if (data.success || !data.error) {
                         setVenmoZelleWaiting(true)
                       } else {
