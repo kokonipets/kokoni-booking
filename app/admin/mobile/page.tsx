@@ -310,11 +310,13 @@ export default function AdminPage() {
   const [popupBasePrice, setPopupBasePrice] = useState('')
   const [popupAddOns, setPopupAddOns] = useState<{id:string;name:string;price:string}[]>([])
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
+  const [popupDiscount, setPopupDiscount] = useState(false)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
   const [editDraftBasePrice, setEditDraftBasePrice] = useState('')
   const [editDraftBaseTier, setEditDraftBaseTier] = useState('')  // tier label to avoid same-price collision
   const [editDraftAddOns, setEditDraftAddOns] = useState<{id:string;name:string;price:string}[]>([])
   const [editDraftTotalSaved, setEditDraftTotalSaved] = useState(false)
+  const [editDraftDiscount, setEditDraftDiscount] = useState(false)
   const [savingEditDraftPayment, setSavingEditDraftPayment] = useState(false)
   // EditPanel notes states
   const [epAddingNote, setEpAddingNote] = useState(false)
@@ -1687,7 +1689,9 @@ export default function AdminPage() {
                     const otherServices = services.filter(s => s.id !== appt.service)
                     const addOnTotal = editDraftAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
                     const baseAmt = parseFloat(editDraftBasePrice) || 0
-                    const grandTotal = baseAmt + addOnTotal
+                    const subtotalAmt = baseAmt + addOnTotal
+                    const discountAmt = editDraftDiscount ? Math.round(subtotalAmt * 0.20 * 100) / 100 : 0
+                    const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
                     return (
                       <div>
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Payment</p>

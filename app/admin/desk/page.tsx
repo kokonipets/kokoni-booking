@@ -427,6 +427,7 @@ export default function DeskAdmin() {
   const [detailPayStatus, setDetailPayStatus] = useState('unpaid')
   const [savingPayment, setSavingPayment] = useState(false)
   const [totalSaved, setTotalSaved] = useState(false)
+  const [detailDiscount, setDetailDiscount] = useState(false) // 20% new customer discount
   // Add-on services before checkout
   const [detailBasePrice, setDetailBasePrice] = useState('')
   const [detailBaseTier, setDetailBaseTier] = useState('')  // tier label to avoid same-price collision
@@ -772,6 +773,7 @@ export default function DeskAdmin() {
     setDetailPayMethod(appt.payment_method || 'cash')
     setDetailPayStatus(appt.payment_status || 'unpaid')
     setTotalSaved(!!appt.payment_amount)
+    setDetailDiscount(false)
     // Load saved add-ons from notes_list (is_addon: true entries)
     const savedAddOns = (appt.notes_list ?? [])
       .filter((n: { is_addon?: boolean }) => n.is_addon)
@@ -2511,7 +2513,9 @@ export default function DeskAdmin() {
                     const hasPrices = tiers.some(t => t.price)
                     const addOnTotal = detailAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
                     const baseAmt = parseFloat(detailBasePrice) || 0
-                    const grandTotal = baseAmt + addOnTotal
+                    const subtotalAmt = baseAmt + addOnTotal
+                    const discountAmt = detailDiscount ? Math.round(subtotalAmt * 0.20 * 100) / 100 : 0
+                    const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
                     const otherServices = services.filter(s => s.id !== detailAppt.service)
                     return (
                       <div className={`rounded-2xl p-4 border ${
@@ -2739,6 +2743,20 @@ export default function DeskAdmin() {
                           </div>
                         )}
 
+                        {/* 20% new customer discount toggle */}
+                        {subtotalAmt > 0 && (
+                          <button
+                            onClick={() => { setDetailDiscount(d => !d); setTotalSaved(false) }}
+                            className={`w-full flex items-center justify-between rounded-2xl px-4 py-2.5 border-2 transition-all mb-3 ${
+                              detailDiscount ? 'bg-pink-50 border-pink-300 text-pink-700' : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200 hover:text-pink-500'
+                            }`}>
+                            <span className="font-bold text-sm">🎉 New customer 20% off</span>
+                            <span className={`text-xs font-black px-2.5 py-1 rounded-full ${detailDiscount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                              {detailDiscount ? 'ON' : 'OFF'}
+                            </span>
+                          </button>
+                        )}
+
                         {/* Total breakdown */}
                         {(detailBasePrice || detailAddOns.length > 0) && (
                           <div className="bg-gray-50 rounded-2xl border border-gray-100 px-4 py-3 mb-3 space-y-1.5">
@@ -2754,9 +2772,18 @@ export default function DeskAdmin() {
                                 <span className="font-bold text-gray-700">${a.price || '0'}</span>
                               </div>
                             ))}
+                            {discountAmt > 0 && (
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-pink-500 font-semibold">🎉 New customer 20% off</span>
+                                <span className="font-bold text-pink-500">−${discountAmt.toFixed(2)}</span>
+                              </div>
+                            )}
                             <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                               <span className="font-bold text-gray-800">Total</span>
-                              <span className={`text-xl font-black ${totalSaved && grandTotal > 0 ? 'text-emerald-600' : 'text-gray-700'}`}>${grandTotal}</span>
+                              <div className="text-right">
+                                {detailDiscount && subtotalAmt > 0 && <span className="text-xs text-gray-400 line-through mr-2">${subtotalAmt.toFixed(2)}</span>}
+                                <span className={`text-xl font-black ${totalSaved && grandTotal > 0 ? 'text-emerald-600' : detailDiscount ? 'text-pink-600' : 'text-gray-700'}`}>${grandTotal.toFixed(2)}</span>
+                              </div>
                             </div>
                           </div>
                         )}
