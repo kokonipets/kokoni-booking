@@ -559,6 +559,8 @@ export async function PATCH(
     if (tip_amount !== undefined) updates.tip_amount = tip_amount || null
     if (payment_method !== undefined) updates.payment_method = payment_method || null
     if (payment_status !== undefined) updates.payment_status = payment_status
+    // Mark appointment completed when cashier records payment as paid
+    if (payment_status === 'paid') updates.status = 'completed'
 
     // If addons array is provided, merge it into notes_list (replace any existing is_addon entries)
     if (Array.isArray(addons)) {

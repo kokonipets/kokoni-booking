@@ -83,10 +83,15 @@ export async function GET(request: NextRequest) {
         const result = await sendSMS(`+1${appt.client_phone}`, message)
 
         if (result.success) {
-          // Upsert review record
-          const { data: review } = await supabase
+          // Insert review record (check first to avoid duplicates)
+          const { data: existing } = await supabase
             .from('reviews')
-            .upsert({
+            .select('id')
+            .eq('appointment_id', appt.id)
+            .maybeSingle()
+
+          if (!existing) {
+            await supabase.from('reviews').insert({
               appointment_id: appt.id,
               client_phone: appt.client_phone,
               client_name: clientData.name,
@@ -94,9 +99,14 @@ export async function GET(request: NextRequest) {
               review_request_sent_at: new Date().toISOString(),
               attempt_count: 1,
               last_attempt_at: new Date().toISOString()
-            }, { onConflict: 'appointment_id' })
-            .select()
-            .single()
+            })
+          } else {
+            await supabase.from('reviews').update({
+              review_request_sent_at: new Date().toISOString(),
+              attempt_count: (existing as { attempt_count?: number }).attempt_count ?? 1,
+              last_attempt_at: new Date().toISOString()
+            }).eq('id', existing.id)
+          }
 
           // Log SMS
           await supabase.from('sms_messages').insert({
