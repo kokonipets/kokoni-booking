@@ -479,12 +479,13 @@ export default function KioskPage() {
             const pollData = await pollRes.json()
             if (pollData.status === 'COMPLETED') {
               if (terminalPollRef.current) { clearInterval(terminalPollRef.current); terminalPollRef.current = null }
-              // Mark ALL appointments paid in our system
+              // Mark ALL appointments paid with proportional tip split
+              const tipSplit = splitTipProportionally(activeAppts, tip)
               await Promise.all(activeAppts.map((a, i) =>
                 fetch('/api/kiosk/action', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'checkout', appointmentId: a.id, paymentMethod: 'card', tipAmount: i === 0 ? tip : 0 }),
+                  body: JSON.stringify({ action: 'checkout', appointmentId: a.id, paymentMethod: 'card', tipAmount: tipSplit[i] }),
                 })
               ))
               setTerminalWaiting(false)
@@ -555,27 +556,35 @@ export default function KioskPage() {
     }
   }
 
+  // ── Proportional tip split across appointments by service price ───────────
+  const splitTipProportionally = (appts: KioskAppointment[], totalTip: number | null): (number | null)[] => {
+    if (!totalTip || totalTip <= 0 || appts.length <= 1) return appts.map((_, i) => i === 0 ? totalTip : 0)
+    const prices = appts.map(a => a.payment_amount ? parseFloat(a.payment_amount) : 0)
+    const total = prices.reduce((s, p) => s + p, 0)
+    if (total <= 0) return appts.map((_, i) => i === 0 ? totalTip : 0)
+    return prices.map(p => Math.round((totalTip * p / total) * 100) / 100)
+  }
+
   // ── Action ────────────────────────────────────────────────────────────────
   const confirm = async () => {
     if (!appt) return
     setSubmitting(true)
-    // All appointments being confirmed (multi-pet checkout)
     const activeAppts = selectedAppts.length > 0 ? selectedAppts : [appt]
     const totalSub = activeAppts.reduce((s, a) => s + (a.payment_amount ? parseFloat(a.payment_amount) : 0), 0)
     const customTipAmt = customTip !== '' ? parseFloat(customTip) : NaN
     const totalTip = totalSub > 0 && tipPercent !== null
       ? (tipPercent === -1 ? (isNaN(customTipAmt) ? 0 : customTipAmt) : totalSub * tipPercent / 100)
       : null
+    const tipSplit = splitTipProportionally(activeAppts, totalTip)
     try {
-      // Confirm each appointment — tip goes on first, rest get 0 tip
-      const results = await Promise.all(activeAppts.map((a, i) => {
-        const apptTip = i === 0 ? totalTip : 0
-        return fetch('/api/kiosk/action', {
+      // Confirm each appointment with proportional tip split
+      const results = await Promise.all(activeAppts.map((a, i) =>
+        fetch('/api/kiosk/action', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: mode, appointmentId: a.id, paymentMethod, tipAmount: apptTip }),
+          body: JSON.stringify({ action: mode, appointmentId: a.id, paymentMethod, tipAmount: tipSplit[i] }),
         }).then(r => r.json())
-      }))
+      ))
       const anyError = results.find(d => d.error)
       if (!anyError) {
         setStep('success')
@@ -1137,12 +1146,13 @@ export default function KioskPage() {
                       ? (tipPercent === -1 ? (isNaN(customTipAmt) ? 0 : customTipAmt) : totalSub * tipPercent / 100)
                       : null
                     try {
-                      // Checkout ALL appointments
+                      // Checkout ALL appointments with proportional tip split
+                      const tipSplit = splitTipProportionally(activeAppts, tipAmt)
                       const results = await Promise.all(activeAppts.map((a, i) =>
                         fetch('/api/kiosk/action', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'checkout', appointmentId: a.id, paymentMethod, tipAmount: i === 0 ? tipAmt : 0 }),
+                          body: JSON.stringify({ action: 'checkout', appointmentId: a.id, paymentMethod, tipAmount: tipSplit[i] }),
                         }).then(r => r.json())
                       ))
                       const data = results[0]

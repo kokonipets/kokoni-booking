@@ -1568,7 +1568,7 @@ export default function GroomerDashboard() {
             </div>
           </div>
 
-          {/* Tips — full-width card with two sub-rows */}
+          {/* Tips — groomer gets tipPct%, store keeps the rest */}
           <div className="bg-emerald-50 rounded-2xl border border-emerald-100 p-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-bold text-emerald-800">Total Tips</p>
@@ -1577,17 +1577,17 @@ export default function GroomerDashboard() {
             <div className="space-y-2">
               <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
                 <div>
-                  <p className="text-xs font-semibold text-gray-700">Cash Tip</p>
-                  <p className="text-xs text-gray-400">Received directly</p>
+                  <p className="text-xs font-semibold text-gray-700">Your Share ({tipPct}%)</p>
+                  <p className="text-xs text-gray-400">Added to your paycheck</p>
                 </div>
-                <p className="text-base font-bold text-gray-800">${(totalTips - tipInPaycheck).toFixed(2)}</p>
+                <p className="text-base font-bold text-emerald-700">${tipInPaycheck.toFixed(2)}</p>
               </div>
               <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
                 <div>
-                  <p className="text-xs font-semibold text-gray-700">Tip in Paycheck</p>
-                  <p className="text-xs text-gray-400">{tipPct}% added to pay</p>
+                  <p className="text-xs font-semibold text-gray-700">Store Share ({100 - tipPct}%)</p>
+                  <p className="text-xs text-gray-400">Kept by the salon</p>
                 </div>
-                <p className="text-base font-bold text-emerald-700">${tipInPaycheck.toFixed(2)}</p>
+                <p className="text-base font-bold text-gray-400">${(totalTips - tipInPaycheck).toFixed(2)}</p>
               </div>
             </div>
           </div>
