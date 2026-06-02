@@ -1574,21 +1574,12 @@ export default function GroomerDashboard() {
               <p className="text-sm font-bold text-emerald-800">Total Tips</p>
               <p className="text-xl font-bold text-emerald-700">${totalTips.toFixed(2)}</p>
             </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
-                <div>
-                  <p className="text-xs font-semibold text-gray-700">Your Share ({tipPct}%)</p>
-                  <p className="text-xs text-gray-400">Added to your paycheck</p>
-                </div>
-                <p className="text-base font-bold text-emerald-700">${tipInPaycheck.toFixed(2)}</p>
+            <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
+              <div>
+                <p className="text-xs font-semibold text-gray-700">Your Share ({tipPct}%)</p>
+                <p className="text-xs text-gray-400">Added to your paycheck</p>
               </div>
-              <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
-                <div>
-                  <p className="text-xs font-semibold text-gray-700">Store Share ({100 - tipPct}%)</p>
-                  <p className="text-xs text-gray-400">Kept by the salon</p>
-                </div>
-                <p className="text-base font-bold text-gray-400">${(totalTips - tipInPaycheck).toFixed(2)}</p>
-              </div>
+              <p className="text-base font-bold text-emerald-700">${tipInPaycheck.toFixed(2)}</p>
             </div>
           </div>
 
