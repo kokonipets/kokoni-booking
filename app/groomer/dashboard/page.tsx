@@ -1553,6 +1553,22 @@ export default function GroomerDashboard() {
         <div className="px-4 pt-5 pb-4 space-y-4">
           <h2 className="text-xl font-bold text-gray-800">My Earnings</h2>
 
+          {/* Payroll period info */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-sky-50 border border-sky-100 rounded-2xl px-3 py-2.5">
+              <p className="text-[10px] font-bold text-sky-500 uppercase tracking-wide">This Pay Period</p>
+              <p className="text-sm font-bold text-sky-800 mt-0.5">
+                {new Date(thisPayrollStartStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {new Date(thisPayrollEndStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </p>
+            </div>
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2.5">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Last Pay Period</p>
+              <p className="text-sm font-bold text-gray-600 mt-0.5">
+                {new Date(lastPayrollStartStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {new Date(lastPayrollEndStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </p>
+            </div>
+          </div>
+
           {/* Range selector */}
           <div className="grid grid-cols-5 gap-1.5">
             {(['today', 'week', 'this_payroll', 'last_payroll', 'month'] as const).map(r => (
