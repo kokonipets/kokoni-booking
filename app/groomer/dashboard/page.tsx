@@ -969,10 +969,11 @@ export default function GroomerDashboard() {
   const now = new Date(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
   const currentYear = now.getFullYear()
   const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6)
-  const weekAgoStr = weekAgo.toISOString().split('T')[0]
+  const fmtLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const weekAgoStr = fmtLocal(weekAgo)
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const yearStart = `${currentYear}-01-01`
-  const todayStr = now.toISOString().split('T')[0]
+  const todayStr = fmtLocal(now)
 
   // ── Payroll periods (bi-weekly, anchor: 2026-05-10) ───────────────────────
   const PAYROLL_ANCHOR = new Date('2026-05-10')
@@ -983,7 +984,7 @@ export default function GroomerDashboard() {
   const thisPayrollEnd = new Date(thisPayrollStart); thisPayrollEnd.setDate(thisPayrollStart.getDate() + PERIOD_DAYS - 1)
   const lastPayrollStart = new Date(thisPayrollStart); lastPayrollStart.setDate(thisPayrollStart.getDate() - PERIOD_DAYS)
   const lastPayrollEnd = new Date(thisPayrollStart); lastPayrollEnd.setDate(thisPayrollStart.getDate() - 1)
-  const fmt = (d: Date) => d.toISOString().split('T')[0]
+  const fmt = fmtLocal
   const thisPayrollStartStr = fmt(thisPayrollStart)
   const thisPayrollEndStr = fmt(thisPayrollEnd)
   const lastPayrollStartStr = fmt(lastPayrollStart)
@@ -1554,20 +1555,31 @@ export default function GroomerDashboard() {
           <h2 className="text-xl font-bold text-gray-800">My Earnings</h2>
 
           {/* Payroll period info */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-sky-50 border border-sky-100 rounded-2xl px-3 py-2.5">
-              <p className="text-[10px] font-bold text-sky-500 uppercase tracking-wide">This Pay Period</p>
-              <p className="text-sm font-bold text-sky-800 mt-0.5">
-                {new Date(thisPayrollStartStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {new Date(thisPayrollEndStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </p>
-            </div>
-            <div className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2.5">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Last Pay Period</p>
-              <p className="text-sm font-bold text-gray-600 mt-0.5">
-                {new Date(lastPayrollStartStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {new Date(lastPayrollEndStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </p>
-            </div>
-          </div>
+          {(() => {
+            const fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            const payday = (endStr: string) => {
+              const d = new Date(endStr + 'T12:00:00'); d.setDate(d.getDate() + 6)
+              return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            }
+            return (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-sky-50 border border-sky-100 rounded-2xl px-3 py-2.5">
+                  <p className="text-[10px] font-bold text-sky-500 uppercase tracking-wide">This Pay Period</p>
+                  <p className="text-sm font-bold text-sky-800 mt-0.5">
+                    {fmtDate(thisPayrollStartStr)} – {fmtDate(thisPayrollEndStr)}
+                  </p>
+                  <p className="text-[11px] text-sky-500 mt-1">💰 Payday: {payday(thisPayrollEndStr)}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2.5">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Last Pay Period</p>
+                  <p className="text-sm font-bold text-gray-600 mt-0.5">
+                    {fmtDate(lastPayrollStartStr)} – {fmtDate(lastPayrollEndStr)}
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-1">✓ Paid: {payday(lastPayrollEndStr)}</p>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Range selector */}
           <div className="grid grid-cols-5 gap-1.5">
