@@ -214,7 +214,7 @@ export default function GroomerDashboard() {
   const prevPendingCountRef = useRef<number | null>(null)
   const [updateLoading, setUpdateLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'biweekly' | 'month' | 'year'>('today')
+  const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'year'>('today')
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [calendarSelected, setCalendarSelected] = useState<string | null>(null)
   const [calView, setCalView] = useState<'3day' | 'week' | 'month'>('month')
@@ -969,12 +969,26 @@ export default function GroomerDashboard() {
   const now = new Date(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
   const currentYear = now.getFullYear()
   const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6)
-  const biweekAgo = new Date(now); biweekAgo.setDate(now.getDate() - 13)
   const weekAgoStr = weekAgo.toISOString().split('T')[0]
-  const biweekAgoStr = biweekAgo.toISOString().split('T')[0]
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const yearStart = `${currentYear}-01-01`
   const todayStr = now.toISOString().split('T')[0]
+
+  // ── Payroll periods (bi-weekly, anchor: 2026-05-10) ───────────────────────
+  const PAYROLL_ANCHOR = new Date('2026-05-10')
+  const PERIOD_DAYS = 14
+  const daysSinceAnchor = Math.floor((now.getTime() - PAYROLL_ANCHOR.getTime()) / (1000 * 60 * 60 * 24))
+  const periodsElapsed = Math.floor(daysSinceAnchor / PERIOD_DAYS)
+  const thisPayrollStart = new Date(PAYROLL_ANCHOR); thisPayrollStart.setDate(PAYROLL_ANCHOR.getDate() + periodsElapsed * PERIOD_DAYS)
+  const thisPayrollEnd = new Date(thisPayrollStart); thisPayrollEnd.setDate(thisPayrollStart.getDate() + PERIOD_DAYS - 1)
+  const lastPayrollStart = new Date(thisPayrollStart); lastPayrollStart.setDate(thisPayrollStart.getDate() - PERIOD_DAYS)
+  const lastPayrollEnd = new Date(thisPayrollStart); lastPayrollEnd.setDate(thisPayrollStart.getDate() - 1)
+  const fmt = (d: Date) => d.toISOString().split('T')[0]
+  const thisPayrollStartStr = fmt(thisPayrollStart)
+  const thisPayrollEndStr = fmt(thisPayrollEnd)
+  const lastPayrollStartStr = fmt(lastPayrollStart)
+  const lastPayrollEndStr = fmt(lastPayrollEnd)
+
   const paidAppts = appointments.filter(a => {
     // Count as paid if: payment_status is explicitly set, OR appointment is done with an amount recorded (legacy pre-kiosk-fix appts)
     const countAsPaid =
@@ -984,7 +998,8 @@ export default function GroomerDashboard() {
     if (!countAsPaid) return false
     if (earningsRange === 'today') return a.appointment_date === todayStr
     if (earningsRange === 'week') return a.appointment_date >= weekAgoStr
-    if (earningsRange === 'biweekly') return a.appointment_date >= biweekAgoStr
+    if (earningsRange === 'this_payroll') return a.appointment_date >= thisPayrollStartStr && a.appointment_date <= thisPayrollEndStr
+    if (earningsRange === 'last_payroll') return a.appointment_date >= lastPayrollStartStr && a.appointment_date <= lastPayrollEndStr
     if (earningsRange === 'month') return a.appointment_date >= monthStart
     if (earningsRange === 'year') return a.appointment_date >= yearStart
     return true
@@ -997,7 +1012,8 @@ export default function GroomerDashboard() {
   const rangeLabelMap = {
     today: 'Today',
     week: 'This Week',
-    biweekly: 'Bi-Weekly',
+    this_payroll: 'This Pay',
+    last_payroll: 'Last Pay',
     month: 'This Month',
     year: String(currentYear),
   }
@@ -1539,7 +1555,7 @@ export default function GroomerDashboard() {
 
           {/* Range selector */}
           <div className="grid grid-cols-5 gap-1.5">
-            {(['today', 'week', 'biweekly', 'month', 'year'] as const).map(r => (
+            {(['today', 'week', 'this_payroll', 'last_payroll', 'month'] as const).map(r => (
               <button
                 key={r}
                 onClick={() => setEarningsRange(r)}
@@ -1588,7 +1604,13 @@ export default function GroomerDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-gray-700">Take-Home Total</p>
-                <p className="text-xs text-gray-400">{rangeLabelMap[earningsRange]}</p>
+                <p className="text-xs text-gray-400">
+                  {earningsRange === 'this_payroll'
+                    ? `${thisPayrollStartStr} – ${thisPayrollEndStr}`
+                    : earningsRange === 'last_payroll'
+                    ? `${lastPayrollStartStr} – ${lastPayrollEndStr}`
+                    : rangeLabelMap[earningsRange]}
+                </p>
               </div>
               <p className="text-2xl font-bold text-gray-800">${(commission + tipInPaycheck).toFixed(2)}</p>
             </div>
