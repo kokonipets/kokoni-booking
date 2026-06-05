@@ -551,6 +551,7 @@ export default function GroomerDashboard() {
           grooming_quality: {
             ...qualityChecks,
             groomer_diary: groomerDiary,
+            customer_note_raw: customerNote,
             customer_note_english: customerNoteTranslations?.english ?? customerNote,
             customer_note_traditional: customerNoteTranslations?.traditional ?? '',
             customer_note_simplified: customerNoteTranslations?.simplified ?? '',

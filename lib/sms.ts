@@ -175,9 +175,11 @@ export async function notifyClientGroomingReady(data: {
   to: string
   clientName: string
   petName: string
+  customerNote?: string
 }) {
   const firstName = data.clientName.split(' ')[0]
-  const body = `Hi ${firstName}! 🐾 Great news — ${data.petName} will be ready for pickup in 15 minutes! Please pick up within 30 minutes to avoid a late pickup fee.\n📍 https://maps.app.goo.gl/qDTcGhcazqsHvahQ7\nKokoni Pet Grooming Salon — (626) 621-4646\nReply STOP to opt out.`
+  const noteLine = data.customerNote?.trim() ? `\n💌 From your groomer: ${data.customerNote.trim()}` : ''
+  const body = `Hi ${firstName}! 🐾 Great news — ${data.petName} will be ready for pickup in 15 minutes! Please pick up within 30 minutes to avoid a late pickup fee.${noteLine}\n📍 https://maps.app.goo.gl/qDTcGhcazqsHvahQ7\nKokoni Pet Grooming Salon — (626) 621-4646\nReply STOP to opt out.`
   return sendSMS(data.to, body, 'notifyClientGroomingReady')
 }
 
