@@ -128,16 +128,18 @@ export async function POST(req: NextRequest) {
         .maybeSingle()
 
       if (settings) {
+        const firstName = (review.client_name ?? '').split(' ')[0] || 'there'
         if (rating >= 4) {
           // Positive: send review links
           let msg = settings.positive_response_template ?? ''
+          msg = msg.replace('{client_name}', firstName)
           if (settings.google_review_url) msg = msg.replace('{google_url}', settings.google_review_url)
           if (settings.yelp_business_url) msg = msg.replace('{yelp_url}', settings.yelp_business_url)
           if (msg) await sendSMS(tenDigit, msg)
         } else {
           // Negative: send feedback request + alert admin
           if (settings.feedback_request_template) {
-            await sendSMS(tenDigit, settings.feedback_request_template)
+            await sendSMS(tenDigit, settings.feedback_request_template.replace('{client_name}', firstName))
           }
           if (settings.alert_on_negative && settings.admin_alert_phone) {
             const alert = `⚠️ Negative review! ${review.client_name ?? tenDigit} gave ${rating}★. Message: "${body}"`

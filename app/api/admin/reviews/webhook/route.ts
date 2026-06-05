@@ -114,6 +114,9 @@ async function handlePositiveReview(
     // Send review links
     let reviewMessage = settings.positive_response_template
 
+    const firstName = (review.client_name ?? '').split(' ')[0] || 'there'
+    reviewMessage = reviewMessage.replace('{client_name}', firstName)
+
     if (settings.google_review_url) {
       reviewMessage = reviewMessage.replace('{google_url}', settings.google_review_url)
     }
@@ -177,7 +180,7 @@ async function handleNegativeReview(
     // Send feedback request
     const result = await sendSMS(
       review.client_phone,
-      settings.feedback_request_template
+      settings.feedback_request_template.replace('{client_name}', (review.client_name ?? '').split(' ')[0] || 'there')
     )
 
     if (result.success) {
