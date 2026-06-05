@@ -232,7 +232,7 @@ export default function ChatOverlay({ open, onClose }: Props) {
               <div className="p-8 text-center text-sm text-gray-400">Loading…</div>
             ) : filteredThreads.length === 0 ? (
               <div className="p-8 text-center text-sm text-gray-400">
-                {search ? 'No matches.' : 'No conversations yet. When a customer texts (949) 868-0900, it will appear here.'}
+                {search ? 'No matches.' : 'No conversations yet. When a customer texts (626) 789-0858, it will appear here.'}
               </div>
             ) : (
               filteredThreads.map(t => {
@@ -369,7 +369,7 @@ export default function ChatOverlay({ open, onClose }: Props) {
               </button>
             </div>
             <div className="mt-1 px-2 text-[10px] text-gray-400">
-              Sends from (949) 868-0900. Standard rates apply.
+              Sends from (626) 789-0858. Standard rates apply.
             </div>
           </div>
         </>
