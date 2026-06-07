@@ -21,6 +21,28 @@ type Message = {
   body: string
   twilio_sid: string | null
   read_at: string | null
+  template?: string | null
+}
+
+// Labels for automated (system-sent) messages, keyed by sms template name
+const AUTOMATED_LABELS: Record<string, string> = {
+  notifyClientConfirmed: '📅 Confirmation',
+  notifyClientRescheduled: '🔄 Rescheduled',
+  notifyClientGroomingReady: '🐾 Pickup ready',
+  sendAppointmentReminder: '⏰ Reminder',
+  reviewRequest: '📋 Review request',
+  reviewResponse: '⭐ Review reply',
+  feedbackRequest: '💬 Feedback request',
+  reviewLinksSent: '⭐ Review reply',
+}
+const automatedLabel = (m: Message): string | null => {
+  if (m.direction !== 'outbound') return null
+  if (m.template && m.template !== 'chatReply') return AUTOMATED_LABELS[m.template] ?? '🤖 Automated'
+  if (m.template === 'chatReply') return null
+  // Legacy rows (no template column): fall back to body heuristics
+  if (m.body.includes('g.page') || m.body.includes('yelp.com/writeareview')) return '⭐ Google/Yelp link sent'
+  if (m.body.includes('1-5')) return '📋 Review request'
+  return null
 }
 
 function formatPhone(p: string) {
