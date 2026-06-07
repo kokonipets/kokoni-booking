@@ -532,15 +532,12 @@ export default function DeskAdmin() {
 
   // Reports
   const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('month')
+  const [reportsShowDetails, setReportsShowDetails] = useState(false)
   const [reportsCustomStart, setReportsCustomStart] = useState('')
   const [reportsCustomEnd, setReportsCustomEnd] = useState('')
   const [reportsAppts, setReportsAppts] = useState<Appointment[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
-  const [reportEditingId, setReportEditingId] = useState<string | null>(null)
-  const [reportEditAmount, setReportEditAmount] = useState('')
-  const [reportEditTip, setReportEditTip] = useState('')
-  const [reportEditMethod, setReportEditMethod] = useState('cash')
-  const [reportEditStatus, setReportEditStatus] = useState('paid')
+  // (report inline-edit state removed with the By Groomer section — edits happen in Cashier)
   const [reportSavingId, setReportSavingId] = useState<string | null>(null)
 
   // Cashier
@@ -6547,211 +6544,8 @@ export default function DeskAdmin() {
               rangeMethodTotals[key].amount += parseFloat(a.payment_amount || '0')
               rangeMethodTotals[key].tips += parseFloat(a.tip_amount || '0')
             })
-            // Per-groomer range detail (all appointments, not just paid)
-            const rangeGroomerDetail: Record<string, Appointment[]> = {}
-            allRangeAppts.forEach(a => {
-              const key = a.assigned_groomer || '(Unassigned)'
-              if (!rangeGroomerDetail[key]) rangeGroomerDetail[key] = []
-              rangeGroomerDetail[key].push(a)
-            })
-
-            // ── Daily Report data ───────────────────────────────────────────
-            const todayAppts = reportsAppts.filter(a => a.appointment_date === todayStr)
-            const methodOrder = ['cash', 'card', 'zelle', 'venmo', 'check'] as const
-            const methodLabels: Record<string, string> = { cash: 'Cash', card: 'Credit Card', zelle: 'Zelle', venmo: 'Venmo', check: 'Check' }
-            const methodColors: Record<string, string> = {
-              cash:  'bg-emerald-50 border-emerald-100 text-emerald-700',
-              card:  'bg-sky-50 border-sky-100 text-sky-700',
-              zelle: 'bg-violet-50 border-violet-100 text-violet-700',
-              venmo: 'bg-blue-50 border-blue-100 text-blue-700',
-              check: 'bg-gray-50 border-gray-100 text-gray-700',
-            }
-            type MethodKey = 'cash' | 'card' | 'zelle' | 'venmo' | 'check'
-            const methodTotals: Record<string, { count: number; amount: number; tips: number }> = {}
-            methodOrder.forEach(m => { methodTotals[m] = { count: 0, amount: 0, tips: 0 } })
-            methodTotals['unpaid'] = { count: 0, amount: 0, tips: 0 }
-            todayAppts.forEach(a => {
-              const key = (a.payment_status === 'paid' && a.payment_method) ? a.payment_method : 'unpaid'
-              if (!methodTotals[key]) methodTotals[key] = { count: 0, amount: 0, tips: 0 }
-              methodTotals[key].count += 1
-              methodTotals[key].amount += parseFloat(a.payment_amount || '0')
-              methodTotals[key].tips += parseFloat(a.tip_amount || '0')
-            })
-            // Daily groomer breakdown
-            const dailyGroomerMap: Record<string, Appointment[]> = {}
-            todayAppts.forEach(a => {
-              const key = a.assigned_groomer || '(Unassigned)'
-              if (!dailyGroomerMap[key]) dailyGroomerMap[key] = []
-              dailyGroomerMap[key].push(a)
-            })
-
             return (
               <div className="space-y-5">
-                {/* ── DAILY REPORT ────────────────────────────────────────────── */}
-                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100 bg-amber-50 flex items-center justify-between">
-                    <div>
-                      <h3 className="font-bold text-gray-800 text-base">Daily Report</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {new Date(todayStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                        <span className="ml-2 font-semibold text-amber-600">{todayAppts.length} appointment{todayAppts.length !== 1 ? 's' : ''}</span>
-                      </p>
-                    </div>
-                    <button onClick={() => fetchReports()} className="text-sm text-sky-600 hover:text-sky-800 font-medium">↻</button>
-                  </div>
-
-                  {/* Payment method tiles */}
-                  <div className="px-5 pt-4 pb-3">
-                    <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Payment Breakdown</p>
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
-                      {methodOrder.filter(m => methodTotals[m]?.count > 0 || true).map(m => (
-                        <div key={m} className={`rounded-xl border px-3 py-2.5 ${methodColors[m as MethodKey]} ${methodTotals[m]?.count === 0 ? 'opacity-30' : ''}`}>
-                          <p className="text-base font-bold">${(methodTotals[m]?.amount ?? 0).toFixed(0)}</p>
-                          <p className="text-[11px] font-semibold mt-0.5">{methodLabels[m]}</p>
-                          <p className="text-[10px] opacity-70">{methodTotals[m]?.count ?? 0} appt{(methodTotals[m]?.count ?? 0) !== 1 ? 's' : ''}</p>
-                        </div>
-                      ))}
-                      {/* Unpaid tile */}
-                      <div className={`rounded-xl border px-3 py-2.5 bg-rose-50 border-rose-100 text-rose-700 ${methodTotals['unpaid']?.count === 0 ? 'opacity-30' : ''}`}>
-                        <p className="text-base font-bold">{methodTotals['unpaid']?.count ?? 0}</p>
-                        <p className="text-[11px] font-semibold mt-0.5">Unpaid</p>
-                        <p className="text-[10px] opacity-70">appt{(methodTotals['unpaid']?.count ?? 0) !== 1 ? 's' : ''}</p>
-                      </div>
-                    </div>
-
-                    {/* Tips breakdown */}
-                    {todayAppts.some(a => parseFloat(a.tip_amount || '0') > 0) && (
-                      <div className="flex gap-2 mb-5 flex-wrap">
-                        {methodOrder.filter(m => methodTotals[m]?.tips > 0).map(m => (
-                          <span key={m} className="text-xs bg-emerald-50 border border-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-semibold">
-                            {methodLabels[m]} tip: ${methodTotals[m].tips.toFixed(2)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Per-groomer daily detail */}
-                    <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">By Groomer</p>
-                    {Object.keys(dailyGroomerMap).length === 0 ? (
-                      <p className="text-sm text-gray-400 py-3 text-center">No appointments today</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {Object.entries(dailyGroomerMap).sort(([a],[b]) => a.localeCompare(b)).map(([groomer, appts]) => {
-                          const groomerPaid = appts.filter(a => a.payment_status === 'paid')
-                          const groomerRevenue = groomerPaid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
-                          const groomerTips = groomerPaid.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
-                          const staffMatch = staff.find(s => {
-                            const fullName = s.first_name ? `${s.first_name} ${s.last_name || ''}`.trim() : s.name
-                            return fullName === groomer || s.name === groomer
-                          })
-                          const commissionPct = staffMatch?.commission_percent ?? 0
-                          return (
-                            <div key={groomer} className="border border-gray-100 rounded-xl overflow-hidden">
-                              {/* Groomer header */}
-                              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-                                <span className="font-semibold text-sm text-gray-800">✂️ {groomer}</span>
-                                <div className="flex items-center gap-3 text-xs text-gray-500">
-                                  <span>{appts.length} appt{appts.length !== 1 ? 's' : ''}</span>
-                                  <span className="font-semibold text-gray-800">${groomerRevenue.toFixed(2)}</span>
-                                  {groomerTips > 0 && <span className="text-emerald-600 font-semibold">+${groomerTips.toFixed(2)} tips</span>}
-                                  {commissionPct > 0 && <span className="text-violet-600 font-semibold">Commission: ${(groomerRevenue * commissionPct / 100).toFixed(2)} ({commissionPct}%)</span>}
-                                </div>
-                              </div>
-                              {/* Appointment rows */}
-                              <div className="divide-y divide-gray-50">
-                                {appts.sort((a,b) => a.appointment_time.localeCompare(b.appointment_time)).map(a => {
-                                  const [h, m] = a.appointment_time.split(':')
-                                  const hour = parseInt(h), period = hour >= 12 ? 'PM' : 'AM'
-                                  const timeStr = `${hour % 12 || 12}:${m} ${period}`
-                                  const isPaid = a.payment_status === 'paid'
-                                  const methodIcon: Record<string, string> = { cash: '💵', card: '💳', zelle: '🔵', venmo: '📱', check: '📝' }
-                                  return (
-                                    <div key={a.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 group/row">
-                                      <span className="text-xs font-bold text-gray-500 tabular-nums w-16 shrink-0">{timeStr}</span>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-gray-800 leading-tight">{a.pets?.name}</p>
-                                        <p className="text-xs text-gray-400 truncate">{a.clients?.name} · {serviceMap[a.service] ?? a.service}</p>
-                                      </div>
-                                      <div className="flex items-center gap-2 shrink-0">
-                                        {reportEditingId === a.id ? (
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-xs text-gray-400">$</span>
-                                            <input
-                                              type="number" min="0" step="0.01"
-                                              value={reportEditAmount}
-                                              onChange={e => setReportEditAmount(e.target.value)}
-                                              onKeyDown={async e => {
-                                                if (e.key === 'Escape') { setReportEditingId(null); return }
-                                                if (e.key === 'Enter') {
-                                                  setReportSavingId(a.id)
-                                                  const res = await fetch(`/api/admin/appointments/${a.id}`, {
-                                                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({ action: 'record-payment', payment_amount: reportEditAmount, payment_status: 'paid' }),
-                                                  })
-                                                  if ((await res.json()).success) {
-                                                    setReportsAppts(prev => prev.map(x => x.id === a.id ? { ...x, payment_amount: reportEditAmount, payment_status: 'paid' } : x))
-                                                  }
-                                                  setReportSavingId(null)
-                                                  setReportEditingId(null)
-                                                }
-                                              }}
-                                              autoFocus
-                                              className="w-20 text-sm font-bold text-gray-800 border border-sky-300 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-sky-300"
-                                            />
-                                            <button
-                                              disabled={reportSavingId === a.id}
-                                              onClick={async () => {
-                                                setReportSavingId(a.id)
-                                                const res = await fetch(`/api/admin/appointments/${a.id}`, {
-                                                  method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                                                  body: JSON.stringify({ action: 'record-payment', payment_amount: reportEditAmount, payment_status: 'paid' }),
-                                                })
-                                                if ((await res.json()).success) {
-                                                  setReportsAppts(prev => prev.map(x => x.id === a.id ? { ...x, payment_amount: reportEditAmount, payment_status: 'paid' } : x))
-                                                }
-                                                setReportSavingId(null)
-                                                setReportEditingId(null)
-                                              }}
-                                              className="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-lg font-semibold disabled:opacity-50">
-                                              {reportSavingId === a.id ? '…' : '✓'}
-                                            </button>
-                                            <button onClick={() => setReportEditingId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">✕</button>
-                                          </div>
-                                        ) : (
-                                          <>
-                                            {isPaid ? (
-                                              <span className="text-xs font-semibold text-gray-700">
-                                                {a.payment_method ? (methodIcon[a.payment_method] ?? '') : ''} ${parseFloat(a.payment_amount || '0').toFixed(2)}
-                                                {' '}
-                                                <span className="text-[10px] font-semibold text-gray-500 capitalize">{methodLabels[a.payment_method || ''] || a.payment_method || ''}</span>
-                                              </span>
-                                            ) : (
-                                              <span className="text-xs font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">Unpaid</span>
-                                            )}
-                                            <button
-                                              onClick={() => { setReportEditingId(a.id); setReportEditAmount(a.payment_amount || '') }}
-                                              className="opacity-0 group-hover/row:opacity-100 transition-opacity text-gray-300 hover:text-sky-500 text-xs px-1"
-                                              title="Edit amount">
-                                              ✏️
-                                            </button>
-                                          </>
-                                        )}
-                                        {parseFloat(a.tip_amount || '0') > 0 && (
-                                          <span className="text-xs text-emerald-600 font-semibold">+${parseFloat(a.tip_amount || '0').toFixed(2)} tip</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
                 {/* Date range selector */}
                 <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -6824,6 +6618,51 @@ export default function DeskAdmin() {
                       </div>
                     </div>
 
+                    {/* Payment breakdown for range */}
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
+                        <h3 className="font-bold text-gray-800">Payment Breakdown</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">{rangeLabelMap[reportsRange]}</p>
+                      </div>
+                      <div className="px-5 py-4">
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                          {(['cash', 'card', 'zelle', 'venmo', 'check'] as const).map(m => {
+                            const colors: Record<string, string> = {
+                              cash: 'bg-emerald-50 border-emerald-100 text-emerald-700',
+                              card: 'bg-sky-50 border-sky-100 text-sky-700',
+                              zelle: 'bg-violet-50 border-violet-100 text-violet-700',
+                              venmo: 'bg-blue-50 border-blue-100 text-blue-700',
+                              check: 'bg-gray-50 border-gray-100 text-gray-700',
+                            }
+                            const labels: Record<string, string> = { cash: 'Cash', card: 'Credit Card', zelle: 'Zelle', venmo: 'Venmo', check: 'Check' }
+                            const t = rangeMethodTotals[m]
+                            return (
+                              <div key={m} className={`rounded-xl border px-3 py-2.5 ${colors[m]} ${t.count === 0 ? 'opacity-30' : ''}`}>
+                                <p className="text-base font-bold">${t.amount.toFixed(2)}</p>
+                                <p className="text-[11px] font-semibold mt-0.5">{labels[m]}</p>
+                                <p className="text-[10px] opacity-70">{t.count} appt{t.count !== 1 ? 's' : ''}</p>
+                                {t.tips > 0 && <p className="text-[10px] opacity-70">+${t.tips.toFixed(2)} tips</p>}
+                              </div>
+                            )
+                          })}
+                          <div className={`rounded-xl border px-3 py-2.5 bg-rose-50 border-rose-100 text-rose-700 ${rangeMethodTotals['unpaid'].count === 0 ? 'opacity-30' : ''}`}>
+                            <p className="text-base font-bold">{rangeMethodTotals['unpaid'].count}</p>
+                            <p className="text-[11px] font-semibold mt-0.5">Unpaid</p>
+                            <p className="text-[10px] opacity-70">appt{rangeMethodTotals['unpaid'].count !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Detail report toggle */}
+                    <button
+                      onClick={() => setReportsShowDetails(v => !v)}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border-2 border-dashed border-gray-200 text-sm font-semibold text-gray-500 hover:border-sky-300 hover:text-sky-600 transition-colors"
+                    >
+                      {reportsShowDetails ? '▲ Hide detail report' : '▼ Show detail report'}
+                    </button>
+
+                    {reportsShowDetails && (<>
                     {/* ── PET COUNT SUMMARY ──────────────────────────────────── */}
                     {(() => {
                       const allPetsInRange = allRangeAppts.length
@@ -6881,88 +6720,6 @@ export default function DeskAdmin() {
                       )
                     })()}
 
-                    {/* ── SERVICES BREAKDOWN ────────────────────────────────── */}
-                    {(() => {
-                      const svcCount: Record<string, { count: number; revenue: number; tips: number; pets: Set<string> }> = {}
-                      allRangeAppts.forEach(a => {
-                        const svc = a.service || 'unknown'
-                        if (!svcCount[svc]) svcCount[svc] = { count: 0, revenue: 0, tips: 0, pets: new Set() }
-                        svcCount[svc].count += 1
-                        if (a.payment_status === 'paid') {
-                          svcCount[svc].revenue += parseFloat(a.payment_amount || '0')
-                          svcCount[svc].tips += parseFloat(a.tip_amount || '0')
-                        }
-                        if (a.pets?.name) svcCount[svc].pets.add(a.pets.name)
-                      })
-                      const svcRows = Object.entries(svcCount)
-                        .map(([key, v]) => ({ key, label: serviceMap[key] || key, ...v, petCount: v.pets.size }))
-                        .sort((a, b) => b.count - a.count)
-                      const totalSvcAppts = svcRows.reduce((s, r) => s + r.count, 0)
-
-                      return (
-                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                          <div className="px-5 py-4 border-b border-gray-100 bg-indigo-50/60">
-                            <h3 className="font-bold text-gray-800">✂️ Services Breakdown</h3>
-                            <p className="text-xs text-gray-400 mt-0.5">{rangeLabelMap[reportsRange]}</p>
-                          </div>
-                          {svcRows.length === 0 ? (
-                            <div className="px-5 py-10 text-center text-gray-400 text-sm">No services in this period.</div>
-                          ) : (
-                            <div className="divide-y divide-gray-100">
-                              {/* Header */}
-                              <div className="grid grid-cols-12 gap-2 px-5 py-2.5 bg-gray-50 text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                                <div className="col-span-4">Service</div>
-                                <div className="col-span-2 text-center">Pets</div>
-                                <div className="col-span-1 text-center">%</div>
-                                <div className="col-span-2 text-right">Revenue</div>
-                                <div className="col-span-1 text-right">Avg</div>
-                                <div className="col-span-2 text-right">Tips</div>
-                              </div>
-                              {svcRows.map((row, i) => {
-                                const pct = totalSvcAppts > 0 ? (row.count / totalSvcAppts * 100) : 0
-                                const avg = row.count > 0 ? row.revenue / row.count : 0
-                                const barWidth = totalSvcAppts > 0 ? (row.count / totalSvcAppts * 100) : 0
-                                return (
-                                  <div key={row.key} className={`grid grid-cols-12 gap-2 px-5 py-3 items-center ${i % 2 === 1 ? 'bg-gray-50/50' : ''} hover:bg-indigo-50/30 transition-colors`}>
-                                    <div className="col-span-4">
-                                      <p className="text-sm font-semibold text-gray-800">{row.label}</p>
-                                      <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden w-full">
-                                        <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${barWidth}%` }} />
-                                      </div>
-                                    </div>
-                                    <div className="col-span-2 text-center">
-                                      <span className="text-sm font-bold text-gray-700">{row.count}</span>
-                                    </div>
-                                    <div className="col-span-1 text-center">
-                                      <span className="text-xs text-gray-500">{pct.toFixed(0)}%</span>
-                                    </div>
-                                    <div className="col-span-2 text-right">
-                                      <span className="text-sm font-bold text-gray-800">${row.revenue.toFixed(2)}</span>
-                                    </div>
-                                    <div className="col-span-1 text-right">
-                                      <span className="text-xs text-gray-500">${avg.toFixed(0)}</span>
-                                    </div>
-                                    <div className="col-span-2 text-right">
-                                      <span className="text-sm font-semibold text-emerald-600">{row.tips > 0 ? `$${row.tips.toFixed(2)}` : '—'}</span>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                              {/* Totals footer */}
-                              <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-gray-50 border-t-2 border-gray-200 items-center">
-                                <div className="col-span-4 text-sm font-bold text-gray-700">Total</div>
-                                <div className="col-span-2 text-center text-sm font-bold text-gray-700">{totalSvcAppts}</div>
-                                <div className="col-span-1" />
-                                <div className="col-span-2 text-right text-sm font-bold text-gray-800">${svcRows.reduce((s,r)=>s+r.revenue,0).toFixed(2)}</div>
-                                <div className="col-span-1" />
-                                <div className="col-span-2 text-right text-sm font-bold text-emerald-600">${svcRows.reduce((s,r)=>s+r.tips,0).toFixed(2)}</div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-
                     {/* ── BREED TRACKER ─────────────────────────────────────── */}
                     {(() => {
                       const breedCount: Record<string, { count: number; revenue: number; pets: Set<string> }> = {}
@@ -7000,225 +6757,8 @@ export default function DeskAdmin() {
                         </div>
                       ) : null
                     })()}
+                    </>)}
 
-                    {/* Payment breakdown for range */}
-                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
-                        <h3 className="font-bold text-gray-800">Payment Breakdown</h3>
-                        <p className="text-xs text-gray-400 mt-0.5">{rangeLabelMap[reportsRange]}</p>
-                      </div>
-                      <div className="px-5 py-4">
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                          {(['cash', 'card', 'zelle', 'venmo', 'check'] as const).map(m => {
-                            const colors: Record<string, string> = {
-                              cash: 'bg-emerald-50 border-emerald-100 text-emerald-700',
-                              card: 'bg-sky-50 border-sky-100 text-sky-700',
-                              zelle: 'bg-violet-50 border-violet-100 text-violet-700',
-                              venmo: 'bg-blue-50 border-blue-100 text-blue-700',
-                              check: 'bg-gray-50 border-gray-100 text-gray-700',
-                            }
-                            const labels: Record<string, string> = { cash: 'Cash', card: 'Credit Card', zelle: 'Zelle', venmo: 'Venmo', check: 'Check' }
-                            const t = rangeMethodTotals[m]
-                            return (
-                              <div key={m} className={`rounded-xl border px-3 py-2.5 ${colors[m]} ${t.count === 0 ? 'opacity-30' : ''}`}>
-                                <p className="text-base font-bold">${t.amount.toFixed(2)}</p>
-                                <p className="text-[11px] font-semibold mt-0.5">{labels[m]}</p>
-                                <p className="text-[10px] opacity-70">{t.count} appt{t.count !== 1 ? 's' : ''}</p>
-                                {t.tips > 0 && <p className="text-[10px] opacity-70">+${t.tips.toFixed(2)} tips</p>}
-                              </div>
-                            )
-                          })}
-                          <div className={`rounded-xl border px-3 py-2.5 bg-rose-50 border-rose-100 text-rose-700 ${rangeMethodTotals['unpaid'].count === 0 ? 'opacity-30' : ''}`}>
-                            <p className="text-base font-bold">{rangeMethodTotals['unpaid'].count}</p>
-                            <p className="text-[11px] font-semibold mt-0.5">Unpaid</p>
-                            <p className="text-[10px] opacity-70">appt{rangeMethodTotals['unpaid'].count !== 1 ? 's' : ''}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Per-groomer detail (payment method breakdown) */}
-                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-                        <h3 className="font-bold text-gray-800">By Groomer</h3>
-                        <span className="text-xs text-gray-400">{rangeLabelMap[reportsRange]}</span>
-                      </div>
-                      {Object.keys(rangeGroomerDetail).length === 0 ? (
-                        <div className="px-5 py-10 text-center text-gray-400 text-sm">No appointments in this period.</div>
-                      ) : (
-                        <div className="divide-y divide-gray-100">
-                          {Object.entries(rangeGroomerDetail).sort(([a],[b]) => a.localeCompare(b)).map(([groomer, gAppts]) => {
-                            const gPaid = gAppts.filter(a => a.payment_status === 'paid')
-                            const gRevenue = gPaid.reduce((s,a) => s + parseFloat(a.payment_amount||'0'), 0)
-                            const gTips = gPaid.reduce((s,a) => s + parseFloat(a.tip_amount||'0'), 0)
-                            const gUnpaid = gAppts.filter(a => a.payment_status !== 'paid').length
-                            const staffMatch = staff.find(s => {
-                              const fullName = s.first_name ? `${s.first_name} ${s.last_name||''}`.trim() : s.name
-                              return fullName === groomer || s.name === groomer
-                            })
-                            const commPct = staffMatch?.commission_percent ?? 0
-                            const tipPct = staffMatch?.tip_percent ?? 0
-                            // Method breakdown for this groomer
-                            const gMethods: Record<string, { count: number; amount: number }> = {}
-                            gPaid.forEach(a => {
-                              const k = a.payment_method || 'other'
-                              if (!gMethods[k]) gMethods[k] = { count: 0, amount: 0 }
-                              gMethods[k].count += 1
-                              gMethods[k].amount += parseFloat(a.payment_amount||'0')
-                            })
-                            const methodIcons: Record<string, string> = { cash: '💵', card: '💳', zelle: '🔵', venmo: '📱', check: '📝' }
-                            const methodNames: Record<string, string> = { cash: 'Cash', card: 'Credit Card', zelle: 'Zelle', venmo: 'Venmo', check: 'Check' }
-                            return (
-                              <div key={groomer}>
-                                {/* Groomer summary row */}
-                                <div className="flex items-center justify-between px-5 py-3.5 bg-gray-50/80">
-                                  <div className="flex items-center gap-3">
-                                    <span className="font-semibold text-gray-800">✂️ {groomer}</span>
-                                    <span className="text-xs text-gray-400">{gAppts.length} appt{gAppts.length!==1?'s':''}</span>
-                                    {gUnpaid > 0 && <span className="text-xs font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">{gUnpaid} unpaid</span>}
-                                  </div>
-                                  <div className="flex items-center gap-4 text-sm">
-                                    <div className="text-right">
-                                      <p className="font-bold text-gray-800">${gRevenue.toFixed(2)}</p>
-                                      <p className="text-xs text-gray-400">revenue</p>
-                                    </div>
-                                    {commPct > 0 && (
-                                      <div className="text-right">
-                                        <p className="font-bold text-emerald-700">${(gRevenue * commPct / 100).toFixed(2)}</p>
-                                        <p className="text-xs text-gray-400">commission ({commPct}%)</p>
-                                      </div>
-                                    )}
-                                    {gTips > 0 && (
-                                      <div className="text-right">
-                                        <p className="font-bold text-sky-700">${gTips.toFixed(2)}</p>
-                                        <p className="text-xs text-gray-400">tips</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                {/* Per-appointment editable rows */}
-                                {gAppts.sort((a,b) => a.appointment_time.localeCompare(b.appointment_time)).map(appt => {
-                                  const isPaid = appt.payment_status === 'paid'
-                                  const isEditing = reportEditingId === appt.id
-                                  const tStr = (() => {
-                                    const t = appt.appointment_time
-                                    if (t.toUpperCase().includes('AM') || t.toUpperCase().includes('PM')) return t.trim()
-                                    const [h, m] = t.split(':'); const hr = parseInt(h)
-                                    return `${hr%12||12}:${m} ${hr>=12?'PM':'AM'}`
-                                  })()
-                                  return (
-                                    <div key={appt.id} className={`border-t border-gray-50 ${isEditing ? 'bg-sky-50/40' : 'hover:bg-gray-50/60'} transition-colors`}>
-                                      <div className="flex items-center gap-3 px-5 py-2.5 group">
-                                        <span className="text-[11px] text-gray-400 w-16 shrink-0 tabular-nums">{tStr}</span>
-                                        <div className="flex-1 min-w-0">
-                                          <span className="text-sm font-semibold text-gray-700">{appt.pets?.name}</span>
-                                          <span className="text-xs text-gray-400 ml-1.5">{appt.clients?.name}</span>
-                                          <span className="text-xs text-gray-300 ml-1.5">· {serviceMap[appt.service] ?? appt.service}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          {isPaid ? (
-                                            <span className="text-xs font-semibold text-emerald-600">
-                                              {appt.payment_method ? (methodIcons[appt.payment_method] ?? '💰') : ''} ${parseFloat(appt.payment_amount||'0').toFixed(2)}
-                                              {parseFloat(appt.tip_amount||'0') > 0 && <span className="text-emerald-400 ml-1">+${parseFloat(appt.tip_amount||'0').toFixed(2)}</span>}
-                                            </span>
-                                          ) : (
-                                            <span className="text-xs font-semibold text-rose-400 bg-rose-50 px-2 py-0.5 rounded-full">Unpaid</span>
-                                          )}
-                                          <button
-                                            onClick={() => {
-                                              if (isEditing) { setReportEditingId(null); return }
-                                              setReportEditingId(appt.id)
-                                              setReportEditAmount(appt.payment_amount || '')
-                                              setReportEditTip(appt.tip_amount || '')
-                                              setReportEditMethod(appt.payment_method || 'cash')
-                                              setReportEditStatus(appt.payment_status || 'paid')
-                                            }}
-                                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-sky-500 text-xs px-1"
-                                          >✏️</button>
-                                        </div>
-                                      </div>
-                                      {/* Inline edit row */}
-                                      {isEditing && (
-                                        <div className="px-5 pb-3 flex items-center gap-2 flex-wrap">
-                                          <select value={reportEditStatus} onChange={e => setReportEditStatus(e.target.value)}
-                                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-sky-200">
-                                            <option value="paid">Paid</option>
-                                            <option value="unpaid">Unpaid</option>
-                                          </select>
-                                          <select value={reportEditMethod} onChange={e => setReportEditMethod(e.target.value)}
-                                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-sky-200">
-                                            <option value="cash">💵 Cash</option>
-                                            <option value="card">💳 Card</option>
-                                            <option value="zelle">🔵 Zelle</option>
-                                            <option value="venmo">📱 Venmo</option>
-                                            <option value="check">📝 Check</option>
-                                          </select>
-                                          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
-                                            <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">$</span>
-                                            <input type="number" min="0" step="0.01" placeholder="Amount"
-                                              value={reportEditAmount} onChange={e => setReportEditAmount(e.target.value)} autoFocus
-                                              className="w-20 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
-                                          </div>
-                                          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
-                                            <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">Tip $</span>
-                                            <input type="number" min="0" step="0.01" placeholder="0"
-                                              value={reportEditTip} onChange={e => setReportEditTip(e.target.value)}
-                                              className="w-16 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
-                                          </div>
-                                          <button
-                                            disabled={reportSavingId === appt.id}
-                                            onClick={async () => {
-                                              setReportSavingId(appt.id)
-                                              try {
-                                                const res = await fetch(`/api/admin/appointments/${appt.id}`, {
-                                                  method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                                                  body: JSON.stringify({ action: 'record-payment', payment_amount: reportEditAmount, tip_amount: reportEditTip || '0', payment_method: reportEditMethod, payment_status: reportEditStatus }),
-                                                })
-                                                if ((await res.json()).success) {
-                                                  setReportsAppts(prev => prev.map(x => x.id === appt.id
-                                                    ? { ...x, payment_amount: reportEditAmount, tip_amount: reportEditTip || '0', payment_method: reportEditMethod, payment_status: reportEditStatus }
-                                                    : x))
-                                                  setReportEditingId(null)
-                                                  showToast('✓ Updated!')
-                                                }
-                                              } catch {/**/}
-                                              finally { setReportSavingId(null) }
-                                            }}
-                                            className="text-xs bg-sky-500 hover:bg-sky-600 text-white px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50">
-                                            {reportSavingId === appt.id ? '…' : '✓ Save'}
-                                          </button>
-                                          <button onClick={() => setReportEditingId(null)} className="text-xs text-gray-300 hover:text-gray-500 px-1">✕</button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            )
-                          })}
-                          {/* Totals footer */}
-                          <div className="flex items-center justify-between px-5 py-3.5 bg-gray-50 border-t-2 border-gray-200">
-                            <span className="font-bold text-gray-700">Total</span>
-                            <div className="flex items-center gap-4 text-sm">
-                              <div className="text-right">
-                                <p className="font-bold text-gray-800">${totalRevenue.toFixed(2)}</p>
-                                <p className="text-xs text-gray-400">{totalAppts} paid</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-bold text-emerald-700">${rows.reduce((s,r)=>s+r.commission,0).toFixed(2)}</p>
-                                <p className="text-xs text-gray-400">commission</p>
-                              </div>
-                              {totalTips > 0 && (
-                                <div className="text-right">
-                                  <p className="font-bold text-sky-700">${totalTips.toFixed(2)}</p>
-                                  <p className="text-xs text-gray-400">tips</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
                   </>
                 )}
               </div>
