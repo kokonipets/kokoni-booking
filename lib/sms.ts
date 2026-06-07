@@ -45,6 +45,36 @@ export function getSmsMode(): SmsMode {
   return getMode()
 }
 
+// Mirror every customer-facing SMS into the chat conversation (sms_messages)
+// so the admin Chat shows the complete history a client actually received.
+// Admin-targeted notifications are skipped (they're not client conversations).
+async function logChatMessage(entry: { to: string; body: string; template?: string | null; twilio_sid?: string | null }) {
+  try {
+    if (entry.template && /admin/i.test(entry.template)) return
+    const toNorm = normalize(entry.to)
+    const adminPhone = process.env.ADMIN_PHONE ? normalize(process.env.ADMIN_PHONE) : null
+    if (adminPhone && toNorm === adminPhone) return
+    const sb = createSupabaseServer()
+    const row: Record<string, unknown> = {
+      direction: 'outbound',
+      from_number: process.env.TWILIO_PHONE_NUMBER ?? '',
+      to_number: toNorm,
+      body: entry.body,
+      twilio_sid: entry.twilio_sid ?? null,
+      client_phone: toNorm.replace(/\D/g, '').slice(-10),
+      template: entry.template ?? null,
+    }
+    const { error } = await sb.from('sms_messages').insert(row)
+    if (error) {
+      // `template` column may not be migrated yet — retry without it
+      delete row.template
+      await sb.from('sms_messages').insert(row)
+    }
+  } catch (e) {
+    console.error('[sms] chat mirror failed:', e)
+  }
+}
+
 async function logSms(entry: {
   mode: SmsMode
   status: 'sent' | 'suppressed' | 'failed' | 'redirected'
@@ -73,6 +103,7 @@ export async function sendSMS(to: string, body: string, template?: string) {
   // ── OFF: log only ──
   if (mode === 'off') {
     await logSms({ mode, status: 'suppressed', to_number: toNorm, body, template, suppressed_reason: 'mode=off' })
+    await logChatMessage({ to: toNorm, body, template })
     console.log(`[sms:off] would send to ${toNorm}: ${body.slice(0, 60)}…`)
     return { success: true, suppressed: true, mode }
   }
@@ -87,6 +118,7 @@ export async function sendSMS(to: string, body: string, template?: string) {
       redirected = true
     } else if (!whitelist.includes(toNorm)) {
       await logSms({ mode, status: 'suppressed', to_number: toNorm, body, template, suppressed_reason: 'not-in-whitelist' })
+      await logChatMessage({ to: toNorm, body, template })
       console.log(`[sms:test] suppressed (not in whitelist) to=${toNorm}`)
       return { success: true, suppressed: true, mode }
     }
@@ -111,6 +143,7 @@ export async function sendSMS(to: string, body: string, template?: string) {
       template,
       twilio_sid: message.sid,
     })
+    await logChatMessage({ to: toNorm, body, template, twilio_sid: message.sid })
     return { success: true, sid: message.sid, mode, redirected }
   } catch (error: any) {
     const msg = error?.message ?? String(error)

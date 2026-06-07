@@ -50,8 +50,8 @@ export async function POST(request: Request) {
 
     if (insertError) throw insertError
 
-    // Send SMS
-    const result = await sendSMS(phone, message)
+    // Send SMS (sendSMS mirrors it into sms_messages for the chat thread)
+    const result = await sendSMS(phone, message, 'reviewRequest')
 
     if (!result.success) {
       return Response.json({ error: result.error }, { status: 500 })
@@ -63,16 +63,6 @@ export async function POST(request: Request) {
       action: 'review_request_sent',
       actor: 'admin_manual',
       details: { clientPhone: phone, twilio_sid: result.sid, message },
-    })
-
-    // Log SMS
-    await supabase.from('sms_messages').insert({
-      direction: 'outbound',
-      from_number: process.env.TWILIO_PHONE_NUMBER,
-      to_number: phone,
-      body: message,
-      twilio_sid: result.sid,
-      client_phone: phone,
     })
 
     return Response.json({ success: true, sid: result.sid })

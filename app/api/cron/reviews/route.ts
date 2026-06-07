@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       const message = settings.review_request_template.replace('{client_name}', firstName)
 
       try {
-        const result = await sendSMS(`+1${appt.client_phone}`, message)
+        const result = await sendSMS(`+1${appt.client_phone}`, message, 'reviewRequest')
 
         if (result.success) {
           // Insert review record (check first to avoid duplicates)
@@ -108,16 +108,7 @@ export async function GET(request: NextRequest) {
             }).eq('id', existing.id)
           }
 
-          // Log SMS
-          await supabase.from('sms_messages').insert({
-            direction: 'outbound',
-            from_number: process.env.TWILIO_PHONE_NUMBER,
-            to_number: `+1${appt.client_phone}`,
-            body: message,
-            twilio_sid: result.sid,
-            client_phone: appt.client_phone
-          })
-
+          // (sendSMS mirrors the message into sms_messages — no duplicate insert)
           sent++
         } else {
           errors.push(`${appt.client_phone}: ${result.error}`)

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServer } from '@/lib/supabase'
 import { sendSMS } from '@/lib/sms'
 
 export const dynamic = 'force-dynamic'
@@ -11,20 +10,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'phone + body required' }, { status: 400 })
   }
 
+  // sendSMS mirrors the message into sms_messages (in all modes), so the
+  // conversation thread sees the reply without a duplicate insert here.
   const result = await sendSMS(phone, body, 'chatReply')
-
-  // Also persist to sms_messages so the conversation thread sees the reply
-  // regardless of mode (live/test/off). In test mode where the text was
-  // suppressed, we still record it locally so the admin can see what was
-  // attempted.
-  const sb = createSupabaseServer()
-  await sb.from('sms_messages').insert({
-    direction: 'outbound',
-    from_number: process.env.TWILIO_PHONE_NUMBER ?? '',
-    to_number: phone,
-    body,
-    twilio_sid: 'sid' in result ? (result as { sid?: string }).sid ?? null : null,
-  })
 
   return NextResponse.json(result)
 }

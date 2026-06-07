@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await sb
     .from('sms_messages')
-    .select('id, created_at, direction, from_number, to_number, body, twilio_sid, read_at')
+    .select('*') // includes optional `template` column (resilient if not yet migrated)
     .or(`from_number.eq.${phone},to_number.eq.${phone}`)
     .order('created_at', { ascending: true })
     .limit(500)

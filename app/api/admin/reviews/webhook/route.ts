@@ -124,7 +124,7 @@ async function handlePositiveReview(
       reviewMessage = reviewMessage.replace('{yelp_url}', settings.yelp_business_url)
     }
 
-    const result = await sendSMS(review.client_phone, reviewMessage)
+    const result = await sendSMS(review.client_phone, reviewMessage, 'reviewResponse')
 
     if (result.success) {
       await supabase
@@ -180,7 +180,8 @@ async function handleNegativeReview(
     // Send feedback request
     const result = await sendSMS(
       review.client_phone,
-      settings.feedback_request_template.replace('{client_name}', (review.client_name ?? '').split(' ')[0] || 'there')
+      settings.feedback_request_template.replace('{client_name}', (review.client_name ?? '').split(' ')[0] || 'there'),
+      'feedbackRequest'
     )
 
     if (result.success) {
@@ -197,7 +198,7 @@ async function handleNegativeReview(
     // Notify admin if configured
     if (settings.admin_alert_phone) {
       const adminNotification = `⚠️ Negative review alert! ${review.client_name} gave ${review.rating}★. Feedback: "${messageBody}"`
-      await sendSMS(settings.admin_alert_phone, adminNotification)
+      await sendSMS(settings.admin_alert_phone, adminNotification, 'adminAlert')
     }
   } catch (error) {
     console.error('Error handling negative review:', error)

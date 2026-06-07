@@ -22,8 +22,8 @@ export async function POST(request: Request) {
     const message = settings.review_request_template
       .replace('{client_name}', clientName || 'valued customer')
 
-    // Send SMS
-    const result = await sendSMS(clientPhone, message)
+    // Send SMS (sendSMS mirrors it into sms_messages for the chat thread)
+    const result = await sendSMS(clientPhone, message, 'reviewRequest')
 
     if (!result.success) {
       return Response.json({ error: result.error }, { status: 500 })
@@ -53,18 +53,6 @@ export async function POST(request: Request) {
           twilio_sid: result.sid,
           message
         }
-      })
-
-    // Store SMS message
-    await supabase
-      .from('sms_messages')
-      .insert({
-        direction: 'outbound',
-        from_number: process.env.TWILIO_PHONE_NUMBER,
-        to_number: clientPhone,
-        body: message,
-        twilio_sid: result.sid,
-        client_phone: clientPhone
       })
 
     return Response.json({
