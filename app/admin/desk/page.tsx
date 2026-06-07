@@ -533,6 +533,7 @@ export default function DeskAdmin() {
   // Reports
   const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('month')
   const [reportsShowDetails, setReportsShowDetails] = useState(false)
+  const [incomeChartRange, setIncomeChartRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll'>('week')
   const [reportsCustomStart, setReportsCustomStart] = useState('')
   const [reportsCustomEnd, setReportsCustomEnd] = useState('')
   const [reportsAppts, setReportsAppts] = useState<Appointment[]>([])
@@ -6410,6 +6411,28 @@ export default function DeskAdmin() {
             const lastPayrollStartStr = fmtLocalDate(lastPayrollStart)
             const lastPayrollEndStr = fmtLocalDate(lastPayrollEnd)
 
+            // ── Income by groomer chart data (own range selector) ──────────
+            const chartInRange = (date: string) => {
+              if (incomeChartRange === 'today') return date === todayStr
+              if (incomeChartRange === 'week') return date >= weekAgoStr
+              if (incomeChartRange === 'this_payroll') return date >= thisPayrollStartStr && date <= thisPayrollEndStr
+              return date >= lastPayrollStartStr && date <= lastPayrollEndStr
+            }
+            const chartByGroomer: Record<string, { revenue: number; tips: number }> = {}
+            reportsAppts.forEach(a => {
+              if (a.status === 'cancelled' || a.payment_status !== 'paid') return
+              if (!chartInRange(a.appointment_date)) return
+              const k = a.assigned_groomer || '(Unassigned)'
+              if (!chartByGroomer[k]) chartByGroomer[k] = { revenue: 0, tips: 0 }
+              chartByGroomer[k].revenue += parseFloat(a.payment_amount || '0')
+              chartByGroomer[k].tips += parseFloat(a.tip_amount || '0')
+            })
+            const chartRows = Object.entries(chartByGroomer)
+              .map(([name, v]) => ({ name, ...v, total: v.revenue + v.tips }))
+              .sort((a, b) => b.total - a.total)
+            const chartStoreTotal = chartRows.reduce((sum, r) => sum + r.total, 0)
+            const chartMax = Math.max(...chartRows.map(r => r.total), 1)
+
             const inRange = (date: string) => {
               if (reportsRange === 'today') return date === todayStr
               if (reportsRange === 'week') return date >= weekAgoStr
@@ -6651,6 +6674,54 @@ export default function DeskAdmin() {
                             <p className="text-[10px] opacity-70">appt{rangeMethodTotals['unpaid'].count !== 1 ? 's' : ''}</p>
                           </div>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* ── INCOME BY GROOMER CHART ───────────────────────────── */}
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                          <h3 className="font-bold text-gray-800">📊 Income by Groomer</h3>
+                          <p className="text-xs text-gray-400 mt-0.5">Service revenue + tips · store total ${chartStoreTotal.toFixed(2)}</p>
+                        </div>
+                        <select
+                          value={incomeChartRange}
+                          onChange={e => setIncomeChartRange(e.target.value as typeof incomeChartRange)}
+                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white"
+                        >
+                          <option value="today">Today</option>
+                          <option value="week">This Week</option>
+                          <option value="this_payroll">This Pay</option>
+                          <option value="last_payroll">Last Pay</option>
+                        </select>
+                      </div>
+                      <div className="px-5 py-4">
+                        {chartRows.length === 0 ? (
+                          <p className="text-sm text-gray-400 text-center py-4">No paid appointments in this period.</p>
+                        ) : (
+                          <>
+                            {chartRows.map(r => (
+                              <div key={r.name} className="mb-3 last:mb-0">
+                                <div className="flex items-center justify-between text-sm mb-1">
+                                  <span className="font-semibold text-gray-700">✂️ {r.name}</span>
+                                  <span className="text-gray-500">
+                                    ${r.total.toFixed(2)}
+                                    <span className="text-gray-300 mx-1">·</span>
+                                    <span className="text-gray-400">{chartStoreTotal > 0 ? Math.round(r.total / chartStoreTotal * 100) : 0}% of store</span>
+                                  </span>
+                                </div>
+                                <div className="flex h-6 rounded-lg overflow-hidden bg-gray-50">
+                                  <div className="bg-sky-500" style={{ width: `${(r.revenue / chartMax) * 100}%` }} />
+                                  <div className="bg-emerald-400" style={{ width: `${(r.tips / chartMax) * 100}%` }} />
+                                </div>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500 inline-block" />Service revenue</span>
+                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />Tips</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
 
