@@ -796,16 +796,20 @@ export default function DeskAdmin() {
     setDetailPayMethod(appt.payment_method || 'cash')
     setDetailPayStatus(appt.payment_status || 'unpaid')
     setTotalSaved(!!appt.payment_amount)
-    setDetailDiscount(false)
+    // Restore saved discount state (persisted by record-payment)
+    const savedDiscountAmt = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0
+    setDetailDiscount(savedDiscountAmt > 0)
     // Load saved add-ons from notes_list (is_addon: true entries)
     const savedAddOns = (appt.notes_list ?? [])
       .filter((n: { is_addon?: boolean }) => n.is_addon)
       .map((n: { id: string; text: string; price?: string }) => ({ id: n.id, name: n.text, price: n.price ?? '' }))
     setDetailAddOns(savedAddOns)
-    // Base price = total minus add-ons
+    // Base price = total minus add-ons. payment_amount is post-discount, so add
+    // the saved discount back to reconstruct the pre-discount base — the toggle
+    // (restored above) then re-derives the same discounted total.
     if (appt.payment_amount) {
       const addonTotal = savedAddOns.reduce((s: number, a: { price: string }) => s + (parseFloat(a.price) || 0), 0)
-      const base = parseFloat(appt.payment_amount) - addonTotal
+      const base = parseFloat(appt.payment_amount) + savedDiscountAmt - addonTotal
       setDetailBasePrice(base > 0 ? base.toString() : appt.payment_amount)
     } else {
       setDetailBasePrice('')
@@ -2823,7 +2827,12 @@ export default function DeskAdmin() {
                               const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ action: 'record-payment', payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, addons: detailAddOns }),
+                                body: JSON.stringify({
+                                  action: 'record-payment', payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, addons: detailAddOns,
+                                  discount_label: detailDiscount ? 'New customer 20% off' : null,
+                                  discount_percent: detailDiscount ? '20' : null,
+                                  discount_amount: detailDiscount ? discountAmt.toFixed(2) : null,
+                                }),
                               })
                               const data = await res.json()
                               if (data.success) {

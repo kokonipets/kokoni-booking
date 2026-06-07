@@ -12,33 +12,10 @@ function getAdminClient() {
   )
 }
 
+// `*` keeps this resilient to optional columns (e.g. discount_* fields) that may
+// not be migrated yet — Supabase returns whatever columns exist.
 const SELECT_FIELDS = `
-  id,
-  client_phone,
-  pet_id,
-  service,
-  appointment_date,
-  appointment_time,
-  notes,
-  notes_chinese,
-  notes_english,
-  notes_author,
-  notes_updated_at,
-  notes_list,
-  status,
-  created_at,
-  confirmed_at,
-  assigned_groomer,
-  assigned_bather,
-  payment_amount,
-  payment_method,
-  payment_status,
-  tip_amount,
-  grooming_status,
-  grooming_status_updated_at,
-  groomer_confirmed,
-  health_check,
-  grooming_quality,
+  *,
   clients (
     name,
     phone,
@@ -60,7 +37,7 @@ const SELECT_FIELDS = `
 // ALTER TABLE appointments ADD COLUMN IF NOT EXISTS owner_notified_at TIMESTAMPTZ;
 // ALTER TABLE appointments ADD COLUMN IF NOT EXISTS checked_out_at TIMESTAMPTZ;
 // ALTER TABLE appointments ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMPTZ;
-const TODAY_EXTRA_FIELDS = `, grooming_started_at, grooming_finished_at, owner_notified_at, checked_out_at, checked_in_at`
+// (kept for reference; covered by `*` now): grooming_started_at, grooming_finished_at, owner_notified_at, checked_out_at, checked_in_at
 
 export async function GET(req: NextRequest) {
   const supabase = getAdminClient()
@@ -115,7 +92,7 @@ export async function GET(req: NextRequest) {
   } else if (status === 'today') {
     result = await supabase
       .from('appointments')
-      .select(SELECT_FIELDS + TODAY_EXTRA_FIELDS)
+      .select(SELECT_FIELDS) // `*` already includes the timeline columns (TODAY_EXTRA_FIELDS)
       .eq('appointment_date', today)
       .in('status', ['confirmed', 'in_progress', 'completed'])
       .order('appointment_time', { ascending: true })

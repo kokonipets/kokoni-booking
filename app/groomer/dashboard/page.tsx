@@ -2059,7 +2059,12 @@ export default function GroomerDashboard() {
                           // Save payment amount + add-ons breakdown
                           const res = await fetch(`/api/admin/appointments/${selectedAppt.id}`, {
                             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'record-payment', payment_amount: amount, addons: popupAddOns }),
+                            body: JSON.stringify({
+                              action: 'record-payment', payment_amount: amount, addons: popupAddOns,
+                              discount_label: selectedCoupon ? selectedCoupon.name : (popupDiscount && discountAmt > 0 ? 'First-time customer 20% off' : null),
+                              discount_percent: selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : (popupDiscount && discountAmt > 0 ? '20' : null),
+                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                            }),
                           })
                           const data = await res.json()
                           if (data.success) {

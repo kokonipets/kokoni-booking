@@ -557,7 +557,7 @@ export async function PATCH(
 
   // Record payment
   if (action === 'record-payment') {
-    const { payment_amount, tip_amount, payment_method, payment_status, addons } = body
+    const { payment_amount, tip_amount, payment_method, payment_status, addons, discount_label, discount_percent, discount_amount } = body
     const updates: Record<string, unknown> = {}
     if (payment_amount !== undefined) updates.payment_amount = payment_amount || null
     if (tip_amount !== undefined) updates.tip_amount = tip_amount || null
@@ -593,6 +593,22 @@ export async function PATCH(
       .eq('id', id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Persist discount info (best-effort, separate update so payment recording
+    // still succeeds if the discount columns haven't been migrated yet).
+    if (discount_amount !== undefined || discount_label !== undefined || discount_percent !== undefined) {
+      const discountUpdates: Record<string, unknown> = {
+        discount_label: discount_label || null,
+        discount_percent: discount_percent || null,
+        discount_amount: discount_amount || null,
+      }
+      const { error: discountErr } = await supabase
+        .from('appointments')
+        .update(discountUpdates)
+        .eq('id', id)
+      if (discountErr) console.warn('Discount fields not saved (run discount migration?):', discountErr.message)
+    }
+
     return NextResponse.json({ success: true })
   }
 

@@ -112,6 +112,9 @@ function CheckoutModal({
           tip_amount: tip || '0',
           payment_method: method,
           payment_status: 'paid',
+          discount_label: discount ? 'First-time customer 20% off' : null,
+          discount_percent: discount ? '20' : null,
+          discount_amount: discount ? discountAmt.toFixed(2) : null,
         }),
       })
       const d = await res.json()
