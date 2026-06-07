@@ -196,20 +196,43 @@ function firstName(name: string | null | undefined): string {
 }
 
 // Parse "1:15 PM" or "13:15" or "13:15:00" into a local Date on the given date string
+const SALON_TZ = 'America/Los_Angeles'
+
+// How many ms the given timezone is ahead of UTC at `date`.
+function tzOffsetMs(tz: string, date: Date): number {
+  const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const m: Record<string, string> = {}
+  for (const p of dtf.formatToParts(date)) m[p.type] = p.value
+  const hh = m.hour === '24' ? '00' : m.hour
+  const asUTC = Date.UTC(+m.year, +m.month - 1, +m.day, +hh, +m.minute, +m.second)
+  return asUTC - date.getTime()
+}
+
+// Parse an appointment's date + wall-clock time as a moment in the salon's
+// timezone (Pacific), so "Late"/"Coming" is correct regardless of the device's
+// own timezone (e.g. when the owner is traveling).
 function parseApptTime(dateStr: string, timeStr: string): Date {
   const upper = timeStr.trim().toUpperCase()
+  let h: number, m: number
   if (upper.includes('AM') || upper.includes('PM')) {
     const [t, period] = upper.split(' ')
     const [hStr, mStr] = t.split(':')
-    let h = parseInt(hStr, 10)
-    const m = parseInt(mStr, 10)
+    h = parseInt(hStr, 10)
+    m = parseInt(mStr || '0', 10)
     if (period === 'PM' && h !== 12) h += 12
     if (period === 'AM' && h === 12) h = 0
-    const d = new Date(dateStr + 'T00:00:00')
-    d.setHours(h, m, 0, 0)
-    return d
+  } else {
+    const [hStr, mStr] = upper.split(':')
+    h = parseInt(hStr, 10)
+    m = parseInt(mStr || '0', 10)
   }
-  return new Date(`${dateStr}T${timeStr}`)
+  if (isNaN(h) || isNaN(m)) return new Date(`${dateStr}T00:00:00`)
+  const [Y, Mo, D] = dateStr.split('-').map(Number)
+  const asUTC = Date.UTC(Y, Mo - 1, D, h, m, 0)
+  // Two-pass offset estimate so DST-transition days resolve correctly.
+  let off = tzOffsetMs(SALON_TZ, new Date(asUTC))
+  off = tzOffsetMs(SALON_TZ, new Date(asUTC - off))
+  return new Date(asUTC - off)
 }
 
 function groomingDuration(startedAt: string | null | undefined): string | null {

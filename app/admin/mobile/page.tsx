@@ -67,6 +67,43 @@ const TIMEZONES = [
   { label: 'Alaska',               value: 'America/Anchorage' },
 ]
 
+const SALON_TZ = 'America/Los_Angeles'
+
+// How many ms the given timezone is ahead of UTC at `date`.
+function tzOffsetMs(tz: string, date: Date): number {
+  const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const m: Record<string, string> = {}
+  for (const p of dtf.formatToParts(date)) m[p.type] = p.value
+  const hh = m.hour === '24' ? '00' : m.hour
+  const asUTC = Date.UTC(+m.year, +m.month - 1, +m.day, +hh, +m.minute, +m.second)
+  return asUTC - date.getTime()
+}
+
+// Parse an appointment's date + wall-clock time as a moment in the salon's
+// timezone (Pacific), so "Late" is correct regardless of the device's timezone.
+function parseApptTimeLA(dateStr: string, timeStr: string): Date {
+  const upper = (timeStr || '').trim().toUpperCase()
+  let h: number, m: number
+  if (upper.includes('AM') || upper.includes('PM')) {
+    const [t, period] = upper.split(' ')
+    const [hStr, mStr] = t.split(':')
+    h = parseInt(hStr, 10)
+    m = parseInt(mStr || '0', 10)
+    if (period === 'PM' && h !== 12) h += 12
+    if (period === 'AM' && h === 12) h = 0
+  } else {
+    const [hStr, mStr] = upper.split(':')
+    h = parseInt(hStr, 10)
+    m = parseInt(mStr || '0', 10)
+  }
+  if (isNaN(h) || isNaN(m)) return new Date(0)
+  const [Y, Mo, D] = dateStr.split('-').map(Number)
+  const asUTC = Date.UTC(Y, Mo - 1, D, h, m, 0)
+  let off = tzOffsetMs(SALON_TZ, new Date(asUTC))
+  off = tzOffsetMs(SALON_TZ, new Date(asUTC - off))
+  return new Date(asUTC - off)
+}
+
 type EditDraft = {
   petBreed: string; petWeight: string
   payAmount: string; tipAmount: string; payMethod: string; payStatus: string
@@ -1512,14 +1549,7 @@ export default function AdminPage() {
           {tab === 'today' && (() => {
             // Helpers
             const parseApptTime = (dateStr: string, timeStr: string) => {
-              try {
-                const [time, ampm] = timeStr.split(' ')
-                const [h, m] = time.split(':').map(Number)
-                const hours = (h % 12) + (ampm === 'PM' ? 12 : 0)
-                const d = new Date(dateStr + 'T00:00:00')
-                d.setHours(hours, m, 0, 0)
-                return d
-              } catch { return new Date(0) }
+              try { return parseApptTimeLA(dateStr, timeStr) } catch { return new Date(0) }
             }
             const fmtTs = (iso: string | null | undefined) => {
               if (!iso) return null

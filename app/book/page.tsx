@@ -1043,15 +1043,22 @@ export default function BookPage() {
 
             {selectedDate && (
               <div className="mt-6">
-                <p className="text-sm font-semibold text-sky-800 mb-3 flex items-center gap-1">
+                <p className="text-sm font-semibold text-sky-800 mb-1 flex items-center gap-1">
                   <Clock className="w-4 h-4" />
                   Available Times — {formatDate(selectedDate)}
                 </p>
+                <p className="text-xs text-gray-500 mb-3">🕒 All times are in Pacific Time (Los Angeles).</p>
                 {dateSlotsLoading ? (
                   <p className="text-sm text-gray-400 text-center py-4">Checking availability…</p>
                 ) : (() => {
-                  const isSelectedToday = selectedDate?.toDateString() === today.toDateString()
-                  const nowMins = isSelectedToday ? new Date().getHours() * 60 + new Date().getMinutes() : -1
+                  // Use the salon's timezone (Pacific/LA) for "today" + current time,
+                  // so customers booking from other timezones see the correct available slots.
+                  const laParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
+                  const laGet = (t: string) => laParts.find(p => p.type === t)?.value ?? '00'
+                  const laTodayStr = `${laGet('year')}-${laGet('month')}-${laGet('day')}`
+                  const selStr = selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}` : ''
+                  const isSelectedToday = selStr === laTodayStr
+                  const nowMins = isSelectedToday ? parseInt(laGet('hour')) * 60 + parseInt(laGet('minute')) : -1
                   // Use capacity-aware slots from /api/slots if loaded, else fall back to dynamicTimeSlots
                   const baseSlots = dateSlots ?? dynamicTimeSlots
 

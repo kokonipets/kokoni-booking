@@ -829,14 +829,21 @@ export default function BookPageZhCn() {
             {renderCalendar()}
             {selectedDate && (
               <div className="mt-6">
-                <p className="text-sm font-semibold text-sky-800 mb-3 flex items-center gap-1">
+                <p className="text-sm font-semibold text-sky-800 mb-1 flex items-center gap-1">
                   <Clock className="w-4 h-4" />可预约时段 — {formatDate(selectedDate)}
                 </p>
+                <p className="text-xs text-gray-500 mb-3">🕒 所有时间均为太平洋时间（洛杉矶）。</p>
                 {dateSlotsLoading ? (
                   <p className="text-sm text-gray-400 text-center py-4">查询可用时段中…</p>
                 ) : (() => {
-                  const isSelectedToday = selectedDate?.toDateString() === today.toDateString()
-                  const nowMins = isSelectedToday ? new Date().getHours() * 60 + new Date().getMinutes() : -1
+                  // 使用沙龙所在时区（洛杉矶/太平洋时间）判断"今天"与当前时间，
+                  // 让在其他时区预约的客户看到正确的可约时段。
+                  const laParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
+                  const laGet = (t: string) => laParts.find(p => p.type === t)?.value ?? '00'
+                  const laTodayStr = `${laGet('year')}-${laGet('month')}-${laGet('day')}`
+                  const selStr = selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}` : ''
+                  const isSelectedToday = selStr === laTodayStr
+                  const nowMins = isSelectedToday ? parseInt(laGet('hour')) * 60 + parseInt(laGet('minute')) : -1
                   const baseSlots = dateSlots ?? dynamicTimeSlots
                   const selectedServiceObj = dynamicServices.find(s => s.id === service)
                   const serviceDuration = selectedServiceObj?.durationMinutes || 0
