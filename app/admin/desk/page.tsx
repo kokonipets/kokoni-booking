@@ -208,6 +208,17 @@ function tzOffsetMs(tz: string, date: Date): number {
   return asUTC - date.getTime()
 }
 
+// Current time in the salon's timezone, returned as a Date whose local
+// getters (getFullYear/getDate/getHours/...) report Pacific wall-clock values.
+// Use this instead of `new Date()` for any "what day is it at the salon?"
+// logic, so admin views are correct when staff devices are in other timezones.
+function salonNow(): Date {
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: SALON_TZ, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date())
+  const g = (t: string) => p.find(x => x.type === t)?.value ?? '00'
+  const h = g('hour') === '24' ? '00' : g('hour')
+  return new Date(+g('year'), +g('month') - 1, +g('day'), +h, +g('minute'), +g('second'))
+}
+
 // Parse an appointment's date + wall-clock time as a moment in the salon's
 // timezone (Pacific), so "Late"/"Coming" is correct regardless of the device's
 // own timezone (e.g. when the owner is traveling).
@@ -3620,7 +3631,7 @@ export default function DeskAdmin() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="hidden md:block text-sm text-gray-400">{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</span>
+            <span className="hidden md:block text-sm text-gray-400">{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/Los_Angeles'})}</span>
             {!isBookMode && <ChatIconButton />}
             {!isBookMode && (
               <a href="/admin" className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors font-medium">
@@ -5846,7 +5857,7 @@ export default function DeskAdmin() {
 
           {/* ── CASHIER ───────────────────────────────────────────────────── */}
           {tab === 'cashier' && (() => {
-            const now = new Date(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
+            const now = salonNow(); if (now.getHours() < 4) now.setDate(now.getDate() - 1) // salon (LA) time
             const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
             const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6)
             const weekAgoStr = `${weekAgo.getFullYear()}-${String(weekAgo.getMonth()+1).padStart(2,'0')}-${String(weekAgo.getDate()).padStart(2,'0')}`
@@ -6377,7 +6388,7 @@ export default function DeskAdmin() {
           {/* ── REPORTS ───────────────────────────────────────────────────── */}
           {tab === 'reports' && (() => {
             // Filter appointments by date range
-            const now = new Date(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
+            const now = salonNow(); if (now.getHours() < 4) now.setDate(now.getDate() - 1) // salon (LA) time
             const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
             const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6)
             const weekAgoStr = `${weekAgo.getFullYear()}-${String(weekAgo.getMonth()+1).padStart(2,'0')}-${String(weekAgo.getDate()).padStart(2,'0')}`

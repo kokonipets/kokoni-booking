@@ -39,12 +39,23 @@ const SELECT_FIELDS = `
 // ALTER TABLE appointments ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMPTZ;
 // (kept for reference; covered by `*` now): grooming_started_at, grooming_finished_at, owner_notified_at, checked_out_at, checked_in_at
 
+// "Today" (YYYY-MM-DD) in the salon's timezone (Pacific). The server runs in
+// UTC, so new Date() alone would flip to the next day at 4-5 PM LA time.
+// Before 4 AM LA counts as the previous business day.
+function salonToday(): string {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit' }).formatToParts(new Date())
+  const g = (t: string) => parts.find(p => p.type === t)?.value ?? '00'
+  const hour = +(g('hour') === '24' ? '0' : g('hour'))
+  const d = new Date(+g('year'), +g('month') - 1, +g('day'))
+  if (hour < 4) d.setDate(d.getDate() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export async function GET(req: NextRequest) {
   const supabase = getAdminClient()
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status') || 'pending'
-  const _tnow = new Date(); if (_tnow.getHours() < 4) _tnow.setDate(_tnow.getDate() - 1)
-  const today = `${_tnow.getFullYear()}-${String(_tnow.getMonth()+1).padStart(2,'0')}-${String(_tnow.getDate()).padStart(2,'0')}`
+  const today = salonToday()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let result: any
@@ -147,8 +158,7 @@ export async function GET(req: NextRequest) {
   } else if (status === 'client') {
     // All appointments for a given clientPhone (for detail panel future appts)
     const clientPhone = searchParams.get('clientPhone')
-    const _tnow = new Date(); if (_tnow.getHours() < 4) _tnow.setDate(_tnow.getDate() - 1)
-  const today = `${_tnow.getFullYear()}-${String(_tnow.getMonth()+1).padStart(2,'0')}-${String(_tnow.getDate()).padStart(2,'0')}`
+    const today = salonToday()
     result = await supabase
       .from('appointments')
       .select(SELECT_FIELDS)

@@ -185,6 +185,16 @@ const SERVICE_LABELS: Record<string, string> = {
   asian_fusion: 'Asian Fusion Style',
 }
 
+// Current time in the salon's timezone (Pacific/LA), as a Date whose local
+// getters report LA wall-clock values — so earnings "today" is correct even
+// when the device is in another timezone.
+function salonNow(): Date {
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date())
+  const g = (t: string) => p.find(x => x.type === t)?.value ?? '00'
+  const h = g('hour') === '24' ? '00' : g('hour')
+  return new Date(+g('year'), +g('month') - 1, +g('day'), +h, +g('minute'), +g('second'))
+}
+
 function formatDate(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
@@ -967,7 +977,7 @@ export default function GroomerDashboard() {
   // Earnings
   const commissionPct = user?.commission_percent ?? 0
   const tipPct = user?.tip_percent ?? 0
-  const now = new Date(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
+  const now = salonNow(); if (now.getHours() < 4) now.setDate(now.getDate() - 1) // salon (LA) time
   const currentYear = now.getFullYear()
   const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6)
   const fmtLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

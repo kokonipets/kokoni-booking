@@ -4442,7 +4442,7 @@ export default function AdminPage() {
 
           {/* ── Checkout Tab ── */}
           {tab === 'checkout' && (() => {
-            const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+            const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' })
             const paidAppts  = checkoutAppts.filter(a => a.payment_status === 'paid')
             const unpaidAppts = checkoutAppts.filter(a => a.payment_status !== 'paid' && a.status !== 'cancelled')
             const totalRevenue = paidAppts.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
