@@ -6793,7 +6793,7 @@ export default function DeskAdmin() {
                     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                       <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
                         <div>
-                          <h3 className="font-bold text-gray-800">📊 Income by Groomer</h3>
+                          <h3 className="font-bold text-gray-800">📊 Performance</h3>
                           <p className="text-xs text-gray-400 mt-0.5">Service revenue + tips · store total ${chartStoreTotal.toFixed(2)}</p>
                         </div>
                         <select
