@@ -534,6 +534,8 @@ export default function DeskAdmin() {
   const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('month')
   const [reportsShowDetails, setReportsShowDetails] = useState(false)
   const [incomeChartRange, setIncomeChartRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll'>('week')
+  const [perfGroomer, setPerfGroomer] = useState<string>('')
+  const [perfRange, setPerfRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month'>('today')
   const [reportsCustomStart, setReportsCustomStart] = useState('')
   const [reportsCustomEnd, setReportsCustomEnd] = useState('')
   const [reportsAppts, setReportsAppts] = useState<Appointment[]>([])
@@ -6433,6 +6435,33 @@ export default function DeskAdmin() {
             const chartStoreTotal = chartRows.reduce((sum, r) => sum + r.total, 0)
             const chartMax = Math.max(...chartRows.map(r => r.total), 1)
 
+            // ── Performance: single-groomer detail (own range selector) ────
+            const groomerNames = Array.from(new Set(
+              reportsAppts.map(a => a.assigned_groomer).filter((n): n is string => !!n)
+            )).sort()
+            const activePerfGroomer = perfGroomer || groomerNames[0] || ''
+            const perfInRange = (date: string) => {
+              if (perfRange === 'today') return date === todayStr
+              if (perfRange === 'week') return date >= weekAgoStr
+              if (perfRange === 'this_payroll') return date >= thisPayrollStartStr && date <= thisPayrollEndStr
+              if (perfRange === 'last_payroll') return date >= lastPayrollStartStr && date <= lastPayrollEndStr
+              if (perfRange === 'month') return date >= monthStart
+              return date >= lastMonthStart && date < lastMonthEnd
+            }
+            const perfAppts = reportsAppts
+              .filter(a => a.status !== 'cancelled' && a.assigned_groomer === activePerfGroomer && perfInRange(a.appointment_date))
+              .sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
+            const perfPaid = perfAppts.filter(a => a.payment_status === 'paid')
+            const perfRevenue = perfPaid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
+            const perfTips = perfPaid.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
+            const perfStaff = staff.find(s => {
+              const fullName = s.first_name ? `${s.first_name} ${s.last_name || ''}`.trim() : s.name
+              return fullName === activePerfGroomer || s.name === activePerfGroomer
+            })
+            const perfCommPct = perfStaff?.commission_percent ?? 0
+            const perfCommission = perfRevenue * perfCommPct / 100
+            const perfRangeLabel: Record<string, string> = { today: 'Today', week: 'This Week', this_payroll: 'This Pay', last_payroll: 'Last Pay', month: 'This Month', last_month: 'Last Month' }
+
             const inRange = (date: string) => {
               if (reportsRange === 'today') return date === todayStr
               if (reportsRange === 'week') return date >= weekAgoStr
@@ -6674,6 +6703,89 @@ export default function DeskAdmin() {
                             <p className="text-[10px] opacity-70">appt{rangeMethodTotals['unpaid'].count !== 1 ? 's' : ''}</p>
                           </div>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* ── PERFORMANCE (single groomer detail) ───────────────── */}
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+                        <h3 className="font-bold text-gray-800">🏅 Performance</h3>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={activePerfGroomer}
+                            onChange={e => setPerfGroomer(e.target.value)}
+                            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white"
+                          >
+                            {groomerNames.length === 0 && <option value="">No groomers</option>}
+                            {groomerNames.map(n => <option key={n} value={n}>✂️ {n}</option>)}
+                          </select>
+                          <select
+                            value={perfRange}
+                            onChange={e => setPerfRange(e.target.value as typeof perfRange)}
+                            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white"
+                          >
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="this_payroll">This Pay</option>
+                            <option value="last_payroll">Last Pay</option>
+                            <option value="month">This Month</option>
+                            <option value="last_month">Last Month</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="px-5 py-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                          <div className="bg-gray-50 rounded-xl p-3">
+                            <p className="text-xs text-gray-500">Appointments</p>
+                            <p className="text-xl font-bold text-gray-800">{perfAppts.length}</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-xl p-3">
+                            <p className="text-xs text-gray-500">Revenue</p>
+                            <p className="text-xl font-bold text-gray-800">${perfRevenue.toFixed(2)}</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-xl p-3">
+                            <p className="text-xs text-gray-500">Tips</p>
+                            <p className="text-xl font-bold text-gray-800">${perfTips.toFixed(2)}</p>
+                          </div>
+                          <div className="bg-violet-50 rounded-xl p-3">
+                            <p className="text-xs text-violet-500">Commission ({perfCommPct}%)</p>
+                            <p className="text-xl font-bold text-violet-700">${perfCommission.toFixed(2)}</p>
+                          </div>
+                        </div>
+                        {perfAppts.length === 0 ? (
+                          <p className="text-sm text-gray-400 text-center py-4">No appointments for {activePerfGroomer || 'this groomer'} · {perfRangeLabel[perfRange]}.</p>
+                        ) : (
+                          <div className="divide-y divide-gray-100">
+                            {perfAppts.map(a => {
+                              const tStr = (() => {
+                                const t = a.appointment_time
+                                if (t.toUpperCase().includes('AM') || t.toUpperCase().includes('PM')) return t.trim()
+                                const [h, m] = t.split(':'); const hr = parseInt(h)
+                                return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`
+                              })()
+                              const isPaid = a.payment_status === 'paid'
+                              return (
+                                <div key={a.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                                  <div className="flex items-baseline gap-3 min-w-0">
+                                    <span className="text-xs text-gray-400 w-16 shrink-0">{tStr}</span>
+                                    <span className="truncate">
+                                      <span className="font-semibold text-gray-700">{a.pets?.name ?? 'Pet'}</span>
+                                      <span className="text-gray-400 text-xs ml-1.5">{serviceMap[a.service] ?? a.service}</span>
+                                    </span>
+                                  </div>
+                                  {isPaid ? (
+                                    <span className="text-gray-600 whitespace-nowrap">
+                                      ${parseFloat(a.payment_amount || '0').toFixed(2)} {a.payment_method}
+                                      {parseFloat(a.tip_amount || '0') > 0 && <span className="text-emerald-600"> +${parseFloat(a.tip_amount || '0').toFixed(2)} tip</span>}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full whitespace-nowrap">Unpaid</span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
 
