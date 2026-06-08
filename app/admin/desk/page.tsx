@@ -6709,7 +6709,7 @@ export default function DeskAdmin() {
                     {/* ── PERFORMANCE (single groomer detail) ───────────────── */}
                     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                       <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
-                        <h3 className="font-bold text-gray-800">🏅 Performance</h3>
+                        <h3 className="font-bold text-gray-800">📋 Groomer Report</h3>
                         <div className="flex items-center gap-2">
                           <select
                             value={activePerfGroomer}
@@ -6731,6 +6731,31 @@ export default function DeskAdmin() {
                             <option value="month">This Month</option>
                             <option value="last_month">Last Month</option>
                           </select>
+                          <button
+                            onClick={async () => {
+                              const XLSX = await import('xlsx')
+                              const rows = perfAppts.map(a => ({
+                                Date: a.appointment_date,
+                                Time: a.appointment_time,
+                                Pet: a.pets?.name ?? '',
+                                Client: a.clients?.name ?? '',
+                                Service: serviceMap[a.service] ?? a.service ?? '',
+                                Status: a.payment_status === 'paid' ? 'Paid' : 'Unpaid',
+                                Method: a.payment_method ?? '',
+                                Amount: a.payment_status === 'paid' ? parseFloat(a.payment_amount || '0') : 0,
+                                Tip: a.payment_status === 'paid' ? parseFloat(a.tip_amount || '0') : 0,
+                              }))
+                              rows.push({ Date: '', Time: '', Pet: '', Client: '', Service: 'TOTAL', Status: '', Method: '', Amount: perfRevenue, Tip: perfTips } as typeof rows[number])
+                              rows.push({ Date: '', Time: '', Pet: '', Client: '', Service: `Commission (${perfCommPct}%)`, Status: '', Method: '', Amount: perfCommission, Tip: 0 } as typeof rows[number])
+                              const ws = XLSX.utils.json_to_sheet(rows)
+                              const wb = XLSX.utils.book_new()
+                              XLSX.utils.book_append_sheet(wb, ws, 'Groomer Report')
+                              XLSX.writeFile(wb, `groomer-report-${activePerfGroomer || 'all'}-${perfRange}.xlsx`)
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition-colors whitespace-nowrap"
+                          >
+                            ⬇️ Export Excel
+                          </button>
                         </div>
                       </div>
                       <div className="px-5 py-4">
