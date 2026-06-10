@@ -527,7 +527,7 @@ export default function DeskAdmin() {
   const [payrollSelectedGroomer, setPayrollSelectedGroomer] = useState('')
   type PayrollDailyRow = {date:string;appts:number;revenue:number;tips:number;commission:number;tipShare:number}
   type PayrollGroomerRow = {name:string;appts:number;revenue:number;tips:number;commission:number;tipShare:number;commRate:number;tipRate:number}
-  type PayrollReportData = {daily: PayrollDailyRow[]; groomers: PayrollGroomerRow[]}
+  type PayrollReportData = {daily: PayrollDailyRow[]; groomers: PayrollGroomerRow[]; dailyByGroomer: Record<string, PayrollDailyRow[]>}
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
 
   // Reports
@@ -1555,7 +1555,31 @@ export default function DeskAdmin() {
         }
       }).filter(g => g.appts > 0 || payrollSelectedGroomer)
 
-      setPayrollReport({ daily, groomers })
+      // ── Per-groomer daily breakdown (for per-groomer PDF detail tables) ──
+      const dailyByGroomer: Record<string, PayrollDailyRow[]> = {}
+      groomersToShow.forEach(member => {
+        const cRate = member.commission_percent / 100
+        const tRate = member.tip_percent / 100
+        const mByDate: Record<string, {appts:number;revenue:number;tips:number;commission:number;tipShare:number}> = {}
+        appts.filter((a: any) => a.assigned_groomer === member.name).forEach((a: any) => {
+          const d = a.appointment_date
+          if (!mByDate[d]) mByDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
+          mByDate[d].appts += 1
+          if (a.payment_status === 'paid') {
+            const rev = parseFloat(a.payment_amount || '0')
+            const tip = parseFloat(a.tip_amount || '0')
+            mByDate[d].revenue += rev
+            mByDate[d].tips += tip
+            mByDate[d].commission += rev * cRate
+            mByDate[d].tipShare += tip * tRate
+          }
+        })
+        dailyByGroomer[member.name] = Object.entries(mByDate)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, v]) => ({ date, appts: v.appts, revenue: v.revenue, tips: v.tips, commission: v.commission, tipShare: v.tipShare }))
+      })
+
+      setPayrollReport({ daily, groomers, dailyByGroomer })
     } catch (e) {
       console.error(e)
       alert('Error generating payroll report')
@@ -1668,6 +1692,265 @@ export default function DeskAdmin() {
     XLSX.utils.book_append_sheet(wb, ws1, 'Daily Transactions')
     XLSX.utils.book_append_sheet(wb, ws2, 'Groomer Pay')
     XLSX.writeFile(wb, filename)
+  }, [payrollReport, payrollStartDate, payrollEndDate, payrollSelectedGroomer])
+
+  // Export payroll report to per-groomer PDF statements (one file each; zipped if multiple)
+  const exportPayrollPDF = useCallback(async () => {
+    if (!payrollReport) return
+    setActionLoading('payroll-pdf')
+    try {
+      const { jsPDF } = await import('jspdf')
+      const JSZip = (await import('jszip')).default
+
+      // ── Kokoni brand palette ──
+      const BLUE: [number,number,number] = [28, 79, 149]
+      const SKY: [number,number,number] = [70, 191, 191]
+      const LIGHT: [number,number,number] = [216, 235, 253]
+      const ORANGE: [number,number,number] = [242, 166, 90]
+      const INK: [number,number,number] = [44, 44, 44]
+      const GREY: [number,number,number] = [120, 120, 120]
+      const LINE: [number,number,number] = [223, 232, 242]
+
+      const money = (n: number) => '$' + (n || 0).toFixed(2)
+      const fmtDate = (iso: string) => {
+        const [y, m, d] = iso.split('-')
+        return `${m}/${d}/${y.slice(2)}`
+      }
+
+      // Draw a donut chart (commission vs tip share) on an offscreen canvas, return PNG data URL
+      const makeDonut = (commission: number, tipShare: number) => {
+        const size = 420
+        const cv = document.createElement('canvas')
+        cv.width = size; cv.height = size
+        const ctx = cv.getContext('2d')!
+        const cx = size / 2, cy = size / 2, rOut = 175, rIn = 105
+        const total = commission + tipShare
+        const segs = total > 0
+          ? [
+              { val: commission, color: 'rgb(28,79,149)' },
+              { val: tipShare, color: 'rgb(242,166,90)' },
+            ]
+          : [{ val: 1, color: 'rgb(216,235,253)' }]
+        let start = -Math.PI / 2
+        segs.forEach(s => {
+          const frac = total > 0 ? s.val / total : 1
+          const end = start + frac * Math.PI * 2
+          ctx.beginPath()
+          ctx.moveTo(cx, cy)
+          ctx.arc(cx, cy, rOut, start, end)
+          ctx.closePath()
+          ctx.fillStyle = s.color
+          ctx.fill()
+          start = end
+        })
+        // punch the hole
+        ctx.globalCompositeOperation = 'destination-out'
+        ctx.beginPath(); ctx.arc(cx, cy, rIn, 0, Math.PI * 2); ctx.fill()
+        ctx.globalCompositeOperation = 'source-over'
+        // center label
+        ctx.fillStyle = 'rgb(44,44,44)'
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.font = 'bold 30px Helvetica, Arial, sans-serif'
+        ctx.fillText('Total Pay', cx, cy - 16)
+        ctx.font = 'bold 40px Helvetica, Arial, sans-serif'
+        ctx.fillText(money(total), cx, cy + 22)
+        return cv.toDataURL('image/png')
+      }
+
+      type GRow = { name:string; appts:number; revenue:number; tips:number; commission:number; tipShare:number; commRate:number; tipRate:number }
+
+      const buildDoc = (g: GRow) => {
+        const doc = new jsPDF({ unit: 'pt', format: 'letter' })
+        const W = doc.internal.pageSize.getWidth()
+        const H = doc.internal.pageSize.getHeight()
+        const M = 48
+        const totalPay = g.commission + g.tipShare
+
+        // ── Header band ──
+        doc.setFillColor(...BLUE)
+        doc.rect(0, 0, W, 96, 'F')
+        doc.setFillColor(...SKY)
+        doc.rect(0, 96, W, 6, 'F')
+        doc.setTextColor(255, 255, 255)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(24)
+        doc.text('KOKONI', M, 50)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(11)
+        doc.text('Pet Grooming Salon', M, 68)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(15)
+        doc.text('Payroll Statement', W - M, 50, { align: 'right' })
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
+        doc.setTextColor(...LIGHT)
+        doc.text(`${fmtDate(payrollStartDate)} – ${fmtDate(payrollEndDate)}`, W - M, 68, { align: 'right' })
+
+        // ── Groomer name + total pay banner ──
+        let y = 132
+        doc.setTextColor(...INK)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(20)
+        doc.text(g.name, M, y)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...GREY)
+        doc.text(`Pay period: ${payrollStartDate} to ${payrollEndDate}`, M, y + 16)
+
+        // total pay chip (right)
+        const chipW = 190, chipH = 56, chipX = W - M - chipW, chipY = y - 18
+        doc.setFillColor(...LIGHT)
+        doc.roundedRect(chipX, chipY, chipW, chipH, 8, 8, 'F')
+        doc.setTextColor(...BLUE)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+        doc.text('TOTAL PAY THIS PERIOD', chipX + chipW / 2, chipY + 20, { align: 'center' })
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(22)
+        doc.text(money(totalPay), chipX + chipW / 2, chipY + 44, { align: 'center' })
+
+        // ── Pay summary table ──
+        y = 196
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK)
+        doc.text('Pay Summary', M, y)
+        y += 12
+        const rows: [string, string][] = [
+          ['Appointments completed', String(g.appts)],
+          ['Revenue generated (paid)', money(g.revenue)],
+          [`Commission rate`, `${g.commRate}%`],
+          ['Commission earned', money(g.commission)],
+          ['Tips collected', money(g.tips)],
+          [`Tip share rate`, `${g.tipRate}%`],
+          ['Tip share earned', money(g.tipShare)],
+        ]
+        const rowH = 24, tableW = W - M * 2
+        rows.forEach((r, i) => {
+          const ry = y + i * rowH
+          if (i % 2 === 0) { doc.setFillColor(247, 250, 254); doc.rect(M, ry, tableW, rowH, 'F') }
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...INK)
+          doc.text(r[0], M + 12, ry + 16)
+          doc.setFont('helvetica', 'bold')
+          doc.text(r[1], W - M - 12, ry + 16, { align: 'right' })
+        })
+        let yEnd = y + rows.length * rowH
+        // total pay row
+        doc.setFillColor(...BLUE)
+        doc.rect(M, yEnd, tableW, rowH + 4, 'F')
+        doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
+        doc.text('TOTAL PAY (commission + tip share)', M + 12, yEnd + 17)
+        doc.text(money(totalPay), W - M - 12, yEnd + 17, { align: 'right' })
+        yEnd += rowH + 4
+
+        // ── Pay breakdown donut ──
+        y = yEnd + 28
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK)
+        doc.text('Pay Breakdown', M, y)
+        const donut = makeDonut(g.commission, g.tipShare)
+        const dSize = 150
+        doc.addImage(donut, 'PNG', M, y + 10, dSize, dSize)
+        // legend
+        const lx = M + dSize + 30
+        let ly = y + 36
+        const pct = (v: number) => totalPay > 0 ? `${Math.round((v / totalPay) * 100)}%` : '0%'
+        const legend: [string, string, [number,number,number]][] = [
+          ['Commission', `${money(g.commission)}  (${pct(g.commission)})`, BLUE],
+          ['Tip share', `${money(g.tipShare)}  (${pct(g.tipShare)})`, ORANGE],
+        ]
+        legend.forEach(([label, val, col]) => {
+          doc.setFillColor(...col)
+          doc.roundedRect(lx, ly - 9, 12, 12, 2, 2, 'F')
+          doc.setTextColor(...INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+          doc.text(label, lx + 20, ly)
+          doc.setFont('helvetica', 'normal'); doc.setTextColor(...GREY)
+          doc.text(val, lx + 20, ly + 15)
+          ly += 40
+        })
+
+        // ── Daily detail table ──
+        const daily = payrollReport.dailyByGroomer[g.name] || []
+        let dy = y + dSize + 36
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK)
+        doc.text('Daily Detail', M, dy)
+        dy += 14
+        const cols = [
+          { label: 'Date', x: M + 8, align: 'left' as const },
+          { label: 'Appts', x: M + 130, align: 'right' as const },
+          { label: 'Revenue', x: M + 230, align: 'right' as const },
+          { label: 'Tips', x: M + 330, align: 'right' as const },
+          { label: 'Commission', x: M + 440, align: 'right' as const },
+          { label: 'Tip Share', x: W - M - 8, align: 'right' as const },
+        ]
+        const drawDailyHeader = (hy: number) => {
+          doc.setFillColor(...SKY)
+          doc.rect(M, hy, W - M * 2, 22, 'F')
+          doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
+          cols.forEach(c => doc.text(c.label, c.x, hy + 15, { align: c.align }))
+          return hy + 22
+        }
+        dy = drawDailyHeader(dy)
+        const drH = 20
+        const renderRow = (cells: string[], ry: number, shade: boolean, bold = false) => {
+          if (shade) { doc.setFillColor(247, 250, 254); doc.rect(M, ry, W - M * 2, drH, 'F') }
+          doc.setTextColor(...INK); doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(9)
+          cols.forEach((c, i) => doc.text(cells[i], c.x, ry + 14, { align: c.align }))
+        }
+        daily.forEach((r, i) => {
+          if (dy > H - 70) { doc.addPage(); dy = M; dy = drawDailyHeader(dy) }
+          renderRow([fmtDate(r.date), String(r.appts), money(r.revenue), money(r.tips), money(r.commission), money(r.tipShare)], dy, i % 2 === 0)
+          dy += drH
+        })
+        if (daily.length === 0) {
+          doc.setTextColor(...GREY); doc.setFont('helvetica', 'italic'); doc.setFontSize(9)
+          doc.text('No appointments in this period.', M + 8, dy + 14); dy += drH
+        } else {
+          if (dy > H - 70) { doc.addPage(); dy = M }
+          doc.setFillColor(...LIGHT); doc.rect(M, dy, W - M * 2, drH + 2, 'F')
+          renderRow([
+            'TOTAL',
+            String(daily.reduce((s, r) => s + r.appts, 0)),
+            money(daily.reduce((s, r) => s + r.revenue, 0)),
+            money(daily.reduce((s, r) => s + r.tips, 0)),
+            money(daily.reduce((s, r) => s + r.commission, 0)),
+            money(daily.reduce((s, r) => s + r.tipShare, 0)),
+          ], dy, false, true)
+          dy += drH + 2
+        }
+
+        // ── Footer on every page ──
+        const pageCount = doc.getNumberOfPages()
+        for (let p = 1; p <= pageCount; p++) {
+          doc.setPage(p)
+          doc.setDrawColor(...LINE); doc.setLineWidth(0.5)
+          doc.line(M, H - 42, W - M, H - 42)
+          doc.setTextColor(...GREY); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+          doc.text('Kokoni Pet Grooming Salon  ·  Every cut, made with care.', M, H - 28)
+          doc.text(`Generated ${new Date().toLocaleDateString()}  ·  Page ${p} of ${pageCount}`, W - M, H - 28, { align: 'right' })
+        }
+        return doc
+      }
+
+      const groomersWithData = payrollReport.groomers.filter(g => g.appts > 0 || payrollSelectedGroomer)
+      if (groomersWithData.length === 0) { alert('No groomer data to export.'); return }
+
+      const safe = (s: string) => s.replace(/[^a-z0-9]+/gi, '-')
+      const triggerDownload = (blob: Blob, filename: string) => {
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url; link.download = filename
+        document.body.appendChild(link); link.click(); document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      }
+
+      if (groomersWithData.length === 1) {
+        const g = groomersWithData[0]
+        const doc = buildDoc(g)
+        triggerDownload(doc.output('blob'), `payroll-${safe(g.name)}-${payrollStartDate}-to-${payrollEndDate}.pdf`)
+      } else {
+        const zip = new JSZip()
+        groomersWithData.forEach(g => {
+          const doc = buildDoc(g)
+          zip.file(`payroll-${safe(g.name)}-${payrollStartDate}-to-${payrollEndDate}.pdf`, doc.output('blob'))
+        })
+        const blob = await zip.generateAsync({ type: 'blob' })
+        triggerDownload(blob, `payroll-pdfs-${payrollStartDate}-to-${payrollEndDate}.zip`)
+      }
+    } catch (e) {
+      console.error(e)
+      alert('Error generating payroll PDFs')
+    } finally {
+      setActionLoading(null)
+    }
   }, [payrollReport, payrollStartDate, payrollEndDate, payrollSelectedGroomer])
 
   const fetchReports = useCallback(async (range?: 'week' | 'month' | 'all') => {
@@ -5705,6 +5988,14 @@ export default function DeskAdmin() {
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition-colors"
                       >
                         ⬇️ Excel
+                      </button>
+                      <button
+                        onClick={exportPayrollPDF}
+                        disabled={actionLoading === 'payroll-pdf'}
+                        title="One branded PDF statement per groomer (zipped if multiple) — ready to email with payment"
+                        className="px-4 py-2 bg-sky-700 hover:bg-sky-800 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
+                      >
+                        {actionLoading === 'payroll-pdf' ? '⏳ PDF…' : '📄 PDF (per groomer)'}
                       </button>
                     </>
                   )}
