@@ -246,10 +246,12 @@ function parseApptTime(dateStr: string, timeStr: string): Date {
   return new Date(asUTC - off)
 }
 
-function groomingDuration(startedAt: string | null | undefined): string | null {
+function groomingDuration(startedAt: string | null | undefined, finishedAt?: string | null | undefined): string | null {
   if (!startedAt) return null
-  const mins = Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000)
-  if (mins < 1) return 'just started'
+  // If grooming has finished, measure start→finish; otherwise it's still in progress (start→now).
+  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now()
+  const mins = Math.floor((end - new Date(startedAt).getTime()) / 60000)
+  if (mins < 1) return finishedAt ? 'under a minute' : 'just started'
   if (mins < 60) return `${mins} min`
   const h = Math.floor(mins / 60), m = mins % 60
   return m > 0 ? `${h}h ${m}m` : `${h}h`
@@ -2753,7 +2755,7 @@ export default function DeskAdmin() {
                             </span>
                             {detailAppt.grooming_status_updated_at && (
                               <span className="text-xs text-gray-400">
-                                since {new Date(detailAppt.grooming_status_updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                                since {new Date(detailAppt.grooming_status_updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:SALON_TZ})}
                               </span>
                             )}
                             {isDone && (
@@ -2766,10 +2768,10 @@ export default function DeskAdmin() {
                               <span className="text-base">✂️</span>
                               <div>
                                 <p className="text-xs font-semibold text-sky-700">
-                                  Grooming started at {new Date(detailAppt.grooming_started_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                                  Grooming started at {new Date(detailAppt.grooming_started_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:SALON_TZ})}
                                 </p>
                                 {(() => {
-                                  const dur = groomingDuration(detailAppt.grooming_started_at)
+                                  const dur = groomingDuration(detailAppt.grooming_started_at, detailAppt.grooming_finished_at)
                                   return gs !== 'done' && dur ? (
                                     <p className="text-xs text-sky-500">Working for {dur}</p>
                                   ) : gs === 'done' && dur ? (
@@ -2809,7 +2811,7 @@ export default function DeskAdmin() {
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-semibold text-sky-700 uppercase tracking-wide">🩺 Initial Health Check</p>
                           {detailAppt.health_check_completed_at && (
-                            <span className="text-xs text-sky-400">{new Date(detailAppt.health_check_completed_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</span>
+                            <span className="text-xs text-sky-400">{new Date(detailAppt.health_check_completed_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:SALON_TZ})}</span>
                           )}
                         </div>
                         {allNormal ? (
@@ -3704,7 +3706,7 @@ export default function DeskAdmin() {
                                 <span className="text-xs text-gray-400">
                                   {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                   {' · '}
-                                  {new Date(note.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                  {new Date(note.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: SALON_TZ })}
                                 </span>
                               </div>
                               <button
@@ -4070,7 +4072,7 @@ export default function DeskAdmin() {
 
                           const fmtTs = (iso: string | null) => {
                             if (!iso) return null
-                            return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                            return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: SALON_TZ })
                           }
 
                           const ApptRow = ({ appt, showNoShow, showReschedule }: { appt: Appointment; showNoShow?: boolean; showReschedule?: boolean }) => {
@@ -4511,12 +4513,12 @@ export default function DeskAdmin() {
                                   {stage.icon} {stage.label}
                                   {appt.grooming_status_updated_at && (
                                     <span className="text-xs opacity-60 ml-1">
-                                      since {new Date(appt.grooming_status_updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                                      since {new Date(appt.grooming_status_updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:SALON_TZ})}
                                     </span>
                                   )}
                                 </div>
                                 {appt.grooming_started_at && (() => {
-                                  const dur = groomingDuration(appt.grooming_started_at)
+                                  const dur = groomingDuration(appt.grooming_started_at, appt.grooming_finished_at)
                                   return dur ? (
                                     <span className="text-xs font-semibold text-sky-600 bg-sky-50 border border-sky-100 px-2 py-0.5 rounded-lg">
                                       ✂️ {gs === 'done' ? `took ${dur}` : `${dur}`}
@@ -4934,7 +4936,7 @@ export default function DeskAdmin() {
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">🆕 New Client</span>
                             {profileIncomplete && <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⚠️ Profile Incomplete</span>}
-                            <span className="text-xs text-gray-400">{new Date(appt.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+                            <span className="text-xs text-gray-400">{new Date(appt.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:SALON_TZ})}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold text-gray-600">📅 {formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
@@ -5667,7 +5669,7 @@ export default function DeskAdmin() {
                                                                     {groomerNotes.map(n => (
                                                                       <div key={n.id} className="border-l-2 border-violet-200 pl-2">
                                                                         <p className="text-[10px] text-gray-400 font-medium">
-                                                                          {n.author} · {new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})} {new Date(n.created_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                                                                          {n.author} · {new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:SALON_TZ})} {new Date(n.created_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:SALON_TZ})}
                                                                         </p>
                                                                         <p className="text-xs text-gray-700 leading-snug whitespace-pre-wrap">{n.text}</p>
                                                                         {(n.notes_english || n.notes_chinese) && (
@@ -5919,7 +5921,7 @@ export default function DeskAdmin() {
                                   {isExpired && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full">⚠️ Expired</span>}
                                 </div>
                                 <span className="text-xs text-gray-400">
-                                  Submitted {new Date(rec.submitted_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} · {new Date(rec.submitted_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}
+                                  Submitted {new Date(rec.submitted_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:SALON_TZ})} · {new Date(rec.submitted_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:SALON_TZ})}
                                 </span>
                               </div>
 
