@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
 import ChatSidebarLink from '@/components/ChatSidebarLink'
 import ChatIconButton from '@/components/ChatIconButton'
+import { readAuthRaw } from '@/lib/authStorage'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffMember = {
@@ -603,7 +604,7 @@ export default function DeskAdmin() {
       setAuthed(true)
     }
     try {
-      const auth = JSON.parse(localStorage.getItem('auth') || '{}')
+      const auth = JSON.parse(readAuthRaw('admin') || '{}')
       if (auth?.username) setLoggedInName(auth.username)
       else if (auth?.name) setLoggedInName(auth.name)
     } catch {}

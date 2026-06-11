@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { tagClasses, type Tag } from '@/lib/tags'
+import { readAuthRaw, saveAuth } from '@/lib/authStorage'
 
 type StaffMember = {
   id: string
@@ -125,7 +126,7 @@ export default function SettingsPage() {
     loadCoupons()
     // Pre-fill account form with current user's username
     try {
-      const auth = JSON.parse(localStorage.getItem('auth') || '{}')
+      const auth = JSON.parse(readAuthRaw('admin') || '{}')
       if (auth?.username) setAccountForm(prev => ({ ...prev, username: auth.username }))
     } catch {}
   }, [])
@@ -2208,7 +2209,7 @@ export default function SettingsPage() {
                     setSavingAccount(true)
                     setAccountMsg(null)
                     try {
-                      const auth = JSON.parse(localStorage.getItem('auth') || '{}')
+                      const auth = JSON.parse(readAuthRaw('admin') || '{}')
                       const staffId = auth?.staff_id || auth?.id
                       if (!staffId) throw new Error('Not logged in')
 
@@ -2226,7 +2227,7 @@ export default function SettingsPage() {
 
                       // Update localStorage so username reflects new value
                       const updatedAuth = { ...auth, username: accountForm.username.trim() }
-                      localStorage.setItem('auth', JSON.stringify(updatedAuth))
+                      saveAuth(updatedAuth)
 
                       setAccountMsg({ type: 'success', text: '✅ Account updated successfully!' })
                       setAccountForm(prev => ({ ...prev, newPassword: '', confirmPassword: '' }))

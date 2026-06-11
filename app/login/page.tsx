@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { saveAuth } from '@/lib/authStorage'
 
 const REMEMBER_KEY = 'kokoni_saved_username'
 
@@ -49,7 +50,7 @@ export default function LoginPage() {
         localStorage.removeItem(REMEMBER_KEY)
       }
 
-      localStorage.setItem('auth', JSON.stringify(data.user))
+      saveAuth(data.user)
 
       if (data.user.role === 'admin') {
         router.push('/admin/desk')

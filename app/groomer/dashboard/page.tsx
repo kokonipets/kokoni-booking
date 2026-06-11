@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, type Tag as PetTag } from '@/lib/tags'
+import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 
 type Appointment = {
   id: string
@@ -345,7 +346,7 @@ export default function GroomerDashboard() {
   }, [])
 
   useEffect(() => {
-    const authData = localStorage.getItem('auth')
+    const authData = readAuthRaw('groomer')
     if (!authData) { router.push('/login'); return }
     const userData = JSON.parse(authData) as AuthUser
     setUser(userData)
@@ -370,7 +371,7 @@ export default function GroomerDashboard() {
 
     // Poll every 15 seconds for new pending appointments
     const interval = setInterval(() => {
-      const latest = localStorage.getItem('auth')
+      const latest = readAuthRaw('groomer')
       if (!latest) return
       const u = JSON.parse(latest) as AuthUser
       loadAppointments(u.name || u.staff_id, true)
@@ -381,7 +382,7 @@ export default function GroomerDashboard() {
   // Refresh appointments whenever the Pending tab is opened
   useEffect(() => {
     if (activeTab === 'pending') {
-      const authData = localStorage.getItem('auth')
+      const authData = readAuthRaw('groomer')
       if (!authData) return
       const userData = JSON.parse(authData) as AuthUser
       loadAppointments(userData.name || userData.staff_id, true)
@@ -391,7 +392,7 @@ export default function GroomerDashboard() {
   // ── PWA: register service worker + subscribe to push notifications ────────
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return
-    const authData = localStorage.getItem('auth')
+    const authData = readAuthRaw('groomer')
     if (!authData) return
     const userData = JSON.parse(authData) as AuthUser
     const staffName = userData.name || userData.staff_id
@@ -897,7 +898,7 @@ export default function GroomerDashboard() {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('auth')
+    clearAuth('groomer')
     router.push('/login')
   }
 
