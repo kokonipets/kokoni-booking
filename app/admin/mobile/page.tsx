@@ -1553,7 +1553,7 @@ export default function AdminPage() {
             }
             const fmtTs = (iso: string | null | undefined) => {
               if (!iso) return null
-              return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+              return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: SALON_TZ })
             }
             const nowMs = Date.now()
             const isOverdue = (a: Appointment) => !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs - 5 * 60000
@@ -1898,7 +1898,7 @@ export default function AdminPage() {
                               <span className="text-[10px] text-gray-400">
                                 {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                 {' · '}
-                                {new Date(note.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                {new Date(note.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: SALON_TZ })}
                               </span>
                             </div>
                             <div className="flex gap-1">
@@ -3656,7 +3656,7 @@ export default function AdminPage() {
                           {gs && (
                             <p className="text-xs text-gray-400 mt-2 text-center">
                               Current: <span className="font-semibold text-gray-600">{gs}</span>
-                              {a.grooming_status_updated_at && ` · since ${new Date(a.grooming_status_updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}`}
+                              {a.grooming_status_updated_at && ` · since ${new Date(a.grooming_status_updated_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:SALON_TZ})}`}
                             </p>
                           )}
                         </div>

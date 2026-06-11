@@ -213,7 +213,7 @@ function formatTime(time: string) {
 function formatRequestedAt(isoStr?: string | null) {
   if (!isoStr) return null
   const d = new Date(isoStr)
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' })
 }
 
 export default function GroomerDashboard() {
@@ -2754,7 +2754,7 @@ function ApptCard({
             {/* Check-in time */}
             {appt.checked_in_at && (
               <span className="text-[10px] text-emerald-600 font-semibold text-center leading-tight" title="Checked in">
-                in {new Date(appt.checked_in_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' ', '\n')}
+                in {new Date(appt.checked_in_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' }).replace(' ', '\n')}
               </span>
             )}
             {/* Total grooming duration (start → finish) */}
