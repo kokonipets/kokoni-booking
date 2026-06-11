@@ -292,6 +292,9 @@ export default function GroomerDashboard() {
   const [qualityCheckAppt, setQualityCheckAppt] = useState<Appointment | null>(null)
   const [qualityChecks, setQualityChecks] = useState<Record<QualityCheckKey, boolean>>(EMPTY_QUALITY_CHECKS())
   const [groomerDiary, setGroomerDiary] = useState('')
+  const [groomerDiaryTranslations, setGroomerDiaryTranslations] = useState<{ english: string; traditional: string; simplified: string } | null>(null)
+  const [translatingGroomerDiary, setTranslatingGroomerDiary] = useState(false)
+  const groomerDiaryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [customerNote, setCustomerNote] = useState('')
   const [customerNoteTranslations, setCustomerNoteTranslations] = useState<{ english: string; traditional: string; simplified: string } | null>(null)
   const [translatingCustomerNote, setTranslatingCustomerNote] = useState(false)
@@ -459,8 +462,14 @@ export default function GroomerDashboard() {
         setQualityCheckAppt(appt)
         setQualityChecks(EMPTY_QUALITY_CHECKS())
         setGroomerDiary('')
+        setGroomerDiaryTranslations(null)
         setCustomerNote('')
         setCustomerNoteTranslations(null)
+        // Prefill from any existing notes so edits don't lose prior content
+        {
+          const q = (appt as unknown as { grooming_quality?: { groomer_diary?: string|null } }).grooming_quality
+          if (q?.groomer_diary) setGroomerDiary(q.groomer_diary)
+        }
       }
       return
     }
@@ -561,6 +570,9 @@ export default function GroomerDashboard() {
           grooming_quality: {
             ...qualityChecks,
             groomer_diary: groomerDiary,
+            groomer_diary_english: groomerDiaryTranslations?.english ?? groomerDiary,
+            groomer_diary_traditional: groomerDiaryTranslations?.traditional ?? '',
+            groomer_diary_simplified: groomerDiaryTranslations?.simplified ?? '',
             customer_note_raw: customerNote,
             customer_note_english: customerNoteTranslations?.english ?? customerNote,
             customer_note_traditional: customerNoteTranslations?.traditional ?? '',
@@ -2299,13 +2311,13 @@ export default function GroomerDashboard() {
                 const isAddingStaff = editingPopupNote && noteEditorMode === 'staff-new'
                 return (
                   <div className="space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-widest text-violet-500 px-1">📝 Groomer Notes</p>
+                    <p className="text-xs font-bold uppercase tracking-widest text-violet-500 px-1">📝 Quick Notes / 快速備註</p>
 
                     {isAddingStaff ? (
                       /* ── EDIT MODE ── */
                       <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-bold text-gray-700">✏️ Add Groomer Note</p>
+                          <p className="text-sm font-bold text-gray-700">✏️ Add Quick Note</p>
                           <span className="text-xs text-gray-400 flex items-center gap-1">
                             {translatingPopupNote && <span className="inline-block w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
                             {translatingPopupNote ? 'Translating…' : popupNoteTranslations ? '✨ Translated' : 'Type in any language'}
@@ -2451,7 +2463,7 @@ export default function GroomerDashboard() {
                           setEditingPopupNote(true); setPopupNoteText(''); setPopupNoteTranslations(null)
                         }}
                         className="w-full py-2.5 rounded-xl text-sm font-semibold border-2 border-dashed border-gray-200 text-gray-400 hover:border-violet-300 hover:text-violet-600 hover:bg-violet-50 transition-colors"
-                      >+ Add Groomer Note</button>
+                      >+ Add Quick Note</button>
                     )}
                   </div>
                 )
@@ -2621,7 +2633,7 @@ export default function GroomerDashboard() {
               {/* Groomer Notes with AI translation */}
               <div className="pt-2 border-t border-gray-200">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">📝 Groomer&apos;s Notes / 備註 <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <label className="text-sm font-medium text-gray-700">🏥 Health Concerns / 健康狀況 <span className="text-gray-400 font-normal">(optional)</span></label>
                   <span className="text-xs text-gray-400 flex items-center gap-1">
                     {translatingHealthNotes && <span className="inline-block w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
                     {translatingHealthNotes ? 'Translating…' : healthNotesTranslations ? '✨ Translated' : 'Type in any language'}
@@ -2744,21 +2756,52 @@ export default function GroomerDashboard() {
 
                 {/* Notes section */}
                 <div className="pt-2 border-t border-gray-200 space-y-4">
-                  {/* Groomer Diary */}
+                  {/* Groomer Notes (internal, bilingual) */}
                   <div>
-                    <label className="block text-sm font-semibold text-purple-700 mb-1">📓 美容師工作日記 <span className="text-gray-400 font-normal text-xs">Groomer's diary (internal)</span></label>
+                    <label className="block text-sm font-semibold text-purple-700 mb-1">📓 Groomer Notes / 美容師工作日記 <span className="text-gray-400 font-normal text-xs">internal · 中英文一起 (auto-translated)</span></label>
                     <textarea
-                      placeholder="工作日記，內部記錄... / Internal grooming notes..."
+                      placeholder="工作日記，內部記錄... / Internal grooming notes (type any language)..."
                       value={groomerDiary}
-                      onChange={e => setGroomerDiary(e.target.value)}
+                      onChange={e => {
+                        const val = e.target.value
+                        setGroomerDiary(val)
+                        setGroomerDiaryTranslations(null)
+                        if (groomerDiaryTimerRef.current) clearTimeout(groomerDiaryTimerRef.current)
+                        if (val.trim()) {
+                          setTranslatingGroomerDiary(true)
+                          groomerDiaryTimerRef.current = setTimeout(async () => {
+                            try {
+                              const r = await fetch('/api/translate', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ text: val }),
+                              })
+                              const d = await r.json()
+                              if (d.english && d.traditional) setGroomerDiaryTranslations(d)
+                            } catch {}
+                            setTranslatingGroomerDiary(false)
+                          }, 800)
+                        } else {
+                          setTranslatingGroomerDiary(false)
+                        }
+                      }}
                       className="w-full border border-purple-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-purple-50 placeholder-purple-300"
                       rows={3}
                     />
+                    {translatingGroomerDiary && (
+                      <p className="text-xs text-gray-400 mt-1 animate-pulse">⏳ Translating...</p>
+                    )}
+                    {groomerDiaryTranslations && !translatingGroomerDiary && (
+                      <div className="mt-2 bg-white border border-purple-100 rounded-xl px-3 py-2 space-y-1">
+                        <p className="text-xs text-gray-500"><span className="font-medium text-gray-700">EN:</span> {groomerDiaryTranslations.english}</p>
+                        <p className="text-xs text-gray-500"><span className="font-medium text-gray-700">繁:</span> {groomerDiaryTranslations.traditional}</p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Note to Customer */}
                   <div>
-                    <label className="block text-sm font-semibold text-emerald-700 mb-1">💌 Note to Customer <span className="text-gray-400 font-normal text-xs">給主人的話 (auto-translated)</span></label>
+                    <label className="block text-sm font-semibold text-emerald-700 mb-1">💌 Note to Customer / 給客戶的留言 <span className="text-gray-400 font-normal text-xs">customer gets the English version</span></label>
                     <textarea
                       placeholder="e.g. Your pup did great today! / 您的狗狗今天表現很棒！"
                       value={customerNote}

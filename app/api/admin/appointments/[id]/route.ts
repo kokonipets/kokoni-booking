@@ -527,13 +527,13 @@ export async function PATCH(
         // Only send client SMS if client opted in (A2P 10DLC compliance)
         if (a.clients?.sms_consent) {
           // Include the groomer's note to customer, if one was written.
-          // Prefer the raw note (same language the groomer typed); fall back to English.
+          // Send the English version to the customer (groomer may type Chinese; it's auto-translated).
           const gq = grooming_quality as { customer_note_raw?: string; customer_note_english?: string } | undefined
           notifyClientGroomingReady({
             to: a.client_phone,
             clientName: a.clients?.name ?? 'there',
             petName: a.pets?.name ?? 'your pet',
-            customerNote: gq?.customer_note_raw || gq?.customer_note_english || undefined,
+            customerNote: gq?.customer_note_english || gq?.customer_note_raw || undefined,
           }).catch((e: unknown) => console.error('Grooming ready SMS failed:', e))
         }
         // Stamp owner_notified_at after SMS dispatch

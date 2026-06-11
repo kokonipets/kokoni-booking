@@ -3879,8 +3879,8 @@ export default function AdminPage() {
                                   </div>
                                 )}
                                 {hc.groomer_notes_english && (
-                                  <div className="bg-white border border-sky-100 rounded-lg px-2.5 py-1.5">
-                                    <p className="text-xs font-semibold text-sky-600">📝 Groomer Notes</p>
+                                  <div className="bg-white border border-rose-100 rounded-lg px-2.5 py-1.5">
+                                    <p className="text-xs font-semibold text-rose-600">🏥 Health Concerns / 健康狀況</p>
                                     <p className="text-xs text-gray-600 mt-0.5">{hc.groomer_notes_english}</p>
                                     {hc.groomer_notes_chinese && <p className="text-xs text-gray-400">{hc.groomer_notes_chinese}</p>}
                                   </div>
@@ -3911,10 +3911,13 @@ export default function AdminPage() {
                                     )
                                   })}
                                 </div>
-                                {gq.groomer_diary && (
+                                {(gq.groomer_diary || gq.groomer_diary_english) && (
                                   <div className="bg-purple-50 border border-purple-100 rounded-lg px-2.5 py-1.5">
-                                    <p className="text-xs font-semibold text-purple-600">📓 Groomer Diary</p>
-                                    <p className="text-xs text-gray-600 mt-0.5">{gq.groomer_diary}</p>
+                                    <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
+                                    <p className="text-xs text-gray-600 mt-0.5">{gq.groomer_diary_english || gq.groomer_diary}</p>
+                                    {gq.groomer_diary_traditional && gq.groomer_diary_traditional !== (gq.groomer_diary_english || gq.groomer_diary) && (
+                                      <p className="text-xs text-gray-400">{gq.groomer_diary_traditional}</p>
+                                    )}
                                   </div>
                                 )}
                                 {gq.customer_note_english && (
@@ -4041,11 +4044,14 @@ export default function AdminPage() {
                         </div>
                       )}
 
-                      {/* Groomer diary from latest quality check */}
-                      {a.grooming_quality?.groomer_diary && (
+                      {/* Groomer notes from latest quality check */}
+                      {(a.grooming_quality?.groomer_diary || a.grooming_quality?.groomer_diary_english) && (
                         <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4 space-y-1">
-                          <p className="text-xs font-bold text-purple-600 uppercase tracking-wide">📓 Groomer Diary</p>
-                          <p className="text-sm text-gray-700">{a.grooming_quality.groomer_diary}</p>
+                          <p className="text-xs font-bold text-purple-600 uppercase tracking-wide">📓 Groomer Notes / 美容師工作日記</p>
+                          <p className="text-sm text-gray-700">{a.grooming_quality.groomer_diary_english || a.grooming_quality.groomer_diary}</p>
+                          {a.grooming_quality.groomer_diary_traditional && a.grooming_quality.groomer_diary_traditional !== (a.grooming_quality.groomer_diary_english || a.grooming_quality.groomer_diary) && (
+                            <p className="text-sm text-gray-400">{a.grooming_quality.groomer_diary_traditional}</p>
+                          )}
                         </div>
                       )}
 

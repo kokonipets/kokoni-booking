@@ -2856,8 +2856,8 @@ export default function DeskAdmin() {
                           </div>
                         )}
                         {hc.groomer_notes_english && (
-                          <div className="bg-white border border-sky-100 rounded-xl px-3 py-2 space-y-0.5">
-                            <p className="text-xs font-semibold text-sky-600">📝 Groomer Notes</p>
+                          <div className="bg-white border border-rose-100 rounded-xl px-3 py-2 space-y-0.5">
+                            <p className="text-xs font-semibold text-rose-600">🏥 Health Concerns / 健康狀況</p>
                             <p className="text-xs text-gray-600">{hc.groomer_notes_english}</p>
                             {hc.groomer_notes_chinese && <p className="text-xs text-gray-400">{hc.groomer_notes_chinese}</p>}
                           </div>
@@ -2901,10 +2901,13 @@ export default function DeskAdmin() {
                         </div>
                         {(q.groomer_diary || q.customer_note_english) && (
                           <div className="space-y-2">
-                            {q.groomer_diary && (
-                              <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2">
-                                <p className="text-xs font-semibold text-purple-600">📓 美容師工作日記</p>
-                                <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary}</p>
+                            {(q.groomer_diary || q.groomer_diary_english) && (
+                              <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-0.5">
+                                <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
+                                <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary_english || q.groomer_diary}</p>
+                                {q.groomer_diary_traditional && q.groomer_diary_traditional !== (q.groomer_diary_english || q.groomer_diary) && (
+                                  <p className="text-xs text-gray-400">{q.groomer_diary_traditional}</p>
+                                )}
                               </div>
                             )}
                             {q.customer_note_english && (
@@ -5664,7 +5667,7 @@ export default function DeskAdmin() {
                                                               )}
                                                               {groomerNotes.length > 0 && (
                                                                 <div className="bg-violet-50/60 border border-violet-100 rounded-lg px-2.5 py-1.5">
-                                                                  <p className="text-[10px] font-bold uppercase tracking-wide text-violet-600 mb-1">📝 Groomer Notes ({groomerNotes.length})</p>
+                                                                  <p className="text-[10px] font-bold uppercase tracking-wide text-violet-600 mb-1">📝 Quick Notes ({groomerNotes.length})</p>
                                                                   <div className="space-y-1.5">
                                                                     {groomerNotes.map(n => (
                                                                       <div key={n.id} className="border-l-2 border-violet-200 pl-2">
@@ -5726,7 +5729,7 @@ export default function DeskAdmin() {
                                                                       </div>
                                                                     )}
                                                                     {hc.groomer_notes_english && (
-                                                                      <p className="text-[11px] text-gray-500 mt-1 border-t border-sky-100 pt-1">📝 {hc.groomer_notes_english}</p>
+                                                                      <p className="text-[11px] text-gray-500 mt-1 border-t border-sky-100 pt-1">🏥 {hc.groomer_notes_english}</p>
                                                                     )}
                                                                   </div>
                                                                 )
