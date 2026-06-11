@@ -523,6 +523,7 @@ export default function DeskAdmin() {
   // Payroll
   const [payrollStartDate, setPayrollStartDate] = useState('')
   const [payrollEndDate, setPayrollEndDate] = useState('')
+  const [payrollPayDate, setPayrollPayDate] = useState('')
   const [payrollNotes, setPayrollNotes] = useState('')
   const [payrollSelectedGroomer, setPayrollSelectedGroomer] = useState('')
   type PayrollDailyRow = {date:string;appts:number;revenue:number;tips:number;commission:number;tipShare:number}
@@ -1588,6 +1589,36 @@ export default function DeskAdmin() {
     }
   }, [payrollStartDate, payrollEndDate, payrollSelectedGroomer, staff])
 
+  // Compute a bi-weekly payroll period (Sat→Fri, anchor 2026-05-16) and a default pay date
+  const computePayrollPeriod = useCallback((which: 'this' | 'last') => {
+    const now = salonNow(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const ANCHOR = new Date(2026, 4, 16), PERIOD = 14
+    const days = Math.floor((now.getTime() - ANCHOR.getTime()) / 86400000)
+    const periods = Math.floor(days / PERIOD)
+    const start = new Date(ANCHOR); start.setDate(ANCHOR.getDate() + (which === 'last' ? periods - 1 : periods) * PERIOD)
+    const end = new Date(start); end.setDate(start.getDate() + PERIOD - 1)
+    const pay = new Date(end); pay.setDate(end.getDate() + 5) // default: ~5 days after period ends
+    return { start: fmt(start), end: fmt(end), pay: fmt(pay) }
+  }, [])
+
+  // Pre-fill the current pay period (and a default pay date) when entering the Payroll tab
+  useEffect(() => {
+    if (tab !== 'payroll') return
+    if (payrollStartDate && payrollEndDate) return
+    const p = computePayrollPeriod('this')
+    setPayrollStartDate(p.start); setPayrollEndDate(p.end)
+    if (!payrollPayDate) setPayrollPayDate(p.pay)
+  }, [tab, computePayrollPeriod, payrollStartDate, payrollEndDate, payrollPayDate])
+
+  // Auto-generate the report when dates/groomer change, so export buttons stay available
+  useEffect(() => {
+    if (tab !== 'payroll') return
+    if (!payrollStartDate || !payrollEndDate || !staff.length) return
+    const t = setTimeout(() => { generatePayrollReport() }, 350)
+    return () => clearTimeout(t)
+  }, [tab, payrollStartDate, payrollEndDate, payrollSelectedGroomer, staff, generatePayrollReport])
+
   // Export payroll report to CSV
   const exportPayrollCSV = useCallback(() => {
     if (!payrollReport) return
@@ -1819,7 +1850,11 @@ export default function DeskAdmin() {
         doc.text('Payroll Statement', W - M, 50, { align: 'right' })
         doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
         doc.setTextColor(...LIGHT)
-        doc.text(`${fmtDate(payrollStartDate)} – ${fmtDate(payrollEndDate)}`, W - M, 68, { align: 'right' })
+        doc.text(`${fmtDate(payrollStartDate)} – ${fmtDate(payrollEndDate)}`, W - M, 64, { align: 'right' })
+        if (payrollPayDate) {
+          doc.setFontSize(9)
+          doc.text(`Pay date: ${fmtDate(payrollPayDate)}`, W - M, 80, { align: 'right' })
+        }
 
         // ── Groomer name + total pay banner ──
         let y = 132
@@ -1827,7 +1862,7 @@ export default function DeskAdmin() {
         doc.setFont('helvetica', 'bold'); doc.setFontSize(20)
         doc.text(g.name, M, y)
         doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...GREY)
-        doc.text(`Pay period: ${payrollStartDate} to ${payrollEndDate}`, M, y + 16)
+        doc.text(`Pay period: ${payrollStartDate} to ${payrollEndDate}${payrollPayDate ? `   ·   Pay date: ${payrollPayDate}` : ''}`, M, y + 16)
 
         // total pay chip (right)
         const chipW = 190, chipH = 56, chipX = W - M - chipW, chipY = y - 18
@@ -1853,7 +1888,7 @@ export default function DeskAdmin() {
         doc.text(`${custTipRate.toFixed(0)}%`, W - M - 18, calY + 33, { align: 'right' })
 
         // ── Pay summary table ──
-        y = 232
+        y = 252
         doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK)
         doc.text('Pay Summary', M, y)
         y += 12
@@ -2008,7 +2043,7 @@ export default function DeskAdmin() {
     } finally {
       setActionLoading(null)
     }
-  }, [payrollReport, payrollStartDate, payrollEndDate, payrollSelectedGroomer])
+  }, [payrollReport, payrollStartDate, payrollEndDate, payrollPayDate, payrollSelectedGroomer])
 
   const fetchReports = useCallback(async (range?: 'week' | 'month' | 'all') => {
     setReportsLoading(true)
@@ -5987,14 +6022,30 @@ export default function DeskAdmin() {
             <div className="space-y-6">
               {/* Filters */}
               <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                <h2 className="text-lg font-bold text-gray-800 mb-4">📅 Payroll Period</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <h2 className="text-lg font-bold text-gray-800">📅 Payroll Period</h2>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { const p = computePayrollPeriod('this'); setPayrollStartDate(p.start); setPayrollEndDate(p.end); setPayrollPayDate(p.pay) }}
+                      className="px-3 py-1.5 bg-sky-100 hover:bg-sky-200 text-sky-700 text-xs font-semibold rounded-lg transition-colors"
+                    >
+                      This Pay Period
+                    </button>
+                    <button
+                      onClick={() => { const p = computePayrollPeriod('last'); setPayrollStartDate(p.start); setPayrollEndDate(p.end); setPayrollPayDate(p.pay) }}
+                      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
+                    >
+                      Last Pay Period
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                   <div>
                     <label className="text-xs font-semibold text-gray-600 block mb-1">Start Date</label>
                     <input
                       type="date"
                       value={payrollStartDate}
-                      onChange={e => { setPayrollStartDate(e.target.value); setPayrollReport(null) }}
+                      onChange={e => setPayrollStartDate(e.target.value)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
@@ -6003,7 +6054,16 @@ export default function DeskAdmin() {
                     <input
                       type="date"
                       value={payrollEndDate}
-                      onChange={e => { setPayrollEndDate(e.target.value); setPayrollReport(null) }}
+                      onChange={e => setPayrollEndDate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1">Pay Date</label>
+                    <input
+                      type="date"
+                      value={payrollPayDate}
+                      onChange={e => setPayrollPayDate(e.target.value)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
@@ -6011,7 +6071,7 @@ export default function DeskAdmin() {
                     <label className="text-xs font-semibold text-gray-600 block mb-1">Groomer</label>
                     <select
                       value={payrollSelectedGroomer}
-                      onChange={e => { setPayrollSelectedGroomer(e.target.value); setPayrollReport(null) }}
+                      onChange={e => setPayrollSelectedGroomer(e.target.value)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                     >
                       <option value="">All Groomers</option>
@@ -6030,7 +6090,7 @@ export default function DeskAdmin() {
                     disabled={actionLoading === 'payroll'}
                     className="px-4 py-2 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-50 text-emerald-700 text-sm font-semibold rounded-lg transition-colors"
                   >
-                    {actionLoading === 'payroll' ? '⏳ Generating…' : '📊 Generate Report'}
+                    {actionLoading === 'payroll' ? '⏳ Generating…' : '🔄 Refresh'}
                   </button>
                   {payrollReport && (
                     <>
