@@ -1759,13 +1759,51 @@ export default function DeskAdmin() {
 
       type GRow = { name:string; appts:number; revenue:number; tips:number; commission:number; tipShare:number; commRate:number; tipRate:number }
 
-      const buildDoc = (g: GRow) => {
+      // Load the branded cover image (public/payroll-cover.jpg) once, as a data URL
+      const loadCover = async (): Promise<string | null> => {
+        try {
+          const res = await fetch('/payroll-cover.jpg')
+          if (!res.ok) return null
+          const blob = await res.blob()
+          return await new Promise<string>((resolve, reject) => {
+            const fr = new FileReader()
+            fr.onload = () => resolve(fr.result as string)
+            fr.onerror = reject
+            fr.readAsDataURL(blob)
+          })
+        } catch { return null }
+      }
+
+      const buildDoc = (g: GRow, coverUrl: string | null) => {
         const doc = new jsPDF({ unit: 'pt', format: 'letter' })
         const W = doc.internal.pageSize.getWidth()
         const H = doc.internal.pageSize.getHeight()
         const M = 48
         const totalPay = g.commission + g.tipShare
         const custTipRate = g.revenue > 0 ? (g.tips / g.revenue) * 100 : 0
+        const hasCover = !!coverUrl
+
+        // ── Page 1: branded cover with this groomer's name on the orange banner ──
+        if (coverUrl) {
+          doc.addImage(coverUrl, 'JPEG', 0, 0, W, H)
+          // Orange "Groomer Wylie" pill: measured bounds (fractions of page) + exact fill color
+          const bx0 = 0.4608 * W, bx1 = 0.9307 * W
+          const by0 = 0.7985 * H, by1 = 0.8510 * H
+          const rad = (by1 - by0) / 2
+          // Cover the baked-in name with the pill's flat fill, staying inside the rounded ends
+          doc.setFillColor(252, 199, 123)
+          doc.rect(bx0 + rad, by0, (bx1 - rad) - (bx0 + rad), by1 - by0, 'F')
+          // Write the correct groomer name, centered, auto-shrunk to fit
+          const cleanName = g.name.replace(/^groomer\s+/i, '').trim()
+          const label = `Groomer ${cleanName}`
+          const maxW = (bx1 - bx0) - rad * 2 - 10
+          doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255)
+          let fs = 18
+          doc.setFontSize(fs)
+          while (doc.getTextWidth(label) > maxW && fs > 9) { fs -= 0.5; doc.setFontSize(fs) }
+          doc.text(label, (bx0 + bx1) / 2, (by0 + by1) / 2 + fs * 0.35, { align: 'center' })
+          doc.addPage()
+        }
 
         // ── Header band ──
         doc.setFillColor(...BLUE)
@@ -1922,15 +1960,18 @@ export default function DeskAdmin() {
           dy += drH + 2
         }
 
-        // ── Footer on every page ──
+        // ── Footer on every statement page (skip the cover) ──
         const pageCount = doc.getNumberOfPages()
-        for (let p = 1; p <= pageCount; p++) {
+        const firstContentPage = hasCover ? 2 : 1
+        const contentPages = pageCount - (hasCover ? 1 : 0)
+        for (let p = firstContentPage; p <= pageCount; p++) {
           doc.setPage(p)
           doc.setDrawColor(...LINE); doc.setLineWidth(0.5)
           doc.line(M, H - 42, W - M, H - 42)
           doc.setTextColor(...GREY); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
           doc.text('Kokoni Pet Grooming Salon  ·  Every cut, made with care.', M, H - 28)
-          doc.text(`Generated ${new Date().toLocaleDateString()}  ·  Page ${p} of ${pageCount}`, W - M, H - 28, { align: 'right' })
+          const num = hasCover ? p - 1 : p
+          doc.text(`Generated ${new Date().toLocaleDateString()}  ·  Page ${num} of ${contentPages}`, W - M, H - 28, { align: 'right' })
         }
         return doc
       }
@@ -1938,6 +1979,7 @@ export default function DeskAdmin() {
       const groomersWithData = payrollReport.groomers.filter(g => g.appts > 0 || payrollSelectedGroomer)
       if (groomersWithData.length === 0) { alert('No groomer data to export.'); return }
 
+      const coverUrl = await loadCover()
       const safe = (s: string) => s.replace(/[^a-z0-9]+/gi, '-')
       const triggerDownload = (blob: Blob, filename: string) => {
         const url = window.URL.createObjectURL(blob)
@@ -1949,12 +1991,12 @@ export default function DeskAdmin() {
 
       if (groomersWithData.length === 1) {
         const g = groomersWithData[0]
-        const doc = buildDoc(g)
+        const doc = buildDoc(g, coverUrl)
         triggerDownload(doc.output('blob'), `payroll-${safe(g.name)}-${payrollStartDate}-to-${payrollEndDate}.pdf`)
       } else {
         const zip = new JSZip()
         groomersWithData.forEach(g => {
-          const doc = buildDoc(g)
+          const doc = buildDoc(g, coverUrl)
           zip.file(`payroll-${safe(g.name)}-${payrollStartDate}-to-${payrollEndDate}.pdf`, doc.output('blob'))
         })
         const blob = await zip.generateAsync({ type: 'blob' })
