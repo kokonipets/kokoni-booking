@@ -1885,7 +1885,11 @@ export default function GroomerDashboard() {
                         <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Select Size</p>
                         <div className={`grid gap-2 mb-3 ${tiers.length <= 2 ? 'grid-cols-2' : tiers.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                           {tiers.map((tier, i) => {
-                            const isSelected = popupBasePrice === tier.price && popupBaseTier === tier.label && !!tier.price
+                            const explicitMatch = popupBasePrice === tier.price && popupBaseTier === tier.label && !!tier.price
+                            // On reopen the chosen tier label isn't saved; highlight when the price uniquely matches one tier.
+                            const uniquePriceMatch = !!tier.price && !popupBaseTier && popupBasePrice === tier.price
+                              && tiers.filter(t => t.price === tier.price).length === 1
+                            const isSelected = explicitMatch || uniquePriceMatch
                             return (
                               <button key={i}
                                 onClick={() => { if (tier.price) { setPopupBasePrice(isSelected ? '' : tier.price); setPopupBaseTier(isSelected ? '' : tier.label); setPopupTotalSaved(false) } }}

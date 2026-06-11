@@ -3059,7 +3059,12 @@ export default function DeskAdmin() {
                                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Select Size</p>
                                 <div className={`grid gap-2 mb-3 ${tiers.length <= 2 ? 'grid-cols-2' : tiers.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                   {tiers.map((tier, i) => {
-                                    const isSelected = detailBasePrice === tier.price && detailBaseTier === tier.label && !!tier.price
+                                    const explicitMatch = detailBasePrice === tier.price && detailBaseTier === tier.label && !!tier.price
+                                    // On a reopened appointment the chosen tier label isn't saved.
+                                    // If the price uniquely matches one tier, highlight that tier too.
+                                    const uniquePriceMatch = !!tier.price && !detailBaseTier && detailBasePrice === tier.price
+                                      && tiers.filter(t => t.price === tier.price).length === 1
+                                    const isSelected = explicitMatch || uniquePriceMatch
                                     return (
                                       <button key={i}
                                         onClick={() => { if (tier.price) { setDetailBasePrice(isSelected ? '' : tier.price); setDetailBaseTier(isSelected ? '' : tier.label); setTotalSaved(false) } }}

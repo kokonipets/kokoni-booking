@@ -1732,7 +1732,11 @@ export default function AdminPage() {
                               <p className="text-xs text-gray-400">Tap a size ↓</p>
                               <div className="grid grid-cols-2 gap-1.5">
                                 {tiers.map((tier: {label:string;price:string}, i: number) => {
-                                  const isSelected = editDraftBasePrice === tier.price && editDraftBaseTier === tier.label && !!tier.price
+                                  const explicitMatch = editDraftBasePrice === tier.price && editDraftBaseTier === tier.label && !!tier.price
+                                  // On reopen the chosen tier label isn't saved; highlight when the price uniquely matches one tier.
+                                  const uniquePriceMatch = !!tier.price && !editDraftBaseTier && editDraftBasePrice === tier.price
+                                    && tiers.filter((t: {price:string}) => t.price === tier.price).length === 1
+                                  const isSelected = explicitMatch || uniquePriceMatch
                                   return (
                                     <button key={i}
                                       onClick={() => { if (tier.price) { setEditDraftBasePrice(isSelected ? '' : tier.price); setEditDraftBaseTier(isSelected ? '' : tier.label); setEditDraftTotalSaved(false) } }}
