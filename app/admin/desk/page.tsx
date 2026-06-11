@@ -1765,6 +1765,7 @@ export default function DeskAdmin() {
         const H = doc.internal.pageSize.getHeight()
         const M = 48
         const totalPay = g.commission + g.tipShare
+        const custTipRate = g.revenue > 0 ? (g.tips / g.revenue) * 100 : 0
 
         // ── Header band ──
         doc.setFillColor(...BLUE)
@@ -1800,8 +1801,21 @@ export default function DeskAdmin() {
         doc.setFont('helvetica', 'bold'); doc.setFontSize(22)
         doc.text(money(totalPay), chipX + chipW / 2, chipY + 44, { align: 'center' })
 
+        // ── Customer tip rate callout (performance signal) ──
+        const calY = 178, calH = 48, calW = W - M * 2
+        doc.setFillColor(235, 248, 248)
+        doc.roundedRect(M, calY, calW, calH, 8, 8, 'F')
+        doc.setFillColor(...SKY)
+        doc.roundedRect(M, calY, 5, calH, 2, 2, 'F')
+        doc.setTextColor(...INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
+        doc.text('Customer Tip Rate', M + 18, calY + 21)
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...GREY)
+        doc.text('Tips as a share of service revenue this period (tips ÷ revenue) — a sign of happy clients.', M + 18, calY + 38)
+        doc.setTextColor(...SKY); doc.setFont('helvetica', 'bold'); doc.setFontSize(26)
+        doc.text(`${custTipRate.toFixed(0)}%`, W - M - 18, calY + 33, { align: 'right' })
+
         // ── Pay summary table ──
-        y = 196
+        y = 232
         doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK)
         doc.text('Pay Summary', M, y)
         y += 12
@@ -1811,7 +1825,8 @@ export default function DeskAdmin() {
           [`Commission rate`, `${g.commRate}%`],
           ['Commission earned', money(g.commission)],
           ['Tips collected', money(g.tips)],
-          [`Tip share rate`, `${g.tipRate}%`],
+          ['Customer tip rate (tips / revenue)', `${custTipRate.toFixed(0)}%`],
+          [`Tip share rate (your cut of tips)`, `${g.tipRate}%`],
           ['Tip share earned', money(g.tipShare)],
         ]
         const rowH = 24, tableW = W - M * 2
