@@ -1584,7 +1584,8 @@ export default function DeskAdmin() {
         if (!byDate[d]) byDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
         byDate[d].appts += 1
         if (a.payment_status === 'paid') {
-          const rev = parseFloat(a.payment_amount || '0')
+          // Commission is on the full pre-discount price: add the discount back.
+          const rev = parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0')
           const tip = parseFloat(a.tip_amount || '0')
           byDate[d].revenue += rev
           byDate[d].tips += tip
@@ -1608,7 +1609,7 @@ export default function DeskAdmin() {
       const groomers = groomersToShow.map(member => {
         const memberAppts = appts.filter((a: any) => a.assigned_groomer === member.name)
         const paidAppts = memberAppts.filter((a: any) => a.payment_status === 'paid')
-        const revenue = paidAppts.reduce((s: number, a: any) => s + parseFloat(a.payment_amount || '0'), 0)
+        const revenue = paidAppts.reduce((s: number, a: any) => s + parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0'), 0)
         const tips = memberAppts.reduce((s: number, a: any) => s + parseFloat(a.tip_amount || '0'), 0)
         const commRate = member.commission_percent / 100
         const tipRate = member.tip_percent / 100
@@ -1635,7 +1636,8 @@ export default function DeskAdmin() {
           if (!mByDate[d]) mByDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
           mByDate[d].appts += 1
           if (a.payment_status === 'paid') {
-            const rev = parseFloat(a.payment_amount || '0')
+            // Commission is on the full pre-discount price: add the discount back.
+            const rev = parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0')
             const tip = parseFloat(a.tip_amount || '0')
             mByDate[d].revenue += rev
             mByDate[d].tips += tip
