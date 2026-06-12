@@ -260,6 +260,7 @@ export default function GroomerDashboard() {
   const noteIsComposingRef = useRef(false)
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
   const [popupPetName, setPopupPetName] = useState('')
+  const [editingPetInfo, setEditingPetInfo] = useState(false)
   const [popupBreed, setPopupBreed] = useState('')
   const [popupWeight, setPopupWeight] = useState('')
   const [popupPetTags, setPopupPetTags] = useState<PetTag[]>([])
@@ -672,6 +673,7 @@ export default function GroomerDashboard() {
     setTranslatingPopupNote(false)
     setSavingPopupNote(false)
     setPopupPetName(appt.pets?.name ?? '')
+    setEditingPetInfo(false)
     setPopupBreed(appt.pets?.breed ?? '')
     setPopupWeight(appt.pets?.weight ?? '')
     setSavingPetInfo(false)
@@ -2123,41 +2125,71 @@ export default function GroomerDashboard() {
                 )
               })()}
 
-              {/* Pet Info — breed & size */}
+              {/* Pet Info — read-only with edit pencil */}
               <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Pet Info</p>
-                <input value={popupPetName} onChange={e => setPopupPetName(e.target.value)} placeholder="Pet name"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
-                <div className="flex gap-2 mb-2">
-                  <BreedInputG value={popupBreed} onChange={setPopupBreed}
-                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 w-full" />
-                  <select value={popupWeight} onChange={e => setPopupWeight(e.target.value)}
-                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300">
-                    <option value="">Size…</option>
-                    {WEIGHT_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
-                  </select>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Pet Info</p>
+                  {!editingPetInfo && (
+                    <button onClick={() => setEditingPetInfo(true)}
+                      className="text-xs font-semibold text-gray-400 hover:text-emerald-600 flex items-center gap-1">✏️ Edit</button>
+                  )}
                 </div>
-                <button
-                  onClick={async () => {
-                    if (!selectedAppt.pets?.id) return
-                    const newName = popupPetName.trim()
-                    setSavingPetInfo(true)
-                    await fetch(`/api/admin/pets/${selectedAppt.pets.id}`, {
-                      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ name: newName || undefined, breed: popupBreed || null, weight: popupWeight || null }),
-                    })
-                    setAppointments(prev => prev.map(a =>
-                      a.id === selectedAppt.id ? { ...a, pets: a.pets ? { ...a.pets, name: newName || a.pets.name, breed: popupBreed || null, weight: popupWeight || null } : a.pets } : a
-                    ))
-                    setSelectedAppt(prev => prev ? { ...prev, pets: prev.pets ? { ...prev.pets, name: newName || prev.pets.name, breed: popupBreed || null, weight: popupWeight || null } : prev.pets } : prev)
-                    setSavingPetInfo(false)
-                    showToast('✓ Pet info saved')
-                  }}
-                  disabled={savingPetInfo}
-                  className="w-full mt-1 py-2 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-emerald-50 hover:text-emerald-700 text-gray-600 transition-colors disabled:opacity-40"
-                >
-                  {savingPetInfo ? 'Saving…' : 'Save'}
-                </button>
+
+                {!editingPetInfo ? (
+                  <div className="text-sm text-gray-700 space-y-0.5">
+                    <p className="font-semibold">{popupPetName || selectedAppt.pets?.name || '—'}</p>
+                    <p className="text-gray-500">
+                      {popupBreed || <span className="text-gray-300 italic">no breed</span>}
+                      <span className="text-gray-300 mx-1.5">·</span>
+                      {popupWeight || <span className="text-gray-300 italic">no size</span>}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <input value={popupPetName} onChange={e => setPopupPetName(e.target.value)} placeholder="Pet name"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+                    <div className="flex gap-2 mb-2">
+                      <BreedInputG value={popupBreed} onChange={setPopupBreed}
+                        className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 w-full" />
+                      <select value={popupWeight} onChange={e => setPopupWeight(e.target.value)}
+                        className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300">
+                        <option value="">Size…</option>
+                        {WEIGHT_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!selectedAppt.pets?.id) return
+                          const newName = popupPetName.trim()
+                          setSavingPetInfo(true)
+                          await fetch(`/api/admin/pets/${selectedAppt.pets.id}`, {
+                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: newName || undefined, breed: popupBreed || null, weight: popupWeight || null }),
+                          })
+                          setAppointments(prev => prev.map(a =>
+                            a.id === selectedAppt.id ? { ...a, pets: a.pets ? { ...a.pets, name: newName || a.pets.name, breed: popupBreed || null, weight: popupWeight || null } : a.pets } : a
+                          ))
+                          setSelectedAppt(prev => prev ? { ...prev, pets: prev.pets ? { ...prev.pets, name: newName || prev.pets.name, breed: popupBreed || null, weight: popupWeight || null } : prev.pets } : prev)
+                          setSavingPetInfo(false)
+                          setEditingPetInfo(false)
+                          showToast('✓ Pet info saved')
+                        }}
+                        disabled={savingPetInfo}
+                        className="flex-1 py-2 rounded-xl text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white transition-colors disabled:opacity-40"
+                      >
+                        {savingPetInfo ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => { setEditingPetInfo(false); setPopupPetName(selectedAppt.pets?.name ?? ''); setPopupBreed(selectedAppt.pets?.breed ?? ''); setPopupWeight(selectedAppt.pets?.weight ?? '') }}
+                        disabled={savingPetInfo}
+                        className="px-4 py-2 rounded-xl text-sm font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
 
                 {/* Tags */}
                 {selectedAppt.pets?.id && (
