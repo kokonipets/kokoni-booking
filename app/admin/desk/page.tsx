@@ -7028,7 +7028,7 @@ export default function DeskAdmin() {
                         onClick={() => setReportsRange(r)}
                         className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${reportsRange === r ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}`}
                       >
-                        {r === 'today' ? 'Today' : r === 'week' ? 'This Week' : r === 'this_payroll' ? '💵 This Pay' : r === 'last_payroll' ? '💵 Last Pay' : r === 'month' ? 'This Month' : r === 'last_month' ? 'Last Month' : r === 'all' ? 'All Time' : '📅 Custom'}
+                        {r === 'today' ? 'Today' : r === 'this_payroll' ? '💵 This Pay' : r === 'last_payroll' ? '💵 Last Pay' : r === 'month' ? 'This Month' : '📅 Custom'}
                       </button>
                     ))}
                     <div className="ml-auto flex items-center gap-2">
