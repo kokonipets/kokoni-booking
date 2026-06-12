@@ -716,9 +716,18 @@ export default function GroomerDashboard() {
     // Pre-fill price: use current appointment amount minus saved add-ons, else fetch last paid amount for this pet
     if (appt.payment_amount) {
       const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0)
-      const base = parseFloat(appt.payment_amount) - addonTotal
+      // payment_amount is post-discount; add the saved discount back to rebuild the
+      // pre-discount base, then restore the discount/coupon so the total re-derives.
+      const savedDiscount = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0
+      const base = parseFloat(appt.payment_amount) + savedDiscount - addonTotal
       setPopupBasePrice(base > 0 ? base.toString() : appt.payment_amount)
       setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || '')
+      if (savedDiscount > 0) {
+        const label = (appt as { discount_label?: string | null }).discount_label || ''
+        const matchedCoupon = availableCoupons.find(c => c.name === label)
+        if (matchedCoupon) { setPopupCouponId(matchedCoupon.id); setPopupDiscount(false) }
+        else { setPopupDiscount(true); setPopupCouponId(null) }
+      }
     } else if (appt.pets?.id) {
       setPopupBasePrice('')
       setPopupBaseTier('')
