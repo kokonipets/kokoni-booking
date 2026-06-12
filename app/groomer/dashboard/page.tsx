@@ -258,6 +258,7 @@ export default function GroomerDashboard() {
   const noteTranslateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const noteIsComposingRef = useRef(false)
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
+  const [popupPetName, setPopupPetName] = useState('')
   const [popupBreed, setPopupBreed] = useState('')
   const [popupWeight, setPopupWeight] = useState('')
   const [popupPetTags, setPopupPetTags] = useState<PetTag[]>([])
@@ -669,6 +670,7 @@ export default function GroomerDashboard() {
     setPopupNoteTranslations(null)
     setTranslatingPopupNote(false)
     setSavingPopupNote(false)
+    setPopupPetName(appt.pets?.name ?? '')
     setPopupBreed(appt.pets?.breed ?? '')
     setPopupWeight(appt.pets?.weight ?? '')
     setSavingPetInfo(false)
@@ -2122,6 +2124,8 @@ export default function GroomerDashboard() {
               {/* Pet Info — breed & size */}
               <div className="rounded-2xl border border-gray-200 bg-white p-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Pet Info</p>
+                <input value={popupPetName} onChange={e => setPopupPetName(e.target.value)} placeholder="Pet name"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-emerald-300" />
                 <div className="flex gap-2 mb-2">
                   <BreedInputG value={popupBreed} onChange={setPopupBreed}
                     className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 w-full" />
@@ -2134,15 +2138,16 @@ export default function GroomerDashboard() {
                 <button
                   onClick={async () => {
                     if (!selectedAppt.pets?.id) return
+                    const newName = popupPetName.trim()
                     setSavingPetInfo(true)
                     await fetch(`/api/admin/pets/${selectedAppt.pets.id}`, {
                       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ breed: popupBreed || null, weight: popupWeight || null }),
+                      body: JSON.stringify({ name: newName || undefined, breed: popupBreed || null, weight: popupWeight || null }),
                     })
                     setAppointments(prev => prev.map(a =>
-                      a.id === selectedAppt.id ? { ...a, pets: a.pets ? { ...a.pets, breed: popupBreed || null, weight: popupWeight || null } : a.pets } : a
+                      a.id === selectedAppt.id ? { ...a, pets: a.pets ? { ...a.pets, name: newName || a.pets.name, breed: popupBreed || null, weight: popupWeight || null } : a.pets } : a
                     ))
-                    setSelectedAppt(prev => prev ? { ...prev, pets: prev.pets ? { ...prev.pets, breed: popupBreed || null, weight: popupWeight || null } : prev.pets } : prev)
+                    setSelectedAppt(prev => prev ? { ...prev, pets: prev.pets ? { ...prev.pets, name: newName || prev.pets.name, breed: popupBreed || null, weight: popupWeight || null } : prev.pets } : prev)
                     setSavingPetInfo(false)
                     showToast('✓ Pet info saved')
                   }}
