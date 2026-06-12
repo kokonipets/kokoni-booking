@@ -27,7 +27,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const supabase = getAdminClient()
   const body = await req.json()
-  const { name, code, discount_type, discount_value } = body
+  const { name, code, discount_type, discount_value, first_visit_only } = body
 
   if (!name || !discount_type || discount_value == null) {
     return NextResponse.json({ error: 'name, discount_type, and discount_value are required' }, { status: 400 })
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       discount_type,
       discount_value: parseFloat(discount_value),
       active: true,
+      first_visit_only: !!first_visit_only,
     })
     .select()
     .single()
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const supabase = getAdminClient()
   const body = await req.json()
-  const { id, name, code, discount_type, discount_value, active } = body
+  const { id, name, code, discount_type, discount_value, active, first_visit_only } = body
 
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
@@ -67,6 +68,7 @@ export async function PATCH(req: NextRequest) {
   if (discount_type !== undefined) updates.discount_type = discount_type
   if (discount_value !== undefined) updates.discount_value = parseFloat(discount_value)
   if (active !== undefined) updates.active = active
+  if (first_visit_only !== undefined) updates.first_visit_only = !!first_visit_only
 
   const { error } = await supabase.from('coupons').update(updates).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
