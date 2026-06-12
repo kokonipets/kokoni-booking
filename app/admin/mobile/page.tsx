@@ -349,14 +349,18 @@ export default function AdminPage() {
   const [popupBaseTier, setPopupBaseTier] = useState('')  // tier label to avoid same-price collision
   const [popupAddOns, setPopupAddOns] = useState<{id:string;name:string;price:string}[]>([])
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
-  const [popupDiscount, setPopupDiscount] = useState(false)
+  const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
   const [editDraftBasePrice, setEditDraftBasePrice] = useState('')
   const [editDraftBaseTier, setEditDraftBaseTier] = useState('')  // tier label to avoid same-price collision
   const [editDraftAddOns, setEditDraftAddOns] = useState<{id:string;name:string;price:string}[]>([])
   const [editDraftTotalSaved, setEditDraftTotalSaved] = useState(false)
-  const [editDraftDiscount, setEditDraftDiscount] = useState(false)
+  const [editDraftCouponId, setEditDraftCouponId] = useState<string | null>(null)
   const [savingEditDraftPayment, setSavingEditDraftPayment] = useState(false)
+  // Discount codes (shared with desk/groomer)
+  type MobileCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
+  const [availableCoupons, setAvailableCoupons] = useState<MobileCoupon[]>([])
+  const [mobileIsFirstTime, setMobileIsFirstTime] = useState(false)
   // EditPanel notes states
   const [epAddingNote, setEpAddingNote] = useState(false)
   const [epNoteText, setEpNoteText] = useState('')
@@ -426,6 +430,9 @@ export default function AdminPage() {
   useEffect(() => {
     const stored = sessionStorage.getItem('admin_authed')
     if (stored === 'yes') setAuthed(true)
+    fetch('/api/admin/coupons').then(r => r.json()).then(d => {
+      setAvailableCoupons((d.coupons ?? []).filter((c: MobileCoupon) => c.active))
+    }).catch(() => {})
   }, [])
 
   const showToast = (msg: string) => {
@@ -1606,7 +1613,14 @@ export default function AdminPage() {
                 setEditDraftBasePrice(baseCalc)
                 setEditDraftBaseTier((appt as { size_tier?: string | null }).size_tier || '')  // restore saved tier
                 setEditDraftAddOns(existingAddons)
-                setEditDraftDiscount(savedDiscount > 0)
+                {
+                  const dl = (appt as { discount_label?: string | null }).discount_label || ''
+                  const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || '')
+                  const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp)
+                  setEditDraftCouponId(savedDiscount > 0 ? (m?.id ?? null) : null)
+                }
+                setMobileIsFirstTime(false)
+                if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {})
                 setEditDraftTotalSaved(!!appt.payment_amount)
                 setEpAddingNote(false)
                 setEpNoteText('')
@@ -1734,7 +1748,10 @@ export default function AdminPage() {
                     const addOnTotal = editDraftAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
                     const baseAmt = parseFloat(editDraftBasePrice) || 0
                     const subtotalAmt = baseAmt + addOnTotal
-                    const discountAmt = editDraftDiscount ? Math.round(subtotalAmt * 0.20 * 100) / 100 : 0
+                    const editDraftCoupon = availableCoupons.find(c => c.id === editDraftCouponId) ?? null
+                    const discountAmt = editDraftCoupon
+                      ? (editDraftCoupon.discount_type === 'percent' ? Math.round(subtotalAmt * editDraftCoupon.discount_value / 100 * 100) / 100 : Math.min(editDraftCoupon.discount_value, subtotalAmt))
+                      : 0
                     const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
                     return (
                       <div>
@@ -1824,13 +1841,20 @@ export default function AdminPage() {
                             </div>
                           )}
 
-                          {/* 20% new customer discount toggle */}
+                          {/* Discount code selector (shared; first-visit-only gated) */}
                           {subtotalAmt > 0 && (
-                            <button onClick={() => { setEditDraftDiscount(d => !d); setEditDraftTotalSaved(false) }}
-                              className={`w-full flex items-center justify-between rounded-xl px-3 py-2 border-2 transition-all ${editDraftDiscount ? 'bg-pink-50 border-pink-300 text-pink-700' : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200'}`}>
-                              <span className="font-bold text-xs">🎉 New customer 20% off</span>
-                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${editDraftDiscount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>{editDraftDiscount ? 'ON' : 'OFF'}</span>
-                            </button>
+                            <div className={`flex items-center gap-2 rounded-xl px-3 py-2 border-2 ${editDraftCouponId ? 'bg-pink-50 border-pink-300' : 'bg-gray-50 border-gray-200'}`}>
+                              <span className="text-xs">🎟️</span>
+                              <select value={editDraftCouponId ?? ''} onChange={e => { setEditDraftCouponId(e.target.value || null); setEditDraftTotalSaved(false) }}
+                                className={`flex-1 text-xs font-semibold bg-transparent focus:outline-none ${editDraftCouponId ? 'text-pink-700' : 'text-gray-400'}`}>
+                                <option value="">Apply discount…</option>
+                                {availableCoupons.map(c => {
+                                  const blocked = c.first_visit_only && !mobileIsFirstTime
+                                  return <option key={c.id} value={c.id} disabled={blocked}>{c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}{blocked ? ' · first visit only' : ''}</option>
+                                })}
+                              </select>
+                              {editDraftCouponId && <button onClick={() => { setEditDraftCouponId(null); setEditDraftTotalSaved(false) }} className="text-pink-400 text-base leading-none">✕</button>}
+                            </div>
                           )}
 
                           {/* Total breakdown */}
@@ -1856,7 +1880,7 @@ export default function AdminPage() {
                               )}
                               <div className="flex justify-between text-sm font-bold text-gray-800 pt-1 border-t border-gray-200">
                                 <span>Total</span>
-                                <span className={editDraftTotalSaved && grandTotal > 0 ? 'text-emerald-600' : editDraftDiscount ? 'text-pink-600' : 'text-gray-800'}>${grandTotal.toFixed(2)}</span>
+                                <span className={editDraftTotalSaved && grandTotal > 0 ? 'text-emerald-600' : discountAmt > 0 ? 'text-pink-600' : 'text-gray-800'}>${grandTotal.toFixed(2)}</span>
                               </div>
                             </div>
                           )}
@@ -1872,9 +1896,9 @@ export default function AdminPage() {
                                 const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                                   method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({ action: 'record-payment', payment_amount: amount, addons: editDraftAddOns, size_tier: editDraftBaseTier || null,
-                                    discount_label: editDraftDiscount ? 'New customer 20% off' : null,
-                                    discount_percent: editDraftDiscount ? '20' : null,
-                                    discount_amount: editDraftDiscount && discountAmt > 0 ? discountAmt.toFixed(2) : null }),
+                                    discount_label: editDraftCoupon ? editDraftCoupon.name : null,
+                                    discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
+                                    discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null }),
                                 })
                                 if ((await res.json()).success) {
                                   setEditDraftTotalSaved(true)
@@ -1883,9 +1907,9 @@ export default function AdminPage() {
                                     if (a.id !== appt.id) return a
                                     const nonAddonNotes = (a.notes_list ?? []).filter(n => !n.is_addon)
                                     return { ...a, payment_amount: amount, size_tier: editDraftBaseTier || null,
-                                      discount_label: editDraftDiscount ? 'New customer 20% off' : null,
-                                      discount_percent: editDraftDiscount ? '20' : null,
-                                      discount_amount: editDraftDiscount && discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                                      discount_label: editDraftCoupon ? editDraftCoupon.name : null,
+                                      discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
+                                      discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
                                       notes_list: [...nonAddonNotes, ...addonNotes] }
                                   }))
                                   showToast('✓ Total saved!')
@@ -2745,7 +2769,10 @@ export default function AdminPage() {
               const addOnTotal = popupAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
               const baseAmt = parseFloat(popupBasePrice) || 0
               const subtotalAmt = baseAmt + addOnTotal
-              const discountAmt = popupDiscount ? Math.round(subtotalAmt * 0.20 * 100) / 100 : 0
+              const popupCoupon = availableCoupons.find(c => c.id === popupCouponId) ?? null
+              const discountAmt = popupCoupon
+                ? (popupCoupon.discount_type === 'percent' ? Math.round(subtotalAmt * popupCoupon.discount_value / 100 * 100) / 100 : Math.min(popupCoupon.discount_value, subtotalAmt))
+                : 0
               const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
               return (
                 <div className="rounded-2xl p-4 border border-sky-200 bg-sky-50 mb-3">
@@ -2842,13 +2869,20 @@ export default function AdminPage() {
                     </div>
                   )}
 
-                  {/* 20% new customer discount toggle */}
+                  {/* Discount code selector (shared; first-visit-only gated) */}
                   {subtotalAmt > 0 && (
-                    <button onClick={() => { setPopupDiscount(d => !d); setPopupTotalSaved(false) }}
-                      className={`w-full flex items-center justify-between rounded-xl px-3 py-2 border-2 transition-all mb-2 ${popupDiscount ? 'bg-pink-50 border-pink-300 text-pink-700' : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200'}`}>
-                      <span className="font-bold text-xs">🎉 New customer 20% off</span>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${popupDiscount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>{popupDiscount ? 'ON' : 'OFF'}</span>
-                    </button>
+                    <div className={`flex items-center gap-2 rounded-xl px-3 py-2 border-2 mb-2 ${popupCouponId ? 'bg-pink-50 border-pink-300' : 'bg-gray-50 border-gray-200'}`}>
+                      <span className="text-xs">🎟️</span>
+                      <select value={popupCouponId ?? ''} onChange={e => { setPopupCouponId(e.target.value || null); setPopupTotalSaved(false) }}
+                        className={`flex-1 text-xs font-semibold bg-transparent focus:outline-none ${popupCouponId ? 'text-pink-700' : 'text-gray-400'}`}>
+                        <option value="">Apply discount…</option>
+                        {availableCoupons.map(c => {
+                          const blocked = c.first_visit_only && !mobileIsFirstTime
+                          return <option key={c.id} value={c.id} disabled={blocked}>{c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}{blocked ? ' · first visit only' : ''}</option>
+                        })}
+                      </select>
+                      {popupCouponId && <button onClick={() => { setPopupCouponId(null); setPopupTotalSaved(false) }} className="text-pink-400 text-base leading-none">✕</button>}
+                    </div>
                   )}
 
                   {/* Total breakdown */}
@@ -2874,7 +2908,7 @@ export default function AdminPage() {
                       )}
                       <div className="flex justify-between text-sm font-bold text-gray-800 pt-1 border-t border-gray-200">
                         <span>Total</span>
-                        <span className={popupTotalSaved && grandTotal > 0 ? 'text-emerald-600' : popupDiscount ? 'text-pink-600' : 'text-gray-800'}>${grandTotal.toFixed(2)}</span>
+                        <span className={popupTotalSaved && grandTotal > 0 ? 'text-emerald-600' : discountAmt > 0 ? 'text-pink-600' : 'text-gray-800'}>${grandTotal.toFixed(2)}</span>
                       </div>
                     </div>
                   )}
@@ -2891,16 +2925,16 @@ export default function AdminPage() {
                           const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ action: 'record-payment', payment_amount: amount, size_tier: popupBaseTier || null,
-                              discount_label: popupDiscount ? 'New customer 20% off' : null,
-                              discount_percent: popupDiscount ? '20' : null,
-                              discount_amount: popupDiscount && discountAmt > 0 ? discountAmt.toFixed(2) : null }),
+                              discount_label: popupCoupon ? popupCoupon.name : null,
+                              discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
+                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null }),
                           })
                           if ((await res.json()).success) {
                             setPopupTotalSaved(true)
                             setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount, size_tier: popupBaseTier || null,
-                              discount_label: popupDiscount ? 'New customer 20% off' : null,
-                              discount_percent: popupDiscount ? '20' : null,
-                              discount_amount: popupDiscount && discountAmt > 0 ? discountAmt.toFixed(2) : null } : a))
+                              discount_label: popupCoupon ? popupCoupon.name : null,
+                              discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
+                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null } : a))
                             showToast('✓ Total saved!')
                           }
                         } catch {/**/}
@@ -2912,7 +2946,7 @@ export default function AdminPage() {
                       {savingPopupPayment ? '⏳ Saving…' : grandTotal > 0 ? (popupTotalSaved ? `✓ Saved · $${grandTotal}` : `💾 Save Total · $${grandTotal}`) : 'Select a size first'}
                     </button>
                     <button
-                      onClick={() => { setEditingPriceId(null); setPopupBasePrice(''); setPopupBaseTier(''); setPopupAddOns([]); setPopupDiscount(false); setPopupTotalSaved(false) }}
+                      onClick={() => { setEditingPriceId(null); setPopupBasePrice(''); setPopupBaseTier(''); setPopupAddOns([]); setPopupCouponId(null); setPopupTotalSaved(false) }}
                       className="px-3 py-2.5 bg-white text-gray-500 text-sm rounded-xl border border-gray-200 hover:bg-gray-50">✕</button>
                   </div>
                 </div>
@@ -2925,7 +2959,7 @@ export default function AdminPage() {
                     {appt.payment_amount ? `$${appt.payment_amount}` : '—'}
                   </span>
                   <button
-                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns([]); setPopupDiscount(sd > 0); setPopupTotalSaved(false) }}
+                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns([]); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
                     className="text-gray-400 hover:text-sky-500 text-xs leading-none"
                     title="Set price"
                   >✏️</button>
