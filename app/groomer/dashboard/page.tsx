@@ -1051,9 +1051,13 @@ export default function GroomerDashboard() {
     return true
   })
   const cashPendingCount = paidAppts.filter(a => a.payment_status === 'cash_pending').length
-  const totalRevenue = paidAppts.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
+  // Commission is on the full price before discount, so add the discount back.
+  const grossRevenue = paidAppts.reduce((s, a) => s + parseFloat(a.payment_amount || '0') + parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), 0)
+  const totalDiscount = paidAppts.reduce((s, a) => s + parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), 0)
+  const netCollected = grossRevenue - totalDiscount
+  const totalRevenue = grossRevenue
   const totalTips = paidAppts.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
-  const commission = totalRevenue * commissionPct / 100
+  const commission = grossRevenue * commissionPct / 100
   const tipInPaycheck = totalTips * tipPct / 100
   const rangeLabelMap = {
     today: 'Today',
@@ -1648,13 +1652,37 @@ export default function GroomerDashboard() {
             <div className="bg-sky-50 rounded-2xl p-4 border border-sky-100">
               <p className="text-xl font-bold text-sky-700">${totalRevenue.toFixed(2)}</p>
               <p className="text-xs text-sky-600 font-medium mt-1">Service Revenue</p>
-              <p className="text-xs text-sky-400 mt-0.5">{paidAppts.length} appt{paidAppts.length !== 1 ? 's' : ''}{cashPendingCount > 0 ? ` · ${cashPendingCount} cash pending` : ''}</p>
+              <p className="text-xs text-sky-400 mt-0.5">{paidAppts.length} appt{paidAppts.length !== 1 ? 's' : ''}{cashPendingCount > 0 ? ` · ${cashPendingCount} cash pending` : ''}{totalDiscount > 0 ? ' · before discount' : ''}</p>
             </div>
             <div className="bg-violet-50 rounded-2xl p-4 border border-violet-100">
               <p className="text-xl font-bold text-violet-700">${commission.toFixed(2)}</p>
               <p className="text-xs text-violet-600 font-medium mt-1">Commission</p>
-              <p className="text-xs text-violet-400 mt-0.5">{commissionPct}% of revenue</p>
+              <p className="text-xs text-violet-400 mt-0.5">{commissionPct}% before discount</p>
             </div>
+          </div>
+
+          {/* Revenue breakdown */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-1.5">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Revenue Breakdown</p>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Original price (before discount)</span>
+              <span className="font-semibold text-gray-700">${grossRevenue.toFixed(2)}</span>
+            </div>
+            {totalDiscount > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-pink-500">Discounts given</span>
+                <span className="font-semibold text-pink-500">−${totalDiscount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm border-t border-gray-100 pt-1.5">
+              <span className="text-gray-500">Collected by salon</span>
+              <span className="font-semibold text-gray-700">${netCollected.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm border-t border-gray-100 pt-1.5">
+              <span className="text-violet-600 font-semibold">Your commission ({commissionPct}% × ${grossRevenue.toFixed(2)})</span>
+              <span className="font-bold text-violet-700">${commission.toFixed(2)}</span>
+            </div>
+            {totalDiscount > 0 && <p className="text-[11px] text-gray-400 pt-1">Your commission is {commissionPct}% of the full price before any discount.</p>}
           </div>
 
           {/* Tips — groomer gets tipPct%, store keeps the rest */}
