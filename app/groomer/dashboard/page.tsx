@@ -2758,9 +2758,9 @@ export default function GroomerDashboard() {
                     {/* Quick presets — tap to fill (already translated, no waiting). Groomer can still edit or type their own below. */}
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {([
-                        { raw: '您的寶貝今天表現非常好，乖巧又聽話，是個小天使！🐾', english: 'Your baby was wonderful today — so well-behaved and sweet, a little angel! 🐾', traditional: '您的寶貝今天表現非常好，乖巧又聽話，是個小天使！🐾', simplified: '您的宝贝今天表现非常好，乖巧又听话，是个小天使！🐾' },
+                        { raw: '您的寶貝今天表現非常好，乖巧又聽話，是個小天使！🐾', english: 'Your pup was wonderful today — so well-behaved and sweet, a little angel! 🐾', traditional: '您的寶貝今天表現非常好，乖巧又聽話，是個小天使！🐾', simplified: '您的宝贝今天表现非常好，乖巧又听话，是个小天使！🐾' },
                         { raw: '已經洗香香、剪得美美的，隨時可以接走囉～感謝您選擇我們！', english: 'All freshly bathed and groomed to look adorable — ready for pickup! Thank you for choosing us!', traditional: '已經洗香香、剪得美美的，隨時可以接走囉～感謝您選擇我們！', simplified: '已经洗香香、剪得美美的，随时可以接走啰～感谢您选择我们！' },
-                        { raw: '寶貝一開始有點緊張，但整體很配合、表現很棒，期待下次再見！', english: 'Your baby was a little nervous at first but cooperated beautifully and did great. See you next time!', traditional: '寶貝一開始有點緊張，但整體很配合、表現很棒，期待下次再見！', simplified: '宝贝一开始有点紧张，但整体很配合、表现很棒，期待下次再见！' },
+                        { raw: '寶貝一開始有點緊張，但整體很配合、表現很棒，期待下次再見！', english: 'Your pup was a little nervous at first but cooperated beautifully and did great. See you next time!', traditional: '寶貝一開始有點緊張，但整體很配合、表現很棒，期待下次再見！', simplified: '宝贝一开始有点紧张，但整体很配合、表现很棒，期待下次再见！' },
                       ] as const).map((p, i) => (
                         <button
                           key={i}
