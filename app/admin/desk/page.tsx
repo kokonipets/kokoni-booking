@@ -4320,6 +4320,9 @@ export default function DeskAdmin() {
                           }
 
                           // Group by staff
+                          const byTime = (a: Appointment, b: Appointment) =>
+                            parseApptTime(a.appointment_date, a.appointment_time).getTime() -
+                            parseApptTime(b.appointment_date, b.appointment_time).getTime()
                           const staffMap: Record<string, Appointment[]> = {}
                           appointments.forEach(a => {
                             const key = a.assigned_groomer || a.assigned_bather || '— Unassigned'
