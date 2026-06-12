@@ -1600,10 +1600,13 @@ export default function AdminPage() {
                   .map((n: NoteEntry) => ({ id: n.id, name: n.text, price: n.price ?? '' }))
                 const addonSum = existingAddons.reduce((s: number, a: {price:string}) => s + (parseFloat(a.price) || 0), 0)
                 const rawTotal = appt.payment_amount != null ? parseFloat(String(appt.payment_amount)) : 0
-                const baseCalc = addonSum > 0 && rawTotal > 0 ? Math.max(0, rawTotal - addonSum).toString() : (appt.payment_amount != null ? String(appt.payment_amount) : '')
+                // payment_amount is post-discount; add the saved discount back to rebuild the pre-discount base
+                const savedDiscount = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0
+                const baseCalc = rawTotal > 0 ? Math.max(0, rawTotal + savedDiscount - addonSum).toString() : (appt.payment_amount != null ? String(appt.payment_amount) : '')
                 setEditDraftBasePrice(baseCalc)
                 setEditDraftBaseTier((appt as { size_tier?: string | null }).size_tier || '')  // restore saved tier
                 setEditDraftAddOns(existingAddons)
+                setEditDraftDiscount(savedDiscount > 0)
                 setEditDraftTotalSaved(!!appt.payment_amount)
                 setEpAddingNote(false)
                 setEpNoteText('')
@@ -1868,7 +1871,10 @@ export default function AdminPage() {
                               try {
                                 const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                                   method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ action: 'record-payment', payment_amount: amount, addons: editDraftAddOns, size_tier: editDraftBaseTier || null }),
+                                  body: JSON.stringify({ action: 'record-payment', payment_amount: amount, addons: editDraftAddOns, size_tier: editDraftBaseTier || null,
+                                    discount_label: editDraftDiscount ? 'New customer 20% off' : null,
+                                    discount_percent: editDraftDiscount ? '20' : null,
+                                    discount_amount: editDraftDiscount && discountAmt > 0 ? discountAmt.toFixed(2) : null }),
                                 })
                                 if ((await res.json()).success) {
                                   setEditDraftTotalSaved(true)
@@ -2880,7 +2886,10 @@ export default function AdminPage() {
                         try {
                           const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'record-payment', payment_amount: amount, size_tier: popupBaseTier || null }),
+                            body: JSON.stringify({ action: 'record-payment', payment_amount: amount, size_tier: popupBaseTier || null,
+                              discount_label: popupDiscount ? 'New customer 20% off' : null,
+                              discount_percent: popupDiscount ? '20' : null,
+                              discount_amount: popupDiscount && discountAmt > 0 ? discountAmt.toFixed(2) : null }),
                           })
                           if ((await res.json()).success) {
                             setPopupTotalSaved(true)
@@ -2896,7 +2905,7 @@ export default function AdminPage() {
                       {savingPopupPayment ? '⏳ Saving…' : grandTotal > 0 ? (popupTotalSaved ? `✓ Saved · $${grandTotal}` : `💾 Save Total · $${grandTotal}`) : 'Select a size first'}
                     </button>
                     <button
-                      onClick={() => { setEditingPriceId(null); setPopupBasePrice(''); setPopupBaseTier(''); setPopupAddOns([]); setPopupTotalSaved(false) }}
+                      onClick={() => { setEditingPriceId(null); setPopupBasePrice(''); setPopupBaseTier(''); setPopupAddOns([]); setPopupDiscount(false); setPopupTotalSaved(false) }}
                       className="px-3 py-2.5 bg-white text-gray-500 text-sm rounded-xl border border-gray-200 hover:bg-gray-50">✕</button>
                   </div>
                 </div>
@@ -2909,7 +2918,7 @@ export default function AdminPage() {
                     {appt.payment_amount ? `$${appt.payment_amount}` : '—'}
                   </span>
                   <button
-                    onClick={() => { setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount ?? ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns([]); setPopupTotalSaved(false) }}
+                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns([]); setPopupDiscount(sd > 0); setPopupTotalSaved(false) }}
                     className="text-gray-400 hover:text-sky-500 text-xs leading-none"
                     title="Set price"
                   >✏️</button>
