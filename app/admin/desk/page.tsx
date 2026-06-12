@@ -62,6 +62,7 @@ type Appointment = {
   payment_amount: string | null
   payment_method: string | null
   payment_status: string | null
+  size_tier?: string | null
   tip_amount: string | null
   grooming_status: string | null
   grooming_status_updated_at: string | null
@@ -834,7 +835,9 @@ export default function DeskAdmin() {
     } else {
       setDetailBasePrice('')
     }
-    setDetailBaseTier('')
+    // Restore the saved size tier so the exact tile re-highlights (even when
+    // multiple sizes share the same price).
+    setDetailBaseTier((appt as { size_tier?: string | null }).size_tier || '')
     setDetailEditTiersMode(false)
     setDetailEditTiers([])
     setNoteTranslations(null)
@@ -3094,7 +3097,7 @@ export default function DeskAdmin() {
                                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Select Size</p>
                                 <div className={`grid gap-2 mb-3 ${tiers.length <= 2 ? 'grid-cols-2' : tiers.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                   {tiers.map((tier, i) => {
-                                    const explicitMatch = detailBasePrice === tier.price && detailBaseTier === tier.label && !!tier.price
+                                    const explicitMatch = !!detailBaseTier && detailBaseTier === tier.label && !!tier.price
                                     // On a reopened appointment the chosen tier label isn't saved.
                                     // If the price uniquely matches one tier, highlight that tier too.
                                     const uniquePriceMatch = !!tier.price && !detailBaseTier && detailBasePrice === tier.price
@@ -3264,14 +3267,15 @@ export default function DeskAdmin() {
                                   discount_label: detailDiscount ? 'New customer 20% off' : null,
                                   discount_percent: detailDiscount ? '20' : null,
                                   discount_amount: detailDiscount ? discountAmt.toFixed(2) : null,
+                                  size_tier: detailBaseTier || null,
                                 }),
                               })
                               const data = await res.json()
                               if (data.success) {
                                 const addonNotes = detailAddOns.map((a: { id: string; name: string; price: string }) => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
                                 const nonAddonNotes = (detailAppt.notes_list ?? []).filter((n: { is_addon?: boolean }) => !n.is_addon)
-                                setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, notes_list: [...nonAddonNotes, ...addonNotes] } : prev)
-                                setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount } : a))
+                                setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, size_tier: detailBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof prev : prev)
+                                setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount, size_tier: detailBaseTier || null } as typeof a : a))
                                 setTotalSaved(true)
                                 showToast('✓ Total saved!')
                               }

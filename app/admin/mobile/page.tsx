@@ -139,6 +139,7 @@ type Appointment = {
   assigned_bather?: string | null
   groomer_confirmed?: boolean | null
   payment_amount?: string | null
+  size_tier?: string | null
   payment_method?: string | null
   payment_status?: string | null
   tip_amount?: string | null
@@ -1600,7 +1601,7 @@ export default function AdminPage() {
                 const rawTotal = appt.payment_amount != null ? parseFloat(String(appt.payment_amount)) : 0
                 const baseCalc = addonSum > 0 && rawTotal > 0 ? Math.max(0, rawTotal - addonSum).toString() : (appt.payment_amount != null ? String(appt.payment_amount) : '')
                 setEditDraftBasePrice(baseCalc)
-                setEditDraftBaseTier('')  // reset tier selection on load
+                setEditDraftBaseTier((appt as { size_tier?: string | null }).size_tier || '')  // restore saved tier
                 setEditDraftAddOns(existingAddons)
                 setEditDraftTotalSaved(!!appt.payment_amount)
                 setEpAddingNote(false)
@@ -1741,7 +1742,7 @@ export default function AdminPage() {
                               <p className="text-xs text-gray-400">Tap a size ↓</p>
                               <div className="grid grid-cols-2 gap-1.5">
                                 {tiers.map((tier: {label:string;price:string}, i: number) => {
-                                  const explicitMatch = editDraftBasePrice === tier.price && editDraftBaseTier === tier.label && !!tier.price
+                                  const explicitMatch = !!editDraftBaseTier && editDraftBaseTier === tier.label && !!tier.price
                                   // On reopen the chosen tier label isn't saved; highlight when the price uniquely matches one tier.
                                   const uniquePriceMatch = !!tier.price && !editDraftBaseTier && editDraftBasePrice === tier.price
                                     && tiers.filter((t: {price:string}) => t.price === tier.price).length === 1
@@ -1866,7 +1867,7 @@ export default function AdminPage() {
                               try {
                                 const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                                   method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ action: 'record-payment', payment_amount: amount, addons: editDraftAddOns }),
+                                  body: JSON.stringify({ action: 'record-payment', payment_amount: amount, addons: editDraftAddOns, size_tier: editDraftBaseTier || null }),
                                 })
                                 if ((await res.json()).success) {
                                   setEditDraftTotalSaved(true)
@@ -1874,7 +1875,7 @@ export default function AdminPage() {
                                   setAppointments(prev => prev.map(a => {
                                     if (a.id !== appt.id) return a
                                     const nonAddonNotes = (a.notes_list ?? []).filter(n => !n.is_addon)
-                                    return { ...a, payment_amount: amount, notes_list: [...nonAddonNotes, ...addonNotes] }
+                                    return { ...a, payment_amount: amount, size_tier: editDraftBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] }
                                   }))
                                   showToast('✓ Total saved!')
                                 }

@@ -557,7 +557,7 @@ export async function PATCH(
 
   // Record payment
   if (action === 'record-payment') {
-    const { payment_amount, tip_amount, payment_method, payment_status, addons, discount_label, discount_percent, discount_amount } = body
+    const { payment_amount, tip_amount, payment_method, payment_status, addons, discount_label, discount_percent, discount_amount, size_tier } = body
     const updates: Record<string, unknown> = {}
     if (payment_amount !== undefined) updates.payment_amount = payment_amount || null
     if (tip_amount !== undefined) updates.tip_amount = tip_amount || null
@@ -607,6 +607,16 @@ export async function PATCH(
         .update(discountUpdates)
         .eq('id', id)
       if (discountErr) console.warn('Discount fields not saved (run discount migration?):', discountErr.message)
+    }
+
+    // Persist the selected size tier label (best-effort; separate update so
+    // payment recording still succeeds if the size_tier column isn't migrated).
+    if (size_tier !== undefined) {
+      const { error: tierErr } = await supabase
+        .from('appointments')
+        .update({ size_tier: size_tier || null })
+        .eq('id', id)
+      if (tierErr) console.warn('size_tier not saved (run size_tier migration?):', tierErr.message)
     }
 
     return NextResponse.json({ success: true })

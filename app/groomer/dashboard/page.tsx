@@ -24,6 +24,7 @@ type Appointment = {
   notes_list?: { id: string; text: string; author?: string; price?: string; is_addon?: boolean }[] | null
   notes?: string | null
   payment_amount?: string | null
+  size_tier?: string | null
   payment_method?: string | null
   payment_status?: string | null
   tip_amount?: string | null
@@ -715,7 +716,7 @@ export default function GroomerDashboard() {
       const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0)
       const base = parseFloat(appt.payment_amount) - addonTotal
       setPopupBasePrice(base > 0 ? base.toString() : appt.payment_amount)
-      setPopupBaseTier('')
+      setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || '')
     } else if (appt.pets?.id) {
       setPopupBasePrice('')
       setPopupBaseTier('')
@@ -1887,7 +1888,7 @@ export default function GroomerDashboard() {
                         <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Select Size</p>
                         <div className={`grid gap-2 mb-3 ${tiers.length <= 2 ? 'grid-cols-2' : tiers.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                           {tiers.map((tier, i) => {
-                            const explicitMatch = popupBasePrice === tier.price && popupBaseTier === tier.label && !!tier.price
+                            const explicitMatch = !!popupBaseTier && popupBaseTier === tier.label && !!tier.price
                             // On reopen the chosen tier label isn't saved; highlight when the price uniquely matches one tier.
                             const uniquePriceMatch = !!tier.price && !popupBaseTier && popupBasePrice === tier.price
                               && tiers.filter(t => t.price === tier.price).length === 1
@@ -2093,13 +2094,14 @@ export default function GroomerDashboard() {
                               discount_label: selectedCoupon ? selectedCoupon.name : (popupDiscount && discountAmt > 0 ? 'First-time customer 20% off' : null),
                               discount_percent: selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : (popupDiscount && discountAmt > 0 ? '20' : null),
                               discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                              size_tier: popupBaseTier || null,
                             }),
                           })
                           const data = await res.json()
                           if (data.success) {
                             const addonNotes = popupAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
                             const nonAddonNotes = (selectedAppt.notes_list ?? []).filter(n => !n.is_addon)
-                            const updated = { ...selectedAppt, payment_amount: amount, notes_list: [...nonAddonNotes, ...addonNotes] }
+                            const updated = { ...selectedAppt, payment_amount: amount, size_tier: popupBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] }
                             setAppointments(prev => prev.map(a => a.id === selectedAppt.id ? updated : a))
                             setPopupTotalSaved(true)
                             showToast('✓ Total saved!')
