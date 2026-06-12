@@ -469,7 +469,10 @@ export default function DeskAdmin() {
   type DeskCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
   const [availableCoupons, setAvailableCoupons] = useState<DeskCoupon[]>([])
   const [detailCouponId, setDetailCouponId] = useState<string | null>(null)
-  const [detailIsFirstTime, setDetailIsFirstTime] = useState(false)
+  // null = unknown (detection not yet run / failed), true = has a prior PAID visit
+  // (returning), false = no prior paid visit (first-time). First-visit-only coupons
+  // are only blocked when we POSITIVELY know the customer is returning.
+  const [detailHasPriorPaid, setDetailHasPriorPaid] = useState<boolean | null>(null)
   // Add-on services before checkout
   const [detailBasePrice, setDetailBasePrice] = useState('')
   const [detailBaseTier, setDetailBaseTier] = useState('')  // tier label to avoid same-price collision
@@ -843,11 +846,11 @@ export default function DeskAdmin() {
     } else {
       setDetailCouponId(null)
     }
-    // Detect whether this is a first-time customer (no previous paid appointment)
-    setDetailIsFirstTime(false)
+    // Detect whether this customer has a previous PAID appointment (returning).
+    setDetailHasPriorPaid(null) // unknown until the lookup resolves
     if (appt.pets?.id) {
       fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`)
-        .then(r => r.json()).then(d => setDetailIsFirstTime(!d?.amount)).catch(() => {})
+        .then(r => r.json()).then(d => setDetailHasPriorPaid(!!d?.amount)).catch(() => {})
     }
     // Load saved add-ons from notes_list (is_addon: true entries)
     const savedAddOns = (appt.notes_list ?? [])
@@ -3255,7 +3258,7 @@ export default function DeskAdmin() {
                               >
                                 <option value="">Apply discount…</option>
                                 {availableCoupons.map(c => {
-                                  const blocked = c.first_visit_only && !detailIsFirstTime
+                                  const blocked = !!c.first_visit_only && detailHasPriorPaid === true
                                   return (
                                     <option key={c.id} value={c.id} disabled={blocked}>
                                       {c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}{blocked ? ' · first visit only' : ''}
@@ -3308,13 +3311,18 @@ export default function DeskAdmin() {
                             if (!detailAppt || grandTotal <= 0) return
                             const amount = grandTotal.toString()
                             setDetailPayAmount(amount)
+                            // Card/Zelle/Venmo/Check are collected immediately, so saving
+                            // the total marks the appointment paid. Cash keeps its current
+                            // status (it may still be pending collection).
+                            const effectiveStatus = detailPayMethod === 'cash' ? detailPayStatus : 'paid'
+                            if (effectiveStatus !== detailPayStatus) setDetailPayStatus(effectiveStatus)
                             setSavingPayment(true)
                             try {
                               const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                  action: 'record-payment', payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, addons: detailAddOns,
+                                  action: 'record-payment', payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, addons: detailAddOns,
                                   discount_label: selectedCoupon ? selectedCoupon.name : null,
                                   discount_percent: selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : null,
                                   discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
@@ -3328,8 +3336,8 @@ export default function DeskAdmin() {
                                 const dLabel = selectedCoupon ? selectedCoupon.name : null
                                 const dPct = selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : null
                                 const dAmt = discountAmt > 0 ? discountAmt.toFixed(2) : null
-                                setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof prev : prev)
-                                setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt } as typeof a : a))
+                                setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, status: effectiveStatus === 'paid' ? 'completed' : prev.status, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof prev : prev)
+                                setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt } as typeof a : a))
                                 setTotalSaved(true)
                                 showToast('✓ Total saved!')
                               }
@@ -4848,7 +4856,7 @@ export default function DeskAdmin() {
                       <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Actions</span>
                     </div>
                     {pendingAppts.map(appt => (
-                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-amber-50/60 cursor-pointer">
+                      <div key={appt.id} onClick={() => openApptDetail(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-amber-50/60 cursor-pointer">
                         <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
                         <span className="text-sm text-gray-600">{appt.appointment_time}</span>
                         <div className="flex items-center gap-2">
@@ -4889,7 +4897,7 @@ export default function DeskAdmin() {
                       <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Status</span>
                     </div>
                     {rescheduledAppts.map(appt => (
-                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-orange-50/60 cursor-pointer">
+                      <div key={appt.id} onClick={() => openApptDetail(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-orange-50/60 cursor-pointer">
                         <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
                         <span className="text-sm text-gray-600">{appt.appointment_time}</span>
                         <div className="flex items-center gap-2">
@@ -4923,7 +4931,7 @@ export default function DeskAdmin() {
                       <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Action</span>
                     </div>
                     {needsGroomerAppts.map(appt => (
-                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-amber-50/40 cursor-pointer">
+                      <div key={appt.id} onClick={() => openApptDetail(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-amber-50/40 cursor-pointer">
                         <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
                         <span className="text-sm text-gray-600">{appt.appointment_time}</span>
                         <div className="flex items-center gap-2">
@@ -4957,7 +4965,7 @@ export default function DeskAdmin() {
                       <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Assigned To</span>
                     </div>
                     {awaitingGroomerAppts.map(appt => (
-                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-violet-50/40 cursor-pointer">
+                      <div key={appt.id} onClick={() => openApptDetail(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-violet-50/40 cursor-pointer">
                         <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
                         <span className="text-sm text-gray-600">{appt.appointment_time}</span>
                         <div className="flex items-center gap-2">
@@ -4992,7 +5000,7 @@ export default function DeskAdmin() {
                       <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Status</span>
                     </div>
                     {fullyConfirmedAppts.map(appt => (
-                      <div key={appt.id} onClick={() => setDetailAppt(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-emerald-50/50 cursor-pointer">
+                      <div key={appt.id} onClick={() => openApptDetail(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-emerald-50/50 cursor-pointer">
                         <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
                         <span className="text-sm text-gray-600">{appt.appointment_time}</span>
                         <div className="flex items-center gap-2">
