@@ -538,6 +538,7 @@ export default function DeskAdmin() {
   const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('month')
   const [reportsShowDetails, setReportsShowDetails] = useState(false)
   const [incomeChartRange, setIncomeChartRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll'>('week')
+  const [tipsChartGroomer, setTipsChartGroomer] = useState<string>('') // '' = whole store
   const [perfGroomer, setPerfGroomer] = useState<string>('')
   const [perfRange, setPerfRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month'>('today')
   const [reportsCustomStart, setReportsCustomStart] = useState('')
@@ -6872,6 +6873,27 @@ export default function DeskAdmin() {
             const monthsWithRevenue = monthlyRevenue.filter(v => v > 0).length
             const bestMonthIdx = monthlyRevenue.indexOf(Math.max(...monthlyRevenue))
 
+            // ── Store monthly tips across the year (2026), optionally per groomer ──
+            const monthlyTips = Array.from({ length: 12 }, () => 0)
+            const monthlyTipBase = Array.from({ length: 12 }, () => 0) // paid revenue, for tip-rate %
+            reportsAppts.forEach(a => {
+              const d = a.appointment_date || ''
+              if (!d.startsWith(`${REVENUE_YEAR}-`)) return
+              if (tipsChartGroomer && a.assigned_groomer !== tipsChartGroomer) return
+              const m = parseInt(d.slice(5, 7), 10) - 1
+              if (m < 0 || m > 11) return
+              if (a.payment_status === 'paid') {
+                monthlyTips[m] += parseFloat(a.tip_amount || '0')
+                monthlyTipBase[m] += parseFloat(a.payment_amount || '0')
+              }
+            })
+            const monthlyTipsMax = Math.max(...monthlyTips, 1)
+            const yearTipsTotal = monthlyTips.reduce((s, v) => s + v, 0)
+            const yearTipBaseTotal = monthlyTipBase.reduce((s, v) => s + v, 0)
+            const yearTipRate = yearTipBaseTotal > 0 ? (yearTipsTotal / yearTipBaseTotal) * 100 : 0
+            const bestTipMonthIdx = monthlyTips.indexOf(Math.max(...monthlyTips))
+            const tipGroomerLabel = tipsChartGroomer || 'All groomers'
+
             // ── Performance: single-groomer detail (own range selector) ────
             const groomerNames = Array.from(new Set(
               reportsAppts.map(a => a.assigned_groomer).filter((n): n is string => !!n)
@@ -7335,6 +7357,58 @@ export default function DeskAdmin() {
                                 <span key={i} className={`flex-1 text-center text-[10px] ${i === bestMonthIdx ? 'text-sky-600 font-bold' : 'text-gray-400'}`}>{m}</span>
                               ))}
                             </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── STORE MONTHLY TIPS (YEAR) · per-groomer ──────────────── */}
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                          <h3 className="font-bold text-gray-800">💸 Monthly Tips · {REVENUE_YEAR}</h3>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {tipGroomerLabel} · {REVENUE_YEAR} tips ${yearTipsTotal.toFixed(2)}
+                            <span className="text-emerald-500 font-semibold"> · tip rate {yearTipRate.toFixed(1)}%</span>
+                          </p>
+                        </div>
+                        <select
+                          value={tipsChartGroomer}
+                          onChange={e => setTipsChartGroomer(e.target.value)}
+                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white"
+                        >
+                          <option value="">All groomers (store)</option>
+                          {groomerNames.map(n => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="px-5 py-5">
+                        {yearTipsTotal === 0 ? (
+                          <p className="text-sm text-gray-400 text-center py-4">No tips recorded for {tipGroomerLabel} in {REVENUE_YEAR} yet.</p>
+                        ) : (
+                          <>
+                            <div className="flex items-end gap-1.5 h-44">
+                              {monthlyTips.map((v, i) => {
+                                const rate = monthlyTipBase[i] > 0 ? (v / monthlyTipBase[i]) * 100 : 0
+                                return (
+                                  <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                                    <span className="text-[9px] font-semibold text-emerald-500 mb-1 leading-none">{v > 0 ? `${rate.toFixed(0)}%` : ''}</span>
+                                    <div
+                                      className={`w-full rounded-t-md transition-all ${i === bestTipMonthIdx ? 'bg-emerald-600' : 'bg-emerald-400'} hover:bg-emerald-700`}
+                                      style={{ height: `${v > 0 ? Math.max((v / monthlyTipsMax) * 88, 2) : 0}%` }}
+                                      title={`${MONTH_LABELS[i]} ${REVENUE_YEAR}: $${v.toFixed(2)} tips · ${rate.toFixed(1)}% of revenue`}
+                                    />
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <div className="flex gap-1.5 mt-1.5">
+                              {MONTH_LABELS.map((m, i) => (
+                                <span key={i} className={`flex-1 text-center text-[10px] ${i === bestTipMonthIdx ? 'text-emerald-600 font-bold' : 'text-gray-400'}`}>{m}</span>
+                              ))}
+                            </div>
+                            <p className="text-[11px] text-gray-400 mt-3">Bars show monthly tips; the % above each bar is tips ÷ paid revenue for that month.</p>
                           </>
                         )}
                       </div>
