@@ -7022,7 +7022,7 @@ export default function DeskAdmin() {
                 {/* Date range selector */}
                 <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {(['today', 'week', 'this_payroll', 'last_payroll', 'month', 'last_month', 'all', 'custom'] as const).map(r => (
+                    {(['today', 'this_payroll', 'last_payroll', 'month', 'custom'] as const).map(r => (
                       <button
                         key={r}
                         onClick={() => setReportsRange(r)}
