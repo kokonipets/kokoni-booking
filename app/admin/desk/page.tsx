@@ -538,6 +538,7 @@ export default function DeskAdmin() {
   const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('month')
   const [reportsShowDetails, setReportsShowDetails] = useState(false)
   const [incomeChartRange, setIncomeChartRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll'>('week')
+  const [revenueChartGroomer, setRevenueChartGroomer] = useState<string>('') // '' = whole store
   const [tipsChartGroomer, setTipsChartGroomer] = useState<string>('') // '' = whole store
   const [perfGroomer, setPerfGroomer] = useState<string>('')
   const [perfRange, setPerfRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month'>('today')
@@ -6865,6 +6866,7 @@ export default function DeskAdmin() {
               if (a.payment_status !== 'paid') return
               const d = a.appointment_date || ''
               if (!d.startsWith(`${REVENUE_YEAR}-`)) return
+              if (revenueChartGroomer && a.assigned_groomer !== revenueChartGroomer) return
               const m = parseInt(d.slice(5, 7), 10) - 1
               if (m >= 0 && m < 12) monthlyRevenue[m] += parseFloat(a.payment_amount || '0')
             })
@@ -6872,6 +6874,7 @@ export default function DeskAdmin() {
             const yearRevenueTotal = monthlyRevenue.reduce((s, v) => s + v, 0)
             const monthsWithRevenue = monthlyRevenue.filter(v => v > 0).length
             const bestMonthIdx = monthlyRevenue.indexOf(Math.max(...monthlyRevenue))
+            const revGroomerLabel = revenueChartGroomer || 'All groomers'
 
             // ── Store monthly tips across the year (2026), optionally per groomer ──
             const monthlyTips = Array.from({ length: 12 }, () => 0)
@@ -7325,19 +7328,27 @@ export default function DeskAdmin() {
                     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                       <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
                         <div>
-                          <h3 className="font-bold text-gray-800">📈 Store Monthly Revenue · {REVENUE_YEAR}</h3>
+                          <h3 className="font-bold text-gray-800">📈 Monthly Revenue · {REVENUE_YEAR}</h3>
                           <p className="text-xs text-gray-400 mt-0.5">
-                            Paid service revenue by month · {REVENUE_YEAR} total ${yearRevenueTotal.toFixed(2)}
+                            {revGroomerLabel} · {REVENUE_YEAR} total ${yearRevenueTotal.toFixed(2)}
                             {yearRevenueTotal > 0 && <> · best {MONTH_LABELS[bestMonthIdx]} ${monthlyRevenue[bestMonthIdx].toFixed(0)}</>}
+                            {monthsWithRevenue > 0 && <> · avg ${(yearRevenueTotal / monthsWithRevenue).toFixed(0)}/active mo</>}
                           </p>
                         </div>
-                        {monthsWithRevenue > 0 && (
-                          <span className="text-xs text-gray-400">avg ${(yearRevenueTotal / monthsWithRevenue).toFixed(0)}/active mo</span>
-                        )}
+                        <select
+                          value={revenueChartGroomer}
+                          onChange={e => setRevenueChartGroomer(e.target.value)}
+                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white"
+                        >
+                          <option value="">All groomers (store)</option>
+                          {groomerNames.map(n => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
                       </div>
                       <div className="px-5 py-5">
                         {yearRevenueTotal === 0 ? (
-                          <p className="text-sm text-gray-400 text-center py-4">No paid revenue recorded for {REVENUE_YEAR} yet.</p>
+                          <p className="text-sm text-gray-400 text-center py-4">No paid revenue recorded for {revGroomerLabel} in {REVENUE_YEAR} yet.</p>
                         ) : (
                           <>
                             <div className="flex items-end gap-1.5 h-44">
