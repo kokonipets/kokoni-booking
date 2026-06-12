@@ -724,7 +724,12 @@ export default function GroomerDashboard() {
       setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || '')
       if (savedDiscount > 0) {
         const label = (appt as { discount_label?: string | null }).discount_label || ''
+        const savedPct = parseFloat((appt as { discount_percent?: string | null }).discount_percent || '')
+        // Match the saved discount to a coupon: by exact name, else by the same
+        // percent (older labels like "New customer 20% off" won't match the new
+        // code names, but the 20% value still does).
         const matchedCoupon = availableCoupons.find(c => c.name === label)
+          ?? availableCoupons.find(c => !isNaN(savedPct) && c.discount_type === 'percent' && c.discount_value === savedPct)
         if (matchedCoupon) { setPopupCouponId(matchedCoupon.id); setPopupDiscount(false) }
         else { setPopupDiscount(true); setPopupCouponId(null) }
       }
