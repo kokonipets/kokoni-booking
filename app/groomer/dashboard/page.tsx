@@ -1025,7 +1025,9 @@ export default function GroomerDashboard() {
   const PERIOD_DAYS = 14
   const daysSinceAnchor = Math.floor((now.getTime() - PAYROLL_ANCHOR.getTime()) / (1000 * 60 * 60 * 24))
   const periodsElapsed = Math.floor(daysSinceAnchor / PERIOD_DAYS)
-  const thisPayrollStart = new Date(PAYROLL_ANCHOR); thisPayrollStart.setDate(PAYROLL_ANCHOR.getDate() + periodsElapsed * PERIOD_DAYS)
+  // "This Pay" = the most recently COMPLETED period (the one being paid now),
+  // not the in-progress one — so subtract a period from the current index.
+  const thisPayrollStart = new Date(PAYROLL_ANCHOR); thisPayrollStart.setDate(PAYROLL_ANCHOR.getDate() + (periodsElapsed - 1) * PERIOD_DAYS)
   const thisPayrollEnd = new Date(thisPayrollStart); thisPayrollEnd.setDate(thisPayrollStart.getDate() + PERIOD_DAYS - 1)
   const lastPayrollStart = new Date(thisPayrollStart); lastPayrollStart.setDate(thisPayrollStart.getDate() - PERIOD_DAYS)
   const lastPayrollEnd = new Date(thisPayrollStart); lastPayrollEnd.setDate(thisPayrollStart.getDate() - 1)

@@ -1666,7 +1666,9 @@ export default function DeskAdmin() {
     const ANCHOR = new Date(2026, 4, 24), PERIOD = 14
     const days = Math.floor((now.getTime() - ANCHOR.getTime()) / 86400000)
     const periods = Math.floor(days / PERIOD)
-    const start = new Date(ANCHOR); start.setDate(ANCHOR.getDate() + (which === 'last' ? periods - 1 : periods) * PERIOD)
+    // "This Pay" = the most recently completed period (the one being paid now);
+    // "Last Pay" = the period before that. (Shifted back one from the in-progress period.)
+    const start = new Date(ANCHOR); start.setDate(ANCHOR.getDate() + (which === 'last' ? periods - 2 : periods - 1) * PERIOD)
     const end = new Date(start); end.setDate(start.getDate() + PERIOD - 1)
     // Default pay date: the first Friday after the period ends (period ends Sat → next Fri).
     const pay = new Date(end); do { pay.setDate(pay.getDate() + 1) } while (pay.getDay() !== 5)
@@ -1678,7 +1680,7 @@ export default function DeskAdmin() {
   useEffect(() => {
     if (tab !== 'payroll') return
     if (payrollStartDate && payrollEndDate) return
-    const p = computePayrollPeriod('last')
+    const p = computePayrollPeriod('this')
     setPayrollStartDate(p.start); setPayrollEndDate(p.end)
     if (!payrollPayDate) setPayrollPayDate(p.pay)
   }, [tab, computePayrollPeriod, payrollStartDate, payrollEndDate, payrollPayDate])
@@ -6935,7 +6937,7 @@ export default function DeskAdmin() {
             const PERIOD_DAYS = 14
             const daysSinceAnchor = Math.floor((now.getTime() - PAYROLL_ANCHOR.getTime()) / (1000 * 60 * 60 * 24))
             const periodsElapsed = Math.floor(daysSinceAnchor / PERIOD_DAYS)
-            const thisPayrollStart = new Date(PAYROLL_ANCHOR); thisPayrollStart.setDate(PAYROLL_ANCHOR.getDate() + periodsElapsed * PERIOD_DAYS)
+            const thisPayrollStart = new Date(PAYROLL_ANCHOR); thisPayrollStart.setDate(PAYROLL_ANCHOR.getDate() + (periodsElapsed - 1) * PERIOD_DAYS)
             const thisPayrollEnd = new Date(thisPayrollStart); thisPayrollEnd.setDate(thisPayrollStart.getDate() + PERIOD_DAYS - 1)
             const lastPayrollStart = new Date(thisPayrollStart); lastPayrollStart.setDate(thisPayrollStart.getDate() - PERIOD_DAYS)
             const lastPayrollEnd = new Date(thisPayrollStart); lastPayrollEnd.setDate(thisPayrollStart.getDate() - 1)
