@@ -1628,12 +1628,12 @@ export default function GroomerDashboard() {
                   </p>
                   <p className="text-[11px] text-sky-500 mt-1">💰 Payday: {payday(thisPayrollEndStr)}</p>
                 </div>
-                <div className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2.5">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Last Pay Period</p>
-                  <p className="text-sm font-bold text-gray-600 mt-0.5">
-                    {fmtDate(lastPayrollStartStr)} – {fmtDate(lastPayrollEndStr)}
+                <div className="bg-violet-50 border border-violet-100 rounded-2xl px-3 py-2.5">
+                  <p className="text-[10px] font-bold text-violet-400 uppercase tracking-wide">Next Pay Period</p>
+                  <p className="text-sm font-bold text-violet-700 mt-0.5">
+                    {fmtDate(nextPayrollStartStr)} – {fmtDate(nextPayrollEndStr)}
                   </p>
-                  <p className="text-[11px] text-gray-400 mt-1">✓ Paid: {payday(lastPayrollEndStr)}</p>
+                  <p className="text-[11px] text-violet-400 mt-1">🗓️ Payday: {payday(nextPayrollEndStr)}</p>
                 </div>
               </div>
             )
