@@ -226,7 +226,7 @@ export default function GroomerDashboard() {
   const prevPendingCountRef = useRef<number | null>(null)
   const [updateLoading, setUpdateLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'year'>('today')
+  const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'year'>('this_payroll')
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [calendarSelected, setCalendarSelected] = useState<string | null>(null)
   const [calView, setCalView] = useState<'3day' | 'week' | 'month'>('month')
