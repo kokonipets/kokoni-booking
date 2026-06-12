@@ -1592,24 +1592,26 @@ export default function DeskAdmin() {
     }
   }, [payrollStartDate, payrollEndDate, payrollSelectedGroomer, staff])
 
-  // Compute a bi-weekly payroll period (Sat→Fri, anchor 2026-05-16) and a default pay date
+  // Compute a bi-weekly payroll period (Sun→Sat, anchor 2026-05-24) and a default pay date
   const computePayrollPeriod = useCallback((which: 'this' | 'last') => {
     const now = salonNow(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
     const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    const ANCHOR = new Date(2026, 4, 16), PERIOD = 14
+    const ANCHOR = new Date(2026, 4, 24), PERIOD = 14
     const days = Math.floor((now.getTime() - ANCHOR.getTime()) / 86400000)
     const periods = Math.floor(days / PERIOD)
     const start = new Date(ANCHOR); start.setDate(ANCHOR.getDate() + (which === 'last' ? periods - 1 : periods) * PERIOD)
     const end = new Date(start); end.setDate(start.getDate() + PERIOD - 1)
-    const pay = new Date(end); pay.setDate(end.getDate() + 5) // default: ~5 days after period ends
+    // Default pay date: the first Friday after the period ends (period ends Sat → next Fri).
+    const pay = new Date(end); do { pay.setDate(pay.getDate() + 1) } while (pay.getDay() !== 5)
     return { start: fmt(start), end: fmt(end), pay: fmt(pay) }
   }, [])
 
-  // Pre-fill the current pay period (and a default pay date) when entering the Payroll tab
+  // Pre-fill the most recently completed pay period (you run payroll after a
+  // period ends), plus its default pay date, when entering the Payroll tab.
   useEffect(() => {
     if (tab !== 'payroll') return
     if (payrollStartDate && payrollEndDate) return
-    const p = computePayrollPeriod('this')
+    const p = computePayrollPeriod('last')
     setPayrollStartDate(p.start); setPayrollEndDate(p.end)
     if (!payrollPayDate) setPayrollPayDate(p.pay)
   }, [tab, computePayrollPeriod, payrollStartDate, payrollEndDate, payrollPayDate])
@@ -6817,9 +6819,9 @@ export default function DeskAdmin() {
               : `${now.getFullYear()}-${String(now.getMonth()).padStart(2,'0')}-01`
             const lastMonthEnd = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
 
-            // Bi-weekly payroll periods (Sat→Fri, anchor matches groomer dashboard: 2026-05-16)
+            // Bi-weekly payroll periods (Sun→Sat, anchor matches groomer dashboard: 2026-05-24)
             const fmtLocalDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-            const PAYROLL_ANCHOR = new Date(2026, 4, 16) // May 16, 2026 (Saturday)
+            const PAYROLL_ANCHOR = new Date(2026, 4, 24) // May 24, 2026 (Sunday)
             const PERIOD_DAYS = 14
             const daysSinceAnchor = Math.floor((now.getTime() - PAYROLL_ANCHOR.getTime()) / (1000 * 60 * 60 * 24))
             const periodsElapsed = Math.floor(daysSinceAnchor / PERIOD_DAYS)

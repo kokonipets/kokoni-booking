@@ -1000,7 +1000,7 @@ export default function GroomerDashboard() {
   const todayStr = fmtLocal(now)
 
   // ── Payroll periods (bi-weekly, anchor: 2026-05-10) ───────────────────────
-  const PAYROLL_ANCHOR = new Date(2026, 4, 16) // May 16 local time (Saturday); periods run Sat→Fri
+  const PAYROLL_ANCHOR = new Date(2026, 4, 24) // May 24, 2026 (Sunday); periods run Sun→Sat
   const PERIOD_DAYS = 14
   const daysSinceAnchor = Math.floor((now.getTime() - PAYROLL_ANCHOR.getTime()) / (1000 * 60 * 60 * 24))
   const periodsElapsed = Math.floor(daysSinceAnchor / PERIOD_DAYS)
