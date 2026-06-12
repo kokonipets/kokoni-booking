@@ -104,9 +104,9 @@ export default function SettingsPage() {
   const [slotInterval, setSlotInterval] = useState<15 | 30 | 45>(30)
 
   // ── Coupons state ─────────────────────────────────────────────────────────
-  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; created_at: string }
+  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean; created_at: string }
   const [coupons, setCoupons] = useState<Coupon[]>([])
-  const [couponForm, setCouponForm] = useState<{ name: string; code: string; discount_type: 'percent' | 'fixed'; discount_value: string }>({ name: '', code: '', discount_type: 'percent', discount_value: '' })
+  const [couponForm, setCouponForm] = useState<{ name: string; code: string; discount_type: 'percent' | 'fixed'; discount_value: string; first_visit_only: boolean }>({ name: '', code: '', discount_type: 'percent', discount_value: '', first_visit_only: false })
   const [editingCouponId, setEditingCouponId] = useState<string | null>(null)
   const [savingCoupon, setSavingCoupon] = useState(false)
   const [couponMsg, setCouponMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -2315,6 +2315,13 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              <label className="flex items-center gap-2.5 cursor-pointer select-none mb-3">
+                <input type="checkbox" checked={couponForm.first_visit_only}
+                  onChange={e => setCouponForm(p => ({ ...p, first_visit_only: e.target.checked }))}
+                  className="w-4 h-4 accent-pink-500" />
+                <span className="text-sm text-gray-700">🎉 First visit only <span className="text-gray-400">— blocks this code for returning customers</span></span>
+              </label>
+
               <div className="flex gap-2">
                 <button
                   disabled={savingCoupon || !couponForm.name || !couponForm.discount_value}
@@ -2331,7 +2338,7 @@ export default function SettingsPage() {
                       const data = await res.json()
                       if (data.error) throw new Error(data.error)
                       setCouponMsg({ type: 'success', text: editingCouponId ? '✓ Coupon updated!' : '✓ Coupon created!' })
-                      setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '' })
+                      setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '', first_visit_only: false })
                       setEditingCouponId(null)
                       await loadCoupons()
                     } catch (e: unknown) {
@@ -2346,7 +2353,7 @@ export default function SettingsPage() {
                 </button>
                 {editingCouponId && (
                   <button
-                    onClick={() => { setEditingCouponId(null); setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '' }) }}
+                    onClick={() => { setEditingCouponId(null); setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '', first_visit_only: false }) }}
                     className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-semibold rounded-xl transition-colors"
                   >
                     Cancel
@@ -2396,7 +2403,7 @@ export default function SettingsPage() {
                         <button
                           onClick={() => {
                             setEditingCouponId(c.id)
-                            setCouponForm({ name: c.name, code: c.code ?? '', discount_type: c.discount_type, discount_value: c.discount_value.toString() })
+                            setCouponForm({ name: c.name, code: c.code ?? '', discount_type: c.discount_type, discount_value: c.discount_value.toString(), first_visit_only: !!c.first_visit_only })
                             setCouponMsg(null)
                             window.scrollTo({ top: 0, behavior: 'smooth' })
                           }}

@@ -241,7 +241,7 @@ export default function GroomerDashboard() {
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupDiscount, setPopupDiscount] = useState(false)
   const [popupIsFirstTime, setPopupIsFirstTime] = useState(false)
-  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean }
+  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
   const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([])
   const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
@@ -2022,12 +2022,15 @@ export default function GroomerDashboard() {
                                 className={`flex-1 text-sm font-semibold bg-transparent focus:outline-none ${popupCouponId ? 'text-pink-700' : 'text-gray-400'}`}
                               >
                                 <option value="">Apply coupon…</option>
-                                {availableCoupons.map(c => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}
-                                    {c.code ? ` (${c.code})` : ''}
-                                  </option>
-                                ))}
+                                {availableCoupons.map(c => {
+                                  const blocked = c.first_visit_only && !popupIsFirstTime
+                                  return (
+                                    <option key={c.id} value={c.id} disabled={blocked}>
+                                      {c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}
+                                      {c.code ? ` (${c.code})` : ''}{blocked ? ' · first visit only' : ''}
+                                    </option>
+                                  )
+                                })}
                               </select>
                               {popupCouponId && (
                                 <button onClick={() => { setPopupCouponId(null); setPopupTotalSaved(false) }}
