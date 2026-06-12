@@ -2120,7 +2120,10 @@ export default function GroomerDashboard() {
                           if (data.success) {
                             const addonNotes = popupAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
                             const nonAddonNotes = (selectedAppt.notes_list ?? []).filter(n => !n.is_addon)
-                            const updated = { ...selectedAppt, payment_amount: amount, size_tier: popupBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] }
+                            const dLabel = selectedCoupon ? selectedCoupon.name : (popupDiscount && discountAmt > 0 ? 'First-time customer 20% off' : null)
+                            const dPct = selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : (popupDiscount && discountAmt > 0 ? '20' : null)
+                            const dAmt = discountAmt > 0 ? discountAmt.toFixed(2) : null
+                            const updated = { ...selectedAppt, payment_amount: amount, size_tier: popupBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof selectedAppt
                             setAppointments(prev => prev.map(a => a.id === selectedAppt.id ? updated : a))
                             setPopupTotalSaved(true)
                             showToast('✓ Total saved!')

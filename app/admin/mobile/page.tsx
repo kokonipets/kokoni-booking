@@ -1882,7 +1882,11 @@ export default function AdminPage() {
                                   setAppointments(prev => prev.map(a => {
                                     if (a.id !== appt.id) return a
                                     const nonAddonNotes = (a.notes_list ?? []).filter(n => !n.is_addon)
-                                    return { ...a, payment_amount: amount, size_tier: editDraftBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] }
+                                    return { ...a, payment_amount: amount, size_tier: editDraftBaseTier || null,
+                                      discount_label: editDraftDiscount ? 'New customer 20% off' : null,
+                                      discount_percent: editDraftDiscount ? '20' : null,
+                                      discount_amount: editDraftDiscount && discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                                      notes_list: [...nonAddonNotes, ...addonNotes] }
                                   }))
                                   showToast('✓ Total saved!')
                                 }
@@ -2893,7 +2897,10 @@ export default function AdminPage() {
                           })
                           if ((await res.json()).success) {
                             setPopupTotalSaved(true)
-                            setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount, size_tier: popupBaseTier || null } : a))
+                            setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount, size_tier: popupBaseTier || null,
+                              discount_label: popupDiscount ? 'New customer 20% off' : null,
+                              discount_percent: popupDiscount ? '20' : null,
+                              discount_amount: popupDiscount && discountAmt > 0 ? discountAmt.toFixed(2) : null } : a))
                             showToast('✓ Total saved!')
                           }
                         } catch {/**/}

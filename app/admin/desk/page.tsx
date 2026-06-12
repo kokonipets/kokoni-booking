@@ -3280,8 +3280,11 @@ export default function DeskAdmin() {
                               if (data.success) {
                                 const addonNotes = detailAddOns.map((a: { id: string; name: string; price: string }) => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
                                 const nonAddonNotes = (detailAppt.notes_list ?? []).filter((n: { is_addon?: boolean }) => !n.is_addon)
-                                setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, size_tier: detailBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof prev : prev)
-                                setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount, size_tier: detailBaseTier || null } as typeof a : a))
+                                const dLabel = detailDiscount ? 'New customer 20% off' : null
+                                const dPct = detailDiscount ? '20' : null
+                                const dAmt = detailDiscount ? discountAmt.toFixed(2) : null
+                                setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof prev : prev)
+                                setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt } as typeof a : a))
                                 setTotalSaved(true)
                                 showToast('✓ Total saved!')
                               }
