@@ -1633,19 +1633,19 @@ export default function GroomerDashboard() {
             }
             return (
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-sky-50 border border-sky-100 rounded-2xl px-3 py-2.5">
-                  <p className="text-[10px] font-bold text-sky-500 uppercase tracking-wide">This Pay Period</p>
-                  <p className="text-sm font-bold text-sky-800 mt-0.5">
+                <div className="bg-gray-100 border border-gray-200 rounded-2xl px-3 py-2.5">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">This Pay Period</p>
+                  <p className="text-sm font-bold text-gray-800 mt-0.5">
                     {fmtDate(thisPayrollStartStr)} – {fmtDate(thisPayrollEndStr)}
                   </p>
-                  <p className="text-[11px] text-sky-500 mt-1">💰 Payday: {payday(thisPayrollEndStr)}</p>
+                  <p className="text-[11px] text-gray-500 mt-1">💰 Payday: {payday(thisPayrollEndStr)}</p>
                 </div>
-                <div className="bg-violet-50 border border-violet-100 rounded-2xl px-3 py-2.5">
-                  <p className="text-[10px] font-bold text-violet-400 uppercase tracking-wide">Next Pay Period</p>
-                  <p className="text-sm font-bold text-violet-700 mt-0.5">
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2.5">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Next Pay Period</p>
+                  <p className="text-sm font-bold text-gray-600 mt-0.5">
                     {fmtDate(nextPayrollStartStr)} – {fmtDate(nextPayrollEndStr)}
                   </p>
-                  <p className="text-[11px] text-violet-400 mt-1">🗓️ Payday: {payday(nextPayrollEndStr)}</p>
+                  <p className="text-[11px] text-gray-400 mt-1">🗓️ Payday: {payday(nextPayrollEndStr)}</p>
                 </div>
               </div>
             )
