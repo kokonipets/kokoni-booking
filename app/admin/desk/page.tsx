@@ -611,8 +611,14 @@ export default function DeskAdmin() {
     }
     try {
       const auth = JSON.parse(readAuthRaw('admin') || '{}')
-      if (auth?.username) setLoggedInName(auth.username)
-      else if (auth?.name) setLoggedInName(auth.name)
+      // The admin desk identifies as the store. Only show a friendly admin name
+      // if one is set (and it isn't just the login username); never surface a
+      // non-admin/groomer name here. Otherwise show "Kokoni".
+      if (auth?.role === 'admin') {
+        setLoggedInName(auth.name && auth.name !== auth.username ? auth.name : 'Kokoni')
+      } else {
+        setLoggedInName('Kokoni')
+      }
     } catch {}
   }, [])
 
