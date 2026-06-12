@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
         discount_label,
         discount_percent,
         size_tier,
+        grooming_quality,
         checked_in_at,
         grooming_started_at,
         grooming_finished_at,

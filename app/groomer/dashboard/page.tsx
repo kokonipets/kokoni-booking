@@ -471,8 +471,20 @@ export default function GroomerDashboard() {
         setCustomerNoteTranslations(null)
         // Prefill from any existing notes so edits don't lose prior content
         {
-          const q = (appt as unknown as { grooming_quality?: { groomer_diary?: string|null } }).grooming_quality
+          const q = (appt as unknown as { grooming_quality?: {
+            groomer_diary?: string|null
+            groomer_diary_english?: string|null; groomer_diary_traditional?: string|null; groomer_diary_simplified?: string|null
+            customer_note_raw?: string|null
+            customer_note_english?: string|null; customer_note_traditional?: string|null; customer_note_simplified?: string|null
+          } }).grooming_quality
           if (q?.groomer_diary) setGroomerDiary(q.groomer_diary)
+          if (q?.groomer_diary_english || q?.groomer_diary_traditional || q?.groomer_diary_simplified) {
+            setGroomerDiaryTranslations({ english: q.groomer_diary_english ?? '', traditional: q.groomer_diary_traditional ?? '', simplified: q.groomer_diary_simplified ?? '' })
+          }
+          if (q?.customer_note_raw) setCustomerNote(q.customer_note_raw)
+          if (q?.customer_note_english || q?.customer_note_traditional || q?.customer_note_simplified) {
+            setCustomerNoteTranslations({ english: q.customer_note_english ?? '', traditional: q.customer_note_traditional ?? '', simplified: q.customer_note_simplified ?? '' })
+          }
         }
       }
       return
