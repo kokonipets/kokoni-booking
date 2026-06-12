@@ -2761,7 +2761,7 @@ export default function GroomerDashboard() {
                         { raw: '您的寶貝今天表現非常好，乖巧又聽話，是個小天使！🐾', english: 'Your pup was wonderful today — so well-behaved and sweet, a little angel! 🐾', traditional: '您的寶貝今天表現非常好，乖巧又聽話，是個小天使！🐾', simplified: '您的宝贝今天表现非常好，乖巧又听话，是个小天使！🐾' },
                         { raw: '已經洗香香、剪得美美的，隨時可以接走囉～感謝您選擇我們！', english: 'All freshly bathed and groomed to look adorable — ready for pickup! Thank you for choosing us!', traditional: '已經洗香香、剪得美美的，隨時可以接走囉～感謝您選擇我們！', simplified: '已经洗香香、剪得美美的，随时可以接走啰～感谢您选择我们！' },
                         { raw: '寶貝一開始有點緊張，但整體很配合、表現很棒，期待下次再見！', english: 'Your pup was a little nervous at first but cooperated beautifully and did great. See you next time!', traditional: '寶貝一開始有點緊張，但整體很配合、表現很棒，期待下次再見！', simplified: '宝贝一开始有点紧张，但整体很配合、表现很棒，期待下次再见！' },
-                        { raw: '今天有些部位寶貝不太願意讓我們修剪，為了不讓牠有壓力，我們沒有勉強，下次再慢慢嘗試。🐾', english: "There were some areas your pup wasn't comfortable having trimmed today, so we gently skipped them rather than force it — comfort always comes first. We can try again next visit. 🐾", traditional: '今天有些部位寶貝不太願意讓我們修剪，為了不讓牠有壓力，我們沒有勉強，下次再慢慢嘗試。🐾', simplified: '今天有些部位宝贝不太愿意让我们修剪，为了不让它有压力，我们没有勉强，下次再慢慢尝试。🐾' },
+                        { raw: '寶貝今天有些部位比較敏感，我們選擇不強迫，讓整個過程保持輕鬆無壓力。請別擔心，我們會在接下來幾次慢慢幫牠完成。', english: "Your pup got a little sensitive around some areas today, so we chose not to push to keep the experience calm and stress-free. Nothing to worry about — we'll work on it gradually over the next few visits.", traditional: '寶貝今天有些部位比較敏感，我們選擇不強迫，讓整個過程保持輕鬆無壓力。請別擔心，我們會在接下來幾次慢慢幫牠完成。', simplified: '宝贝今天有些部位比较敏感，我们选择不强迫，让整个过程保持轻松无压力。请别担心，我们会在接下来几次慢慢帮它完成。' },
                       ] as const).map((p, i) => (
                         <button
                           key={i}
