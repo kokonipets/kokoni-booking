@@ -226,7 +226,7 @@ export default function GroomerDashboard() {
   const prevPendingCountRef = useRef<number | null>(null)
   const [updateLoading, setUpdateLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'year'>('this_payroll')
+  const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'next_payroll' | 'last_payroll' | 'month' | 'year'>('this_payroll')
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [calendarSelected, setCalendarSelected] = useState<string | null>(null)
   const [calView, setCalView] = useState<'3day' | 'week' | 'month'>('month')
@@ -1032,10 +1032,15 @@ export default function GroomerDashboard() {
   const lastPayrollStart = new Date(thisPayrollStart); lastPayrollStart.setDate(thisPayrollStart.getDate() - PERIOD_DAYS)
   const lastPayrollEnd = new Date(thisPayrollStart); lastPayrollEnd.setDate(thisPayrollStart.getDate() - 1)
   const fmt = fmtLocal
+  // "Next Pay" = the period currently in progress (accruing, not yet paid).
+  const nextPayrollStart = new Date(thisPayrollStart); nextPayrollStart.setDate(thisPayrollStart.getDate() + PERIOD_DAYS)
+  const nextPayrollEnd = new Date(nextPayrollStart); nextPayrollEnd.setDate(nextPayrollStart.getDate() + PERIOD_DAYS - 1)
   const thisPayrollStartStr = fmt(thisPayrollStart)
   const thisPayrollEndStr = fmt(thisPayrollEnd)
   const lastPayrollStartStr = fmt(lastPayrollStart)
   const lastPayrollEndStr = fmt(lastPayrollEnd)
+  const nextPayrollStartStr = fmt(nextPayrollStart)
+  const nextPayrollEndStr = fmt(nextPayrollEnd)
 
   const paidAppts = appointments.filter(a => {
     // Count as paid if: payment_status is explicitly set, OR appointment is done with an amount recorded (legacy pre-kiosk-fix appts)
@@ -1047,6 +1052,7 @@ export default function GroomerDashboard() {
     if (earningsRange === 'today') return a.appointment_date === todayStr
     if (earningsRange === 'week') return a.appointment_date >= weekAgoStr
     if (earningsRange === 'this_payroll') return a.appointment_date >= thisPayrollStartStr && a.appointment_date <= thisPayrollEndStr
+    if (earningsRange === 'next_payroll') return a.appointment_date >= nextPayrollStartStr && a.appointment_date <= nextPayrollEndStr
     if (earningsRange === 'last_payroll') return a.appointment_date >= lastPayrollStartStr && a.appointment_date <= lastPayrollEndStr
     if (earningsRange === 'month') return a.appointment_date >= monthStart
     if (earningsRange === 'year') return a.appointment_date >= yearStart
@@ -1065,6 +1071,7 @@ export default function GroomerDashboard() {
     today: 'Today',
     week: 'This Week',
     this_payroll: 'This Pay',
+    next_payroll: 'Next Pay',
     last_payroll: 'Last Pay',
     month: 'This Month',
     year: String(currentYear),
@@ -1634,7 +1641,7 @@ export default function GroomerDashboard() {
 
           {/* Range selector */}
           <div className="grid grid-cols-5 gap-1.5">
-            {(['today', 'week', 'this_payroll', 'last_payroll', 'month'] as const).map(r => (
+            {(['today', 'last_payroll', 'this_payroll', 'next_payroll', 'month'] as const).map(r => (
               <button
                 key={r}
                 onClick={() => setEarningsRange(r)}
@@ -1710,6 +1717,8 @@ export default function GroomerDashboard() {
                 <p className="text-xs text-gray-400">
                   {earningsRange === 'this_payroll'
                     ? `${thisPayrollStartStr} – ${thisPayrollEndStr}`
+                    : earningsRange === 'next_payroll'
+                    ? `${nextPayrollStartStr} – ${nextPayrollEndStr}`
                     : earningsRange === 'last_payroll'
                     ? `${lastPayrollStartStr} – ${lastPayrollEndStr}`
                     : rangeLabelMap[earningsRange]}
