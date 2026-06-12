@@ -465,7 +465,11 @@ export default function DeskAdmin() {
   const [detailPayStatus, setDetailPayStatus] = useState('unpaid')
   const [savingPayment, setSavingPayment] = useState(false)
   const [totalSaved, setTotalSaved] = useState(false)
-  const [detailDiscount, setDetailDiscount] = useState(false) // 20% new customer discount
+  // Discount codes (shared with groomer): pick from the coupon list, first-visit-only gated
+  type DeskCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
+  const [availableCoupons, setAvailableCoupons] = useState<DeskCoupon[]>([])
+  const [detailCouponId, setDetailCouponId] = useState<string | null>(null)
+  const [detailIsFirstTime, setDetailIsFirstTime] = useState(false)
   // Add-on services before checkout
   const [detailBasePrice, setDetailBasePrice] = useState('')
   const [detailBaseTier, setDetailBaseTier] = useState('')  // tier label to avoid same-price collision
@@ -620,6 +624,10 @@ export default function DeskAdmin() {
         setLoggedInName('Kokoni')
       }
     } catch {}
+    // Load active discount codes for the appointment popup
+    fetch('/api/admin/coupons').then(r => r.json()).then(d => {
+      setAvailableCoupons((d.coupons ?? []).filter((c: DeskCoupon) => c.active))
+    }).catch(() => {})
   }, [])
 
   // No-op — AudioContext created on demand inside play functions
@@ -825,7 +833,22 @@ export default function DeskAdmin() {
     setTotalSaved(!!appt.payment_amount)
     // Restore saved discount state (persisted by record-payment)
     const savedDiscountAmt = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0
-    setDetailDiscount(savedDiscountAmt > 0)
+    // Restore the discount as a coupon selection (match by name, else by percent)
+    if (savedDiscountAmt > 0) {
+      const dLabel = (appt as { discount_label?: string | null }).discount_label || ''
+      const dPct = parseFloat((appt as { discount_percent?: string | null }).discount_percent || '')
+      const matched = availableCoupons.find(c => c.name === dLabel)
+        ?? availableCoupons.find(c => !isNaN(dPct) && c.discount_type === 'percent' && c.discount_value === dPct)
+      setDetailCouponId(matched?.id ?? null)
+    } else {
+      setDetailCouponId(null)
+    }
+    // Detect whether this is a first-time customer (no previous paid appointment)
+    setDetailIsFirstTime(false)
+    if (appt.pets?.id) {
+      fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`)
+        .then(r => r.json()).then(d => setDetailIsFirstTime(!d?.amount)).catch(() => {})
+    }
     // Load saved add-ons from notes_list (is_addon: true entries)
     const savedAddOns = (appt.notes_list ?? [])
       .filter((n: { is_addon?: boolean }) => n.is_addon)
@@ -2977,7 +3000,12 @@ export default function DeskAdmin() {
                     const addOnTotal = detailAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
                     const baseAmt = parseFloat(detailBasePrice) || 0
                     const subtotalAmt = baseAmt + addOnTotal
-                    const discountAmt = detailDiscount ? Math.round(subtotalAmt * 0.20 * 100) / 100 : 0
+                    const selectedCoupon = availableCoupons.find(c => c.id === detailCouponId) ?? null
+                    const discountAmt = selectedCoupon
+                      ? (selectedCoupon.discount_type === 'percent'
+                          ? Math.round(subtotalAmt * selectedCoupon.discount_value / 100 * 100) / 100
+                          : Math.min(selectedCoupon.discount_value, subtotalAmt))
+                      : 0
                     const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
                     const otherServices = services.filter(s => s.id !== detailAppt.service)
                     return (
@@ -3211,18 +3239,31 @@ export default function DeskAdmin() {
                           </div>
                         )}
 
-                        {/* 20% new customer discount toggle */}
+                        {/* Discount code selector (shared with groomer; first-visit-only gated) */}
                         {subtotalAmt > 0 && (
-                          <button
-                            onClick={() => { setDetailDiscount(d => !d); setTotalSaved(false) }}
-                            className={`w-full flex items-center justify-between rounded-2xl px-4 py-2.5 border-2 transition-all mb-3 ${
-                              detailDiscount ? 'bg-pink-50 border-pink-300 text-pink-700' : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200 hover:text-pink-500'
-                            }`}>
-                            <span className="font-bold text-sm">🎉 New customer 20% off</span>
-                            <span className={`text-xs font-black px-2.5 py-1 rounded-full ${detailDiscount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
-                              {detailDiscount ? 'ON' : 'OFF'}
-                            </span>
-                          </button>
+                          <div className={`rounded-2xl border-2 overflow-hidden mb-3 ${detailCouponId ? 'border-pink-300 bg-pink-50' : 'border-gray-200 bg-gray-50'}`}>
+                            <div className="flex items-center px-4 py-2.5 gap-3">
+                              <span className="text-sm">🎟️</span>
+                              <select
+                                value={detailCouponId ?? ''}
+                                onChange={e => { setDetailCouponId(e.target.value || null); setTotalSaved(false) }}
+                                className={`flex-1 text-sm font-semibold bg-transparent focus:outline-none ${detailCouponId ? 'text-pink-700' : 'text-gray-400'}`}
+                              >
+                                <option value="">Apply discount…</option>
+                                {availableCoupons.map(c => {
+                                  const blocked = c.first_visit_only && !detailIsFirstTime
+                                  return (
+                                    <option key={c.id} value={c.id} disabled={blocked}>
+                                      {c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}{blocked ? ' · first visit only' : ''}
+                                    </option>
+                                  )
+                                })}
+                              </select>
+                              {detailCouponId && (
+                                <button onClick={() => { setDetailCouponId(null); setTotalSaved(false) }} className="text-pink-400 hover:text-pink-600 text-lg leading-none">✕</button>
+                              )}
+                            </div>
+                          </div>
                         )}
 
                         {/* Total breakdown */}
@@ -3242,15 +3283,15 @@ export default function DeskAdmin() {
                             ))}
                             {discountAmt > 0 && (
                               <div className="flex justify-between items-center text-sm">
-                                <span className="text-pink-500 font-semibold">🎉 New customer 20% off</span>
+                                <span className="text-pink-500 font-semibold">🎟️ {selectedCoupon?.name ?? 'Discount'}</span>
                                 <span className="font-bold text-pink-500">−${discountAmt.toFixed(2)}</span>
                               </div>
                             )}
                             <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                               <span className="font-bold text-gray-800">Total</span>
                               <div className="text-right">
-                                {detailDiscount && subtotalAmt > 0 && <span className="text-xs text-gray-400 line-through mr-2">${subtotalAmt.toFixed(2)}</span>}
-                                <span className={`text-xl font-black ${totalSaved && grandTotal > 0 ? 'text-emerald-600' : detailDiscount ? 'text-pink-600' : 'text-gray-700'}`}>${grandTotal.toFixed(2)}</span>
+                                {discountAmt > 0 && subtotalAmt > 0 && <span className="text-xs text-gray-400 line-through mr-2">${subtotalAmt.toFixed(2)}</span>}
+                                <span className={`text-xl font-black ${totalSaved && grandTotal > 0 ? 'text-emerald-600' : discountAmt > 0 ? 'text-pink-600' : 'text-gray-700'}`}>${grandTotal.toFixed(2)}</span>
                               </div>
                             </div>
                           </div>
@@ -3270,9 +3311,9 @@ export default function DeskAdmin() {
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                   action: 'record-payment', payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, addons: detailAddOns,
-                                  discount_label: detailDiscount ? 'New customer 20% off' : null,
-                                  discount_percent: detailDiscount ? '20' : null,
-                                  discount_amount: detailDiscount ? discountAmt.toFixed(2) : null,
+                                  discount_label: selectedCoupon ? selectedCoupon.name : null,
+                                  discount_percent: selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : null,
+                                  discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
                                   size_tier: detailBaseTier || null,
                                 }),
                               })
@@ -3280,9 +3321,9 @@ export default function DeskAdmin() {
                               if (data.success) {
                                 const addonNotes = detailAddOns.map((a: { id: string; name: string; price: string }) => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
                                 const nonAddonNotes = (detailAppt.notes_list ?? []).filter((n: { is_addon?: boolean }) => !n.is_addon)
-                                const dLabel = detailDiscount ? 'New customer 20% off' : null
-                                const dPct = detailDiscount ? '20' : null
-                                const dAmt = detailDiscount ? discountAmt.toFixed(2) : null
+                                const dLabel = selectedCoupon ? selectedCoupon.name : null
+                                const dPct = selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : null
+                                const dAmt = discountAmt > 0 ? discountAmt.toFixed(2) : null
                                 setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: detailPayStatus, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof prev : prev)
                                 setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt } as typeof a : a))
                                 setTotalSaved(true)
