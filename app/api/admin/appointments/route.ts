@@ -101,10 +101,12 @@ export async function GET(req: NextRequest) {
       }
     }
   } else if (status === 'today') {
+    // Optional ?date=YYYY-MM-DD lets the Today view browse past days (history).
+    const dayDate = searchParams.get('date') || today
     result = await supabase
       .from('appointments')
       .select(SELECT_FIELDS) // `*` already includes the timeline columns (TODAY_EXTRA_FIELDS)
-      .eq('appointment_date', today)
+      .eq('appointment_date', dayDate)
       .in('status', ['confirmed', 'in_progress', 'completed'])
       .order('appointment_time', { ascending: true })
   } else if (status === 'upcoming') {

@@ -404,6 +404,10 @@ export default function DeskAdmin() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [calendarStaffFilter, setCalendarStaffFilter] = useState<string>('all')
   const [todayGroupByStaff, setTodayGroupByStaff] = useState(false)
+  // Which day the Today view is showing (defaults to the salon's current day).
+  // Lets the owner step back through history with the same timeline detail.
+  const salonDayStr = () => { const n = salonNow(); if (n.getHours() < 4) n.setDate(n.getDate() - 1); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}` }
+  const [todayViewDate, setTodayViewDate] = useState<string>(salonDayStr)
   const [blockedTimes, setBlockedTimes] = useState<{date:string;time:string;reason:string|null}[]>([])
   const [blockingSlot, setBlockingSlot] = useState<{date:string;time:string}|null>(null)
   const [blockReason, setBlockReason] = useState('')
@@ -650,15 +654,21 @@ export default function DeskAdmin() {
   }
 
   // ── Data fetching ─────────────────────────────────────────────────────────
-  const fetchAppointments = useCallback(async (status: string) => {
+  const fetchAppointments = useCallback(async (status: string, date?: string) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/appointments?status=${status}`)
+      const url = date ? `/api/admin/appointments?status=${status}&date=${date}` : `/api/admin/appointments?status=${status}`
+      const res = await fetch(url)
       const data = await res.json()
       setAppointments(data.appointments || [])
     } catch { setAppointments([]) }
     setLoading(false)
   }, [])
+
+  // Today tab: (re)load appointments whenever the tab opens or the viewed day changes.
+  useEffect(() => {
+    if (tab === 'today') fetchAppointments('today', todayViewDate)
+  }, [tab, todayViewDate, fetchAppointments])
 
   const fetchCalendar = useCallback(async () => {
     setLoading(true)
@@ -2229,7 +2239,7 @@ export default function DeskAdmin() {
       fetchReviewSettings()
       return
     }
-    else if (tab === 'today') { fetchAppointments('today'); fetchSettings() }
+    else if (tab === 'today') { fetchSettings() }
     else if (tab === 'grooming') {
       const fetchGrooming = async () => {
         setGroomingLoading(true)
@@ -4152,6 +4162,33 @@ export default function DeskAdmin() {
           {/* ── TODAY ──────────────────────────────────────────────────── */}
           {tab === 'today' && (
             <div>
+              {/* Day navigator — step back through history with the same timeline detail */}
+              {(() => {
+                const todayStr = salonDayStr()
+                const shift = (days: number) => { const d = new Date(todayViewDate + 'T12:00:00'); d.setDate(d.getDate() + days); setTodayViewDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`) }
+                const isToday = todayViewDate === todayStr
+                const label = new Date(todayViewDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+                return (
+                  <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => shift(-1)} className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 text-lg">‹</button>
+                      <div className="relative">
+                        <span className="text-base font-bold text-gray-800">{isToday ? 'Today' : label}</span>
+                        {!isToday && <span className="block text-[11px] text-gray-400 -mt-0.5">{label}</span>}
+                        <input type="date" value={todayViewDate} max={todayStr}
+                          onChange={e => e.target.value && setTodayViewDate(e.target.value)}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full" title="Pick a date" />
+                      </div>
+                      <button onClick={() => shift(1)} disabled={isToday}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 text-lg disabled:opacity-30 disabled:cursor-not-allowed">›</button>
+                    </div>
+                    {!isToday && (
+                      <button onClick={() => setTodayViewDate(todayStr)}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white hover:bg-sky-700">Jump to Today</button>
+                    )}
+                  </div>
+                )
+              })()}
               {loading && <p className="text-gray-400 text-sm">Loading...</p>}
               {!loading && (
                 <div className="space-y-4">
