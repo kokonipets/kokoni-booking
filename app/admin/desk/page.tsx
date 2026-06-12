@@ -595,6 +595,9 @@ export default function DeskAdmin() {
   const [savingWeightId, setSavingWeightId] = useState<string | null>(null)
   const [editingApptWeight, setEditingApptWeight] = useState(false)
   const [apptWeightDraft, setApptWeightDraft] = useState('')
+  const [savingNameId, setSavingNameId] = useState<string | null>(null)
+  const [editingApptName, setEditingApptName] = useState(false)
+  const [petNameDraft, setPetNameDraft] = useState('')
 
   useEffect(() => {
     const bookMode = new URLSearchParams(window.location.search).get('mode') === 'book'
@@ -1354,6 +1357,34 @@ export default function DeskAdmin() {
       }
     } catch { showToast('⚠️ Update error') }
     finally { setSavingWeightId(null) }
+  }
+
+  const updatePetName = async (petId: string, name: string, clientPhone?: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) { setEditingApptName(false); return }
+    setSavingNameId(petId)
+    try {
+      const res = await fetch(`/api/admin/pets/${petId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      })
+      const data = await res.json()
+      if (data.success || !data.error) {
+        if (clientPhone) {
+          setClients(prev => prev.map(c => c.phone === clientPhone
+            ? { ...c, pets: c.pets.map(p => p.id === petId ? { ...p, name: trimmed } : p) }
+            : c))
+        }
+        setDetailAppt(prev => prev && prev.pets?.id === petId ? { ...prev, pets: { ...prev.pets!, name: trimmed } } : prev)
+        setAppointments(prev => prev.map(a => a.pets?.id === petId ? { ...a, pets: { ...a.pets!, name: trimmed } } : a))
+        setEditingApptName(false)
+        showToast('✓ Pet name updated')
+      } else {
+        showToast('⚠️ Failed to update name')
+      }
+    } catch { showToast('⚠️ Update error') }
+    finally { setSavingNameId(null) }
   }
 
   const deletePet = async (clientPhone: string, petId: string) => {
@@ -3262,7 +3293,25 @@ export default function DeskAdmin() {
                         ? <img src={detailAppt.pets.photo_url} className="w-14 h-14 rounded-full object-cover border-2 border-white" alt="" />
                         : <div className="w-14 h-14 rounded-full bg-sky-100 flex items-center justify-center text-3xl">🐶</div>}
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-gray-800">{detailAppt.pets?.name}</p>
+                        {editingApptName ? (
+                          <div className="flex items-center gap-1 mb-0.5">
+                            <input autoFocus value={petNameDraft} onChange={e => setPetNameDraft(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter' && detailAppt.pets?.id) updatePetName(detailAppt.pets.id, petNameDraft); if (e.key === 'Escape') setEditingApptName(false) }}
+                              className="font-bold text-gray-800 border border-sky-300 rounded-lg px-2 py-0.5 w-40 focus:outline-none focus:ring-1 focus:ring-sky-400" />
+                            <button onClick={() => detailAppt.pets?.id && updatePetName(detailAppt.pets.id, petNameDraft)}
+                              disabled={!petNameDraft.trim() || savingNameId === detailAppt.pets?.id}
+                              className="text-xs bg-sky-600 text-white px-2 py-0.5 rounded-lg disabled:opacity-40 hover:bg-sky-700">
+                              {savingNameId === detailAppt.pets?.id ? '…' : 'Save'}
+                            </button>
+                            <button onClick={() => setEditingApptName(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => { setEditingApptName(true); setPetNameDraft(detailAppt.pets?.name || '') }}
+                            className="flex items-center gap-1 font-bold text-gray-800 hover:text-sky-600 group">
+                            <span>{detailAppt.pets?.name}</span>
+                            <span className="opacity-0 group-hover:opacity-100 text-gray-400 text-xs font-normal">✏️</span>
+                          </button>
+                        )}
                         {/* Breed + editable weight */}
                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                           {detailAppt.pets?.breed && <span className="text-xs text-gray-500">{detailAppt.pets.breed}</span>}

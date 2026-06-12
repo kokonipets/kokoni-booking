@@ -105,7 +105,7 @@ function parseApptTimeLA(dateStr: string, timeStr: string): Date {
 }
 
 type EditDraft = {
-  petBreed: string; petWeight: string
+  petName: string; petBreed: string; petWeight: string
   payAmount: string; tipAmount: string; payMethod: string; payStatus: string
   notes: string
   service: string; apptStatus: string
@@ -1254,6 +1254,7 @@ export default function AdminPage() {
     try {
       const petId = appt.pets?.id
       const petUpdates: Record<string, string> = {}
+      if (editDraft.petName.trim()) petUpdates.name = editDraft.petName.trim()
       if (editDraft.petBreed.trim()) petUpdates.breed = editDraft.petBreed.trim()
       if (editDraft.petWeight.trim()) petUpdates.weight = editDraft.petWeight.trim()
       if (petId && Object.keys(petUpdates).length > 0) {
@@ -1581,6 +1582,7 @@ export default function AdminPage() {
                     .catch(() => {/**/})
                 }
                 setEditDraft({
+                  petName: appt.pets?.name ?? '',
                   petBreed: appt.pets?.breed ?? '',
                   petWeight: appt.pets?.weight ?? '',
                   payAmount: appt.payment_amount != null ? String(appt.payment_amount) : '',
@@ -1666,6 +1668,13 @@ export default function AdminPage() {
                   {/* Pet info */}
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Pet Info</p>
+                    <div className="mb-2">
+                      <label className="text-[10px] text-gray-500 font-medium">Name</label>
+                      <input value={editDraft.petName}
+                        onChange={e => setEditDraft(d => d ? { ...d, petName: e.target.value } : d)}
+                        placeholder="Pet name"
+                        className="mt-0.5 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white" />
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] text-gray-500 font-medium">Breed</label>
