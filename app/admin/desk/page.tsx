@@ -6856,6 +6856,22 @@ export default function DeskAdmin() {
             const chartStoreTotal = chartRows.reduce((sum, r) => sum + r.total, 0)
             const chartMax = Math.max(...chartRows.map(r => r.total), 1)
 
+            // ── Store monthly revenue across the year (2026) ──
+            const REVENUE_YEAR = '2026'
+            const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+            const monthlyRevenue = Array.from({ length: 12 }, () => 0)
+            reportsAppts.forEach(a => {
+              if (a.payment_status !== 'paid') return
+              const d = a.appointment_date || ''
+              if (!d.startsWith(`${REVENUE_YEAR}-`)) return
+              const m = parseInt(d.slice(5, 7), 10) - 1
+              if (m >= 0 && m < 12) monthlyRevenue[m] += parseFloat(a.payment_amount || '0')
+            })
+            const monthlyMax = Math.max(...monthlyRevenue, 1)
+            const yearRevenueTotal = monthlyRevenue.reduce((s, v) => s + v, 0)
+            const monthsWithRevenue = monthlyRevenue.filter(v => v > 0).length
+            const bestMonthIdx = monthlyRevenue.indexOf(Math.max(...monthlyRevenue))
+
             // ── Performance: single-groomer detail (own range selector) ────
             const groomerNames = Array.from(new Set(
               reportsAppts.map(a => a.assigned_groomer).filter((n): n is string => !!n)
@@ -7277,6 +7293,47 @@ export default function DeskAdmin() {
                             <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
                               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500 inline-block" />Service revenue</span>
                               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />Tips</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── STORE MONTHLY REVENUE (YEAR) ──────────────────────── */}
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                          <h3 className="font-bold text-gray-800">📈 Store Monthly Revenue · {REVENUE_YEAR}</h3>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Paid service revenue by month · {REVENUE_YEAR} total ${yearRevenueTotal.toFixed(2)}
+                            {yearRevenueTotal > 0 && <> · best {MONTH_LABELS[bestMonthIdx]} ${monthlyRevenue[bestMonthIdx].toFixed(0)}</>}
+                          </p>
+                        </div>
+                        {monthsWithRevenue > 0 && (
+                          <span className="text-xs text-gray-400">avg ${(yearRevenueTotal / monthsWithRevenue).toFixed(0)}/active mo</span>
+                        )}
+                      </div>
+                      <div className="px-5 py-5">
+                        {yearRevenueTotal === 0 ? (
+                          <p className="text-sm text-gray-400 text-center py-4">No paid revenue recorded for {REVENUE_YEAR} yet.</p>
+                        ) : (
+                          <>
+                            <div className="flex items-end gap-1.5 h-44">
+                              {monthlyRevenue.map((v, i) => (
+                                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                                  <span className="text-[9px] font-semibold text-gray-400 mb-1 leading-none">{v > 0 ? `$${Math.round(v)}` : ''}</span>
+                                  <div
+                                    className={`w-full rounded-t-md transition-all ${i === bestMonthIdx ? 'bg-sky-600' : 'bg-sky-400'} hover:bg-sky-700`}
+                                    style={{ height: `${v > 0 ? Math.max((v / monthlyMax) * 88, 2) : 0}%` }}
+                                    title={`${MONTH_LABELS[i]} ${REVENUE_YEAR}: $${v.toFixed(2)}`}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex gap-1.5 mt-1.5">
+                              {MONTH_LABELS.map((m, i) => (
+                                <span key={i} className={`flex-1 text-center text-[10px] ${i === bestMonthIdx ? 'text-sky-600 font-bold' : 'text-gray-400'}`}>{m}</span>
+                              ))}
                             </div>
                           </>
                         )}
