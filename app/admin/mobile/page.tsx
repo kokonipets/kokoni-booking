@@ -346,6 +346,7 @@ export default function AdminPage() {
   const [priceEditVal, setPriceEditVal] = useState('')
   const [savingPriceId, setSavingPriceId] = useState<string | null>(null)
   const [popupBasePrice, setPopupBasePrice] = useState('')
+  const [popupBaseTier, setPopupBaseTier] = useState('')  // tier label to avoid same-price collision
   const [popupAddOns, setPopupAddOns] = useState<{id:string;name:string;price:string}[]>([])
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupDiscount, setPopupDiscount] = useState(false)
@@ -2746,10 +2747,13 @@ export default function AdminPage() {
                       <p className="text-xs text-gray-400 mb-2">Tap a size to select ↓</p>
                       <div className="grid grid-cols-2 gap-1.5 mb-3">
                         {tiers.map((tier: {label:string;price:string}, i: number) => {
-                          const isSelected = popupBasePrice === tier.price && !!tier.price
+                          const explicitMatch = !!popupBaseTier && popupBaseTier === tier.label && !!tier.price
+                          const uniquePriceMatch = !!tier.price && !popupBaseTier && popupBasePrice === tier.price
+                            && tiers.filter((t: {price:string}) => t.price === tier.price).length === 1
+                          const isSelected = explicitMatch || uniquePriceMatch
                           return (
                             <button key={i}
-                              onClick={() => { if (tier.price) { setPopupBasePrice(isSelected ? '' : tier.price); setPopupTotalSaved(false) } }}
+                              onClick={() => { if (tier.price) { setPopupBasePrice(isSelected ? '' : tier.price); setPopupBaseTier(isSelected ? '' : tier.label); setPopupTotalSaved(false) } }}
                               disabled={!tier.price}
                               className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
                                 isSelected
@@ -2778,8 +2782,8 @@ export default function AdminPage() {
                       type="text" inputMode="numeric" pattern="[0-9]*"
                       placeholder="or type a price…"
                       value={tiers.some((t: {price:string}) => t.price === popupBasePrice) ? '' : popupBasePrice}
-                      onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setPopupBasePrice(v); setPopupTotalSaved(false) }}
-                      onFocus={() => { if (tiers.some((t: {price:string}) => t.price === popupBasePrice)) { setPopupBasePrice(''); setPopupTotalSaved(false) } }}
+                      onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setPopupBasePrice(v); setPopupBaseTier(''); setPopupTotalSaved(false) }}
+                      onFocus={() => { if (popupBaseTier) { setPopupBasePrice(''); setPopupBaseTier(''); setPopupTotalSaved(false) } }}
                       className="flex-1 text-sm font-bold text-gray-800 bg-transparent focus:outline-none"
                     />
                   </div>
@@ -2876,11 +2880,11 @@ export default function AdminPage() {
                         try {
                           const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'record-payment', payment_amount: amount }),
+                            body: JSON.stringify({ action: 'record-payment', payment_amount: amount, size_tier: popupBaseTier || null }),
                           })
                           if ((await res.json()).success) {
                             setPopupTotalSaved(true)
-                            setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount } : a))
+                            setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount, size_tier: popupBaseTier || null } : a))
                             showToast('✓ Total saved!')
                           }
                         } catch {/**/}
@@ -2892,7 +2896,7 @@ export default function AdminPage() {
                       {savingPopupPayment ? '⏳ Saving…' : grandTotal > 0 ? (popupTotalSaved ? `✓ Saved · $${grandTotal}` : `💾 Save Total · $${grandTotal}`) : 'Select a size first'}
                     </button>
                     <button
-                      onClick={() => { setEditingPriceId(null); setPopupBasePrice(''); setPopupAddOns([]); setPopupTotalSaved(false) }}
+                      onClick={() => { setEditingPriceId(null); setPopupBasePrice(''); setPopupBaseTier(''); setPopupAddOns([]); setPopupTotalSaved(false) }}
                       className="px-3 py-2.5 bg-white text-gray-500 text-sm rounded-xl border border-gray-200 hover:bg-gray-50">✕</button>
                   </div>
                 </div>
@@ -2905,7 +2909,7 @@ export default function AdminPage() {
                     {appt.payment_amount ? `$${appt.payment_amount}` : '—'}
                   </span>
                   <button
-                    onClick={() => { setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount ?? ''); setPopupAddOns([]); setPopupTotalSaved(false) }}
+                    onClick={() => { setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount ?? ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns([]); setPopupTotalSaved(false) }}
                     className="text-gray-400 hover:text-sky-500 text-xs leading-none"
                     title="Set price"
                   >✏️</button>
