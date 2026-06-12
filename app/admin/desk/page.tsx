@@ -4192,6 +4192,29 @@ export default function DeskAdmin() {
               {loading && <p className="text-gray-400 text-sm">Loading...</p>}
               {!loading && (
                 <div className="space-y-4">
+                  {/* Per-day recap — shown when browsing a past day */}
+                  {todayViewDate !== salonDayStr() && (() => {
+                    const groomed = appointments.filter(a => a.grooming_status === 'done' || a.status === 'completed').length
+                    const paid = appointments.filter(a => a.payment_status === 'paid')
+                    const revenue = paid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
+                    const tips = paid.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
+                    const items = [
+                      { label: 'Pets Groomed', value: String(groomed), color: 'text-gray-800' },
+                      { label: 'Revenue', value: `$${revenue.toFixed(2)}`, color: 'text-emerald-600' },
+                      { label: 'Tips', value: `$${tips.toFixed(2)}`, color: 'text-emerald-500' },
+                      { label: 'Appointments', value: String(appointments.length), color: 'text-gray-800' },
+                    ]
+                    return (
+                      <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {items.map(it => (
+                          <div key={it.label}>
+                            <p className={`text-2xl font-bold ${it.color}`}>{it.value}</p>
+                            <p className="text-xs font-medium text-gray-400 mt-0.5">{it.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                   {/* Stats row */}
                   {(() => {
                     const nowMs = Date.now()
