@@ -927,7 +927,9 @@ export default function GroomerDashboard() {
   }
 
   // ── Derived data ────────────────────────────────────────────────────────
-  const _now = new Date()
+  // Use salon (LA) time, not the viewer's device clock, so "today" and "late"
+  // are correct when staff view from another timezone (e.g. traveling).
+  const _now = salonNow()
   const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
 
   // Today tab — only show appointments the groomer has already accepted (groomer_confirmed)
