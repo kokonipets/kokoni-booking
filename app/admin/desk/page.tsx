@@ -6179,7 +6179,17 @@ export default function DeskAdmin() {
                     <input
                       type="date"
                       value={payrollEndDate}
-                      onChange={e => setPayrollEndDate(e.target.value)}
+                      onChange={e => {
+                        const v = e.target.value
+                        setPayrollEndDate(v)
+                        // Keep the pay date in sync with the groomer's rule:
+                        // the first Friday after the period ends.
+                        if (v) {
+                          const pay = new Date(v + 'T12:00:00')
+                          do { pay.setDate(pay.getDate() + 1) } while (pay.getDay() !== 5)
+                          setPayrollPayDate(`${pay.getFullYear()}-${String(pay.getMonth() + 1).padStart(2, '0')}-${String(pay.getDate()).padStart(2, '0')}`)
+                        }
+                      }}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>

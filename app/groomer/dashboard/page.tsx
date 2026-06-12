@@ -1641,7 +1641,7 @@ export default function GroomerDashboard() {
 
           {/* Range selector */}
           <div className="grid grid-cols-5 gap-1.5">
-            {(['today', 'last_payroll', 'this_payroll', 'next_payroll', 'month'] as const).map(r => (
+            {(['today', 'next_payroll', 'this_payroll', 'last_payroll', 'month'] as const).map(r => (
               <button
                 key={r}
                 onClick={() => setEarningsRange(r)}
