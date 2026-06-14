@@ -62,6 +62,10 @@ export async function GET(req: NextRequest) {
   let blockedHours: { start: string; end: string }[] = []
   try { blockedHours = settings.blocked_hours ? JSON.parse(settings.blocked_hours) : [] } catch { blockedHours = [] }
 
+  // Per-date / per-slot blocks set via the admin calendar "Block" button
+  let blockedTimes: { date: string; time: string; reason: string | null }[] = []
+  try { blockedTimes = settings.blocked_times_list ? JSON.parse(settings.blocked_times_list) : [] } catch { blockedTimes = [] }
+
   // Generate all store time slots, skipping any blocked periods
   // Guard against corrupted DB values (e.g. "11:NaN AM") by checking for NaN
   const allSlots: string[] = []
@@ -156,7 +160,14 @@ export async function GET(req: NextRequest) {
   // 5. Filter: a slot is available if booked < availableGroomers
   //    If we couldn't determine groomer count, fall back to total groomers (no one marked off)
   const capacity = availableGroomers > 0 ? availableGroomers : Math.max(totalGroomers, 1)
+
+  // Slots explicitly blocked for THIS date via the admin calendar
+  const blockedSlotsForDate = new Set(
+    blockedTimes.filter(b => b.date === dateStr).map(b => b.time)
+  )
+
   const availableSlots = allSlots.filter(slot => {
+    if (blockedSlotsForDate.has(slot)) return false
     const booked = bookedCount[slot] || 0
     return booked < capacity
   })
