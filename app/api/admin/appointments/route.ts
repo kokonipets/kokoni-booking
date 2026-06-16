@@ -201,9 +201,17 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   const isNewClient = !existingClient
 
-  // Upsert client — include email if provided
-  const clientFields: Record<string, string> = { phone, name: clientName || phone }
-  if (email) clientFields.email = email
+  // Upsert client — never overwrite an existing client's saved name/email with blanks.
+  // Only columns present in the payload are written, so omitting name/email for an
+  // existing client leaves their stored values untouched. A brand-new client falls
+  // back to the phone number so the row always has a name.
+  const clientFields: Record<string, string> = { phone }
+  if (clientName?.trim()) {
+    clientFields.name = clientName.trim()
+  } else if (isNewClient) {
+    clientFields.name = phone
+  }
+  if (email?.trim()) clientFields.email = email.trim()
   const { error: clientError } = await supabase
     .from('clients')
     .upsert(clientFields, { onConflict: 'phone' })
