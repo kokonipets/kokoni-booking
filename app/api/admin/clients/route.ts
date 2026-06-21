@@ -12,12 +12,35 @@ function getAdminClient() {
   )
 }
 
+// Normalize a phone to its bare digits so the same number matches regardless of
+// the format it was stored in — "(626) 429-0038", "626-429-0038", "+16264290038"
+// and "6264290038" all normalize to "6264290038".
+function normalizePhone(p?: string | null): string {
+  return (p || '').replace(/\D/g, '')
+}
+
+// All common stored formats for a 10-digit number, used to fetch child rows
+// (pets / pickups / appointments) that may have been saved in a different format
+// than the client record.
+function phoneVariants(digits: string): string[] {
+  const v = [digits]
+  if (digits.length === 10) {
+    v.push(`(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`)
+    v.push(`${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`)
+    v.push(`+1${digits}`)
+  }
+  return v
+}
+
 export async function GET(req: NextRequest) {
   const supabase = getAdminClient()
   const { searchParams } = new URL(req.url)
   const phoneFilter = searchParams.get('phone')
 
-  // 1. Fetch clients (no join — pets/pickups linked by phone, not FK)
+  // 1. Fetch clients (no join — pets/pickups linked by phone, not FK).
+  //    Client rows are matched EXACTLY: the admin lookup tries every phone format
+  //    in turn, so exact matching is enough and — unlike normalized matching —
+  //    won't surface a duplicate/orphan client row that happens to share a number.
   let clientQuery = supabase
     .from('clients')
     .select('name, phone, email, address, created_at')
@@ -27,11 +50,16 @@ export async function GET(req: NextRequest) {
   const { data: clientRows, error: clientsError } = await clientQuery
   if (clientsError) return NextResponse.json({ error: clientsError.message }, { status: 500 })
 
-  // Also pull any phones from appointments that may not have a clients row
-  const { data: apptRows } = await supabase
+  // Also pull any phones from appointments that may not have a clients row.
+  // IMPORTANT: respect the phone filter here too — previously this query was
+  // unfiltered, so every single-client lookup returned ALL clients (the synthetic
+  // rows leaked in), which broke the admin "find client by phone" flow.
+  let apptPhoneQuery = supabase
     .from('appointments')
     .select('client_phone')
     .not('client_phone', 'is', null)
+  if (phoneFilter) apptPhoneQuery = apptPhoneQuery.eq('client_phone', phoneFilter)
+  const { data: apptRows } = await apptPhoneQuery
 
   const extraPhones = [...new Set((apptRows ?? []).map((a: { client_phone: string }) => a.client_phone))]
   const existingPhones = new Set((clientRows ?? []).map((c: { phone: string }) => c.phone))
@@ -44,63 +72,76 @@ export async function GET(req: NextRequest) {
   const clients = [...(clientRows ?? []), ...syntheticClients]
   if (clients.length === 0) return NextResponse.json({ clients: [] })
 
-  const phones = clients.map((c: { phone: string }) => c.phone)
+  // Child rows (pets/pickups/appointments) are linked by NORMALIZED phone below,
+  // so fetch them across all format variants of the matched clients' numbers. This
+  // makes a client whose number was saved in one format still show pets/appointments
+  // that were saved in another format.
+  const targetNorms = [...new Set(clients.map(c => normalizePhone(c.phone)).filter(Boolean))]
+  const childPhones = [...new Set(targetNorms.flatMap(phoneVariants))]
 
-  // 2. Fetch pets by client_phone
-  const { data: petsRaw, error: petsError } = await supabase
+  // 2. Fetch pets
+  let petsQuery = supabase
     .from('pets')
     .select('id, name, breed, weight, vaccine_status, vaccine_expiry, photo_url, client_phone, pet_tags ( tags ( id, name, color ) )')
-    .in('client_phone', phones)
+  if (phoneFilter) petsQuery = petsQuery.in('client_phone', childPhones)
+  const { data: petsRaw, error: petsError } = await petsQuery
   if (petsError) return NextResponse.json({ error: petsError.message }, { status: 500 })
 
-  // 3. Fetch authorized pickups by client_phone
-  const { data: pickups, error: pickupsError } = await supabase
+  // 3. Fetch authorized pickups
+  let pickupsQuery = supabase
     .from('authorized_pickups')
     .select('id, name, relationship, client_phone')
-    .in('client_phone', phones)
+  if (phoneFilter) pickupsQuery = pickupsQuery.in('client_phone', childPhones)
+  const { data: pickups, error: pickupsError } = await pickupsQuery
   if (pickupsError) return NextResponse.json({ error: pickupsError.message }, { status: 500 })
 
-  // 4. Fetch appointments by client_phone
+  // 4. Fetch appointments
   let apptQuery = supabase
     .from('appointments')
     .select('id, appointment_date, appointment_time, service, status, client_phone, pet_id, assigned_groomer, assigned_bather, payment_amount, payment_method, created_at, confirmed_at, checked_in_at, grooming_started_at, grooming_finished_at, notes, notes_english, notes_chinese, notes_list, health_check, grooming_quality, health_check_completed_at, grooming_quality_completed_at')
     .order('appointment_date', { ascending: false })
-  if (phoneFilter) apptQuery = apptQuery.eq('client_phone', phoneFilter)
-  else apptQuery = apptQuery.in('client_phone', phones)
+  if (phoneFilter) apptQuery = apptQuery.in('client_phone', childPhones)
 
   const { data: appointments, error: apptError } = await apptQuery
   if (apptError) return NextResponse.json({ error: apptError.message }, { status: 500 })
 
-  // 5. Group by phone and flatten pet_tags
+  // 5. Group child rows by NORMALIZED phone so format mismatches still link, then
+  //    flatten pet_tags.
   type PetWithJoin = { client_phone: string; pet_tags?: { tags: unknown }[] } & Record<string, unknown>
 
-  const petsByPhone: Record<string, unknown[]> = {}
+  const petsByNorm: Record<string, unknown[]> = {}
   for (const p of (petsRaw ?? []) as PetWithJoin[]) {
     const { pet_tags, client_phone: petPhone, ...rest } = p
     const tags = (pet_tags ?? []).map((pt: { tags: unknown }) => pt.tags).filter(Boolean)
-    if (!petsByPhone[petPhone]) petsByPhone[petPhone] = []
-    petsByPhone[petPhone].push({ ...rest, tags })
+    const n = normalizePhone(petPhone)
+    if (!petsByNorm[n]) petsByNorm[n] = []
+    petsByNorm[n].push({ ...rest, tags })
   }
 
-  const pickupsByPhone: Record<string, unknown[]> = {}
+  const pickupsByNorm: Record<string, unknown[]> = {}
   for (const pk of pickups ?? []) {
     const { client_phone, ...rest } = pk as { client_phone: string } & Record<string, unknown>
-    if (!pickupsByPhone[client_phone]) pickupsByPhone[client_phone] = []
-    pickupsByPhone[client_phone].push(rest)
+    const n = normalizePhone(client_phone)
+    if (!pickupsByNorm[n]) pickupsByNorm[n] = []
+    pickupsByNorm[n].push(rest)
   }
 
-  const apptsByPhone: Record<string, unknown[]> = {}
-  for (const appt of appointments ?? []) {
-    if (!apptsByPhone[appt.client_phone]) apptsByPhone[appt.client_phone] = []
-    apptsByPhone[appt.client_phone].push(appt)
+  const apptsByNorm: Record<string, unknown[]> = {}
+  for (const appt of (appointments ?? []) as { client_phone: string }[]) {
+    const n = normalizePhone(appt.client_phone)
+    if (!apptsByNorm[n]) apptsByNorm[n] = []
+    apptsByNorm[n].push(appt)
   }
 
-  const merged = clients.map(c => ({
-    ...c,
-    pets: petsByPhone[c.phone] ?? [],
-    authorized_pickups: pickupsByPhone[c.phone] ?? [],
-    appointments: apptsByPhone[c.phone] ?? [],
-  }))
+  const merged = clients.map(c => {
+    const n = normalizePhone(c.phone)
+    return {
+      ...c,
+      pets: petsByNorm[n] ?? [],
+      authorized_pickups: pickupsByNorm[n] ?? [],
+      appointments: apptsByNorm[n] ?? [],
+    }
+  })
 
   return NextResponse.json({ clients: merged })
 }
