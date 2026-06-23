@@ -109,7 +109,7 @@ export default function WindowDisplay() {
       <div className="h-[10px] w-full shrink-0" style={{ background: 'linear-gradient(90deg,#7fd0e8,#2f9fd4,#1c4f95)' }} />
 
       {/* ── HEADLINE (top) ── */}
-      <header className="shrink-0 text-center px-[6vw] pt-[3.2vh] pb-[2vh] relative">
+      <header className="shrink-0 text-center px-[6vw] pt-[3.2vh] pb-[2vh]">
         <div className={`transition-all duration-500 ${tagShown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
           <h1 className="leading-[1.05] text-[#1c4f95]"
             style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 'clamp(40px,6vh,92px)', textWrap: 'balance' }}>
@@ -119,9 +119,6 @@ export default function WindowDisplay() {
             {tag.sub}
           </p>
         </div>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/char-flower.png" alt="" className="absolute right-[5vw] top-[2vh] w-[9vw] max-w-[110px] opacity-90"
-          style={{ animation: 'floaty 3.5s ease-in-out infinite alternate' }} />
       </header>
 
       {/* ── HERO PHOTO (middle) ── */}
