@@ -248,7 +248,10 @@ export default function BookPage() {
   const [vaccineContactMethod, setVaccineContactMethod] = useState<'email' | 'text' | null>(null)
 
   // Availability + services (fetched from admin settings)
-  const [allowedDays, setAllowedDays] = useState<number[]>([1, 2, 3, 4, 5, 6])
+  // Start with NO days bookable; the real open days load from settings. This
+  // "fails closed" so a slow/failed settings fetch can't let someone book a day
+  // the salon is actually closed (e.g. Saturday).
+  const [allowedDays, setAllowedDays] = useState<number[]>([])
   const [blockedDates, setBlockedDates] = useState<string[]>([])
   const [dynamicTimeSlots, setDynamicTimeSlots] = useState<string[]>(TIME_SLOTS)
   const [openDaysLabel, setOpenDaysLabel] = useState('Monday – Saturday')

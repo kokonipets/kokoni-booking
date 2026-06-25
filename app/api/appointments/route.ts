@@ -34,6 +34,31 @@ export async function POST(req: NextRequest) {
     vaccineSmsOnly,
   } = body
 
+  // Defense-in-depth: never accept a booking on a closed day or blocked date,
+  // even if the customer's page somehow offered it (e.g. settings didn't load).
+  if (date) {
+    const { data: settingRows } = await supabase
+      .from('salon_settings')
+      .select('key, value')
+      .in('key', ['open_days', 'blocked_dates_list'])
+    const settings: Record<string, string> = {}
+    for (const r of (settingRows ?? []) as { key: string; value: string }[]) settings[r.key] = r.value
+    let openDays: number[] | null = null
+    try { if (settings.open_days) openDays = JSON.parse(settings.open_days) } catch { openDays = null }
+    let blockedDates: string[] = []
+    try {
+      const list = settings.blocked_dates_list ? JSON.parse(settings.blocked_dates_list) : []
+      blockedDates = list.map((b: { date: string }) => b.date)
+    } catch { blockedDates = [] }
+    const dow = new Date(`${date}T12:00:00`).getDay() // 0=Sun … 6=Sat
+    if ((openDays && !openDays.includes(dow)) || blockedDates.includes(date)) {
+      return NextResponse.json(
+        { error: 'Sorry, that date is not available for booking. Please pick another day.' },
+        { status: 400 }
+      )
+    }
+  }
+
   let resolvedPetId = existingPetId
 
   try {

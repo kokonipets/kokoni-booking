@@ -218,7 +218,8 @@ export default function BookPageZhTw() {
   const [needsVaccineEmail, setNeedsVaccineEmail] = useState(false)
   const [vaccineContactMethod, setVaccineContactMethod] = useState<'email' | 'text' | null>(null)
 
-  const [allowedDays, setAllowedDays] = useState<number[]>([1, 2, 3, 4, 5, 6])
+  // Fail closed: no day bookable until real open days load from settings.
+  const [allowedDays, setAllowedDays] = useState<number[]>([])
   const [blockedDates, setBlockedDates] = useState<string[]>([])
   const [dynamicTimeSlots, setDynamicTimeSlots] = useState<string[]>(TIME_SLOTS)
   const [openDaysLabel, setOpenDaysLabel] = useState('週一至週六')
