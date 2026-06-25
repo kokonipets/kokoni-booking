@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createSupabaseServer } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+export const revalidate = 0
 
 // Strip +1 / spaces / dashes → 10-digit
 function toTenDigits(num: string): string {
