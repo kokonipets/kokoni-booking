@@ -247,6 +247,11 @@ export default function AdminPage() {
   const [checkoutPayStatus, setCheckoutPayStatus] = useState<Record<string, string>>({})
   const [savingCheckoutId, setSavingCheckoutId] = useState<string | null>(null)
   const [todaySearch, setTodaySearch] = useState('')
+  // Period reports on the Check Out tab (Today uses today's list; wider ranges
+  // load all appointments and filter client-side, like the desktop Reports tab).
+  const [reportRange, setReportRange] = useState<'today' | 'week' | 'month' | 'last_month' | 'all'>('today')
+  const [reportAppts, setReportAppts] = useState<Appointment[]>([])
+  const [reportLoading, setReportLoading] = useState(false)
   const [groomerFilter, setGroomerFilter] = useState<string | null>(null)
   const [expandedApptId, setExpandedApptId] = useState<string | null>(null)
   const [expandedPetTags, setExpandedPetTags] = useState<PetTag[]>([])
@@ -1054,6 +1059,19 @@ export default function AdminPage() {
     setCheckoutLoading(false)
   }, [])
 
+  // Load all appointments for the wider-period reports (week/month/etc.)
+  const fetchReportAppts = useCallback(async () => {
+    setReportLoading(true)
+    try {
+      const res = await fetch('/api/admin/appointments?status=all')
+      const data = await res.json()
+      setReportAppts(data.appointments || [])
+    } catch {
+      setReportAppts([])
+    }
+    setReportLoading(false)
+  }, [])
+
   const uploadPetPhoto = async (petId: string, file: File) => {
     // Show the new photo INSTANTLY from local file before the server responds
     const localUrl = URL.createObjectURL(file)
@@ -1095,6 +1113,11 @@ export default function AdminPage() {
     // Always load service settings so pricing tiers are available in all tabs
     if (tab !== 'settings') fetchSettings()
   }, [authed, tab, fetchAppointments, fetchCalendar, fetchSettings, fetchCustomers, fetchCheckout])
+
+  // Load all-appointment data for the Check Out tab's wider-period reports.
+  useEffect(() => {
+    if (authed && tab === 'checkout' && reportRange !== 'today') fetchReportAppts()
+  }, [authed, tab, reportRange, fetchReportAppts])
 
   // Always load staff on login so groomer/bather dropdowns work on any tab
   useEffect(() => {
@@ -4516,34 +4539,79 @@ export default function AdminPage() {
 
           {/* ── Checkout Tab ── */}
           {tab === 'checkout' && (() => {
-            const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' })
+            const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' })
+            // Today's collection lists (always today) — drive the payment list below.
             const paidAppts  = checkoutAppts.filter(a => a.payment_status === 'paid')
             const unpaidAppts = checkoutAppts.filter(a => a.payment_status !== 'paid' && a.status !== 'cancelled')
-            const totalRevenue = paidAppts.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
-            const totalTips    = paidAppts.reduce((s, a) => s + parseFloat(a.tip_amount    || '0'), 0)
-            const totalAll     = totalRevenue + totalTips
 
-            // Payment method breakdown
+            // ── Period report (mirrors the desktop Reports tab) ──
+            const tzStr = (dt: Date) => dt.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+            const todayStr = tzStr(new Date())
+            const wa = new Date(); wa.setDate(wa.getDate() - 6); const weekAgoStr = tzStr(wa)
+            const monthStart = todayStr.slice(0, 7) + '-01'
+            const [yNow, mNow] = todayStr.split('-').map(Number)
+            const lmDate = new Date(yNow, mNow - 1, 1); lmDate.setMonth(lmDate.getMonth() - 1)
+            const lastMonthStart = `${lmDate.getFullYear()}-${String(lmDate.getMonth() + 1).padStart(2, '0')}-01`
+            const inReportRange = (date: string) => {
+              if (reportRange === 'today') return date === todayStr
+              if (reportRange === 'week') return date >= weekAgoStr
+              if (reportRange === 'month') return date >= monthStart
+              if (reportRange === 'last_month') return date >= lastMonthStart && date < monthStart
+              return true // all
+            }
+            const reportSrc = reportRange === 'today' ? checkoutAppts : reportAppts
+            const rangeAppts = reportSrc.filter(a => a.payment_status === 'paid' && inReportRange(a.appointment_date))
+            const totalRevenue = rangeAppts.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
+            const totalTips    = rangeAppts.reduce((s, a) => s + parseFloat(a.tip_amount    || '0'), 0)
+            const totalAll     = totalRevenue + totalTips
+            const rangeLabel: string = ({ today: 'Today', week: 'Last 7 Days', month: 'This Month', last_month: 'Last Month', all: 'All Time' } as Record<string, string>)[reportRange]
+            const reportBusy = reportRange !== 'today' && reportLoading
+
+            // Payment method breakdown (selected period)
             const methodTotals: Record<string, number> = {}
-            paidAppts.forEach(a => {
+            rangeAppts.forEach(a => {
               const m = a.payment_method || 'other'
               methodTotals[m] = (methodTotals[m] || 0) + parseFloat(a.payment_amount || '0')
             })
             const methodIcons: Record<string, string> = { cash: '💵', card: '💳', venmo: '📱', zelle: '🔵', check: '📝', other: '⋯' }
+
+            // Per-groomer breakdown (selected period)
+            const groomerAgg: Record<string, { name: string; rev: number; tips: number; count: number }> = {}
+            rangeAppts.forEach(a => {
+              const k = a.assigned_groomer || '(Unassigned)'
+              if (!groomerAgg[k]) groomerAgg[k] = { name: k, rev: 0, tips: 0, count: 0 }
+              groomerAgg[k].rev += parseFloat(a.payment_amount || '0')
+              groomerAgg[k].tips += parseFloat(a.tip_amount || '0')
+              groomerAgg[k].count += 1
+            })
+            const groomerRows = Object.values(groomerAgg).sort((a, b) => b.rev - a.rev)
+            const periodChips: { k: typeof reportRange; label: string }[] = [
+              { k: 'today', label: 'Today' }, { k: 'week', label: 'Week' }, { k: 'month', label: 'Month' },
+              { k: 'last_month', label: 'Last Mo' }, { k: 'all', label: 'All' },
+            ]
 
             return (
               <div className="pb-6">
                 {checkoutLoading && <div className="text-center py-12 text-gray-400 text-sm">Loading...</div>}
                 {!checkoutLoading && (
                   <>
-                    {/* ── Daily Summary Header ── */}
+                    {/* ── Sales Report Header (period-aware) ── */}
                     <div className="bg-[#1e2a4a] px-4 pt-4 pb-5">
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <p className="text-white/60 text-xs font-medium">Daily Report</p>
-                          <p className="text-white text-sm font-bold">{today}</p>
+                          <p className="text-white/60 text-xs font-medium">📊 Sales Report</p>
+                          <p className="text-white text-sm font-bold">{reportRange === 'today' ? todayLabel : rangeLabel}</p>
                         </div>
-                        <button onClick={fetchCheckout} className="text-white/60 hover:text-white text-sm px-2 py-1 rounded-lg border border-white/20">↻ Refresh</button>
+                        <button onClick={() => { fetchCheckout(); if (reportRange !== 'today') fetchReportAppts() }} className="text-white/60 hover:text-white text-sm px-2 py-1 rounded-lg border border-white/20">↻ Refresh</button>
+                      </div>
+                      {/* Period selector */}
+                      <div className="flex gap-1.5 mb-3 overflow-x-auto -mx-1 px-1">
+                        {periodChips.map(c => (
+                          <button key={c.k} onClick={() => setReportRange(c.k)}
+                            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${reportRange === c.k ? 'bg-sky-500 text-white' : 'bg-white/10 text-white/70'}`}>
+                            {c.label}
+                          </button>
+                        ))}
                       </div>
                       {/* Big numbers */}
                       <div className="grid grid-cols-3 gap-2">
@@ -4560,6 +4628,7 @@ export default function AdminPage() {
                           <p className="text-white/60 text-[10px] font-bold uppercase tracking-wide mt-0.5">Total</p>
                         </div>
                       </div>
+                      <p className="text-white/50 text-[11px] mt-2">{reportBusy ? 'Loading…' : `${rangeAppts.length} pet${rangeAppts.length === 1 ? '' : 's'} paid · ${rangeLabel}`}</p>
                       {/* Method breakdown */}
                       {Object.keys(methodTotals).length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-3">
@@ -4567,6 +4636,18 @@ export default function AdminPage() {
                             <span key={m} className="bg-white/10 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
                               {methodIcons[m] ?? '⋯'} {m.charAt(0).toUpperCase() + m.slice(1)}: ${amt.toFixed(0)}
                             </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Per-groomer breakdown */}
+                      {groomerRows.length > 0 && (
+                        <div className="mt-3 bg-white/5 rounded-xl p-2.5 space-y-1.5">
+                          <p className="text-white/50 text-[10px] font-bold uppercase tracking-wide px-1">By Groomer</p>
+                          {groomerRows.map(g => (
+                            <div key={g.name} className="flex items-center justify-between px-1">
+                              <span className="text-white/90 text-xs font-medium truncate">{g.name.split(' ')[0]}</span>
+                              <span className="text-white/70 text-xs shrink-0">{g.count} · <span className="text-white font-bold">${g.rev.toFixed(0)}</span>{g.tips > 0 && <span className="text-emerald-300"> +${g.tips.toFixed(0)} tip</span>}</span>
+                            </div>
                           ))}
                         </div>
                       )}
