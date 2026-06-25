@@ -50,12 +50,29 @@ export async function POST(req: NextRequest) {
       const list = settings.blocked_dates_list ? JSON.parse(settings.blocked_dates_list) : []
       blockedDates = list.map((b: { date: string }) => b.date)
     } catch { blockedDates = [] }
-    const dow = new Date(`${date}T12:00:00`).getDay() // 0=Sun … 6=Sat
-    if ((openDays && !openDays.includes(dow)) || blockedDates.includes(date)) {
-      return NextResponse.json(
-        { error: 'Sorry, that date is not available for booking. Please pick another day.' },
-        { status: 400 }
-      )
+
+    // The booking pages send the date as "M/D/YYYY" (e.g. "6/28/2026"); other
+    // callers may send ISO "YYYY-MM-DD". Parse both into a local-noon Date (no
+    // timezone shift) and a normalized ISO string for the blocked-list check.
+    let dt: Date | null = null
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {
+      const [mm, dd, yy] = date.split('/').map(Number)
+      dt = new Date(yy, mm - 1, dd, 12)
+    } else if (/^\d{4}-\d{2}-\d{2}/.test(date)) {
+      const [yy, mm, dd] = date.slice(0, 10).split('-').map(Number)
+      dt = new Date(yy, mm - 1, dd, 12)
+    }
+    // Only enforce when we could actually parse the date (never reject on an
+    // unrecognized format — that would block legitimate bookings).
+    if (dt && !isNaN(dt.getTime())) {
+      const dow = dt.getDay() // 0=Sun … 6=Sat
+      const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+      if ((openDays && !openDays.includes(dow)) || blockedDates.includes(iso)) {
+        return NextResponse.json(
+          { error: 'Sorry, that date is not available for booking. Please pick another day.' },
+          { status: 400 }
+        )
+      }
     }
   }
 
