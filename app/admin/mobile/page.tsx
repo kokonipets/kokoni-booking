@@ -249,7 +249,8 @@ export default function AdminPage() {
   const [todaySearch, setTodaySearch] = useState('')
   // Period reports on the Check Out tab (Today uses today's list; wider ranges
   // load all appointments and filter client-side, like the desktop Reports tab).
-  const [reportRange, setReportRange] = useState<'today' | 'week' | 'month' | 'last_month' | 'all'>('today')
+  const [reportRange, setReportRange] = useState<'today' | 'yesterday' | 'week' | 'month' | 'last_month' | 'all' | 'custom'>('today')
+  const [reportCustomDate, setReportCustomDate] = useState('') // YYYY-MM-DD for "pick a day"
   const [reportAppts, setReportAppts] = useState<Appointment[]>([])
   const [reportLoading, setReportLoading] = useState(false)
   const [groomerFilter, setGroomerFilter] = useState<string | null>(null)
@@ -4547,6 +4548,7 @@ export default function AdminPage() {
             // ── Period report (mirrors the desktop Reports tab) ──
             const tzStr = (dt: Date) => dt.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
             const todayStr = tzStr(new Date())
+            const yd = new Date(); yd.setDate(yd.getDate() - 1); const yesterdayStr = tzStr(yd)
             const wa = new Date(); wa.setDate(wa.getDate() - 6); const weekAgoStr = tzStr(wa)
             const monthStart = todayStr.slice(0, 7) + '-01'
             const [yNow, mNow] = todayStr.split('-').map(Number)
@@ -4554,9 +4556,11 @@ export default function AdminPage() {
             const lastMonthStart = `${lmDate.getFullYear()}-${String(lmDate.getMonth() + 1).padStart(2, '0')}-01`
             const inReportRange = (date: string) => {
               if (reportRange === 'today') return date === todayStr
+              if (reportRange === 'yesterday') return date === yesterdayStr
               if (reportRange === 'week') return date >= weekAgoStr
               if (reportRange === 'month') return date >= monthStart
               if (reportRange === 'last_month') return date >= lastMonthStart && date < monthStart
+              if (reportRange === 'custom') return !!reportCustomDate && date === reportCustomDate
               return true // all
             }
             const reportSrc = reportRange === 'today' ? checkoutAppts : reportAppts
@@ -4564,7 +4568,10 @@ export default function AdminPage() {
             const totalRevenue = rangeAppts.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
             const totalTips    = rangeAppts.reduce((s, a) => s + parseFloat(a.tip_amount    || '0'), 0)
             const totalAll     = totalRevenue + totalTips
-            const rangeLabel: string = ({ today: 'Today', week: 'Last 7 Days', month: 'This Month', last_month: 'Last Month', all: 'All Time' } as Record<string, string>)[reportRange]
+            const fmtDay = (dstr: string) => dstr ? new Date(dstr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Pick a day'
+            const rangeLabel: string = reportRange === 'custom'
+              ? fmtDay(reportCustomDate)
+              : ({ today: 'Today', yesterday: 'Yesterday', week: 'Last 7 Days', month: 'This Month', last_month: 'Last Month', all: 'All Time' } as Record<string, string>)[reportRange]
             const reportBusy = reportRange !== 'today' && reportLoading
 
             // Payment method breakdown (selected period)
@@ -4586,8 +4593,9 @@ export default function AdminPage() {
             })
             const groomerRows = Object.values(groomerAgg).sort((a, b) => b.rev - a.rev)
             const periodChips: { k: typeof reportRange; label: string }[] = [
-              { k: 'today', label: 'Today' }, { k: 'week', label: 'Week' }, { k: 'month', label: 'Month' },
-              { k: 'last_month', label: 'Last Mo' }, { k: 'all', label: 'All' },
+              { k: 'today', label: 'Today' }, { k: 'yesterday', label: 'Yesterday' }, { k: 'week', label: 'Week' },
+              { k: 'month', label: 'Month' }, { k: 'last_month', label: 'Last Mo' }, { k: 'all', label: 'All' },
+              { k: 'custom', label: '📅 Day' },
             ]
 
             return (
@@ -4613,6 +4621,19 @@ export default function AdminPage() {
                           </button>
                         ))}
                       </div>
+                      {/* Pick-a-day date picker */}
+                      {reportRange === 'custom' && (
+                        <div className="mb-3 flex items-center gap-2">
+                          <input
+                            type="date"
+                            value={reportCustomDate}
+                            max={todayStr}
+                            onChange={e => setReportCustomDate(e.target.value)}
+                            className="bg-white/10 text-white text-sm rounded-lg px-3 py-2 border border-white/20 focus:outline-none [color-scheme:dark]"
+                          />
+                          {!reportCustomDate && <span className="text-white/50 text-xs">Choose a day to see its totals</span>}
+                        </div>
+                      )}
                       {/* Big numbers */}
                       <div className="grid grid-cols-3 gap-2">
                         <div className="bg-white/10 rounded-xl p-3 text-center">
