@@ -4612,11 +4612,11 @@ export default function AdminPage() {
                         </div>
                         <button onClick={() => { fetchCheckout(); if (reportRange !== 'today') fetchReportAppts() }} className="text-white/60 hover:text-white text-sm px-2 py-1 rounded-lg border border-white/20">↻ Refresh</button>
                       </div>
-                      {/* Period selector — wraps onto multiple rows (no scrolling) */}
-                      <div className="flex flex-wrap gap-1.5 mb-3">
+                      {/* Period selector — grid forces 2 rows (4 + 3), never scrolls */}
+                      <div className="grid grid-cols-4 gap-1.5 mb-3">
                         {periodChips.map(c => (
                           <button key={c.k} onClick={() => setReportRange(c.k)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${reportRange === c.k ? 'bg-sky-500 text-white' : 'bg-white/10 text-white/70'}`}>
+                            className={`px-2 py-1.5 rounded-full text-xs font-bold text-center truncate transition-colors ${reportRange === c.k ? 'bg-sky-500 text-white' : 'bg-white/10 text-white/70'}`}>
                             {c.label}
                           </button>
                         ))}
