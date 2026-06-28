@@ -450,7 +450,9 @@ export default function DeskAdmin() {
         body: JSON.stringify({ phone, sms_consent: true }),
       })
       if (res.ok) {
-        setDetailClient(prev => prev ? { ...prev, sms_consent: true, sms_consent_at: new Date().toISOString() } : prev)
+        const consentAt = new Date().toISOString()
+        setDetailClient(prev => prev ? { ...prev, sms_consent: true, sms_consent_at: consentAt } : prev)
+        setClients(prev => prev.map(c => c.phone === phone ? { ...c, sms_consent: true, sms_consent_at: consentAt } : c))
       }
     } catch {/**/}
     finally { setSmsConsentSaving(false) }
@@ -5578,6 +5580,29 @@ export default function DeskAdmin() {
                                           <div>
                                             <p className="text-xs text-gray-400">Member Since</p>
                                             <p className="text-sm text-gray-700">{new Date(client.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-2 pt-2 border-t border-gray-100">
+                                          <span className="text-gray-400 mt-0.5">📱</span>
+                                          <div className="flex-1 flex items-center justify-between gap-2">
+                                            <div>
+                                              <p className="text-xs text-gray-400">SMS Consent</p>
+                                              {client.sms_consent ? (
+                                                <p className="text-sm font-semibold text-emerald-700">✓ Opted in{client.sms_consent_at ? ` · ${new Date(client.sms_consent_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : ''}</p>
+                                              ) : (
+                                                <p className="text-sm font-semibold text-amber-700">⚠ Not opted in — no texts sent</p>
+                                              )}
+                                            </div>
+                                            {!client.sms_consent && (
+                                              <button
+                                                onClick={() => grantSmsConsent(client.phone)}
+                                                disabled={smsConsentSaving}
+                                                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white disabled:opacity-50 hover:bg-sky-700 flex-shrink-0"
+                                                title="Use only after the client has verbally confirmed they want to receive SMS notifications"
+                                              >
+                                                {smsConsentSaving ? 'Saving…' : 'Mark opted-in'}
+                                              </button>
+                                            )}
                                           </div>
                                         </div>
                                       </div>

@@ -35,6 +35,8 @@ type ClientRecord = {
   phone: string
   email: string | null
   created_at: string
+  sms_consent?: boolean | null
+  sms_consent_at?: string | null
   pets: Pet[]
   appointments: { id: string; appointment_date: string; appointment_time: string; service: string; status: string; assigned_groomer?: string | null; assigned_bather?: string | null }[]
 }
@@ -1031,6 +1033,27 @@ export default function AdminPage() {
     }
     setCustomersLoading(false)
   }, [])
+
+  const [smsConsentSaving, setSmsConsentSaving] = useState<string | null>(null)
+  // Staff-recorded SMS opt-in (e.g. customer agreed verbally at checkout but
+  // never checked the box during booking, or the appointment was created by
+  // staff via admin quick-add, which never asks for consent at all). Only
+  // ever turns consent ON — never used to revoke it from here.
+  const grantSmsConsent = async (phone: string) => {
+    setSmsConsentSaving(phone)
+    try {
+      const res = await fetch('/api/admin/clients', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, sms_consent: true }),
+      })
+      if (res.ok) {
+        const consentAt = new Date().toISOString()
+        setCustomers(prev => prev.map(c => c.phone === phone ? { ...c, sms_consent: true, sms_consent_at: consentAt } : c))
+      }
+    } catch {/**/}
+    finally { setSmsConsentSaving(null) }
+  }
 
   const fetchCheckout = useCallback(async () => {
     setCheckoutLoading(true)
@@ -4864,6 +4887,28 @@ export default function AdminPage() {
                       {/* Expanded details */}
                       {expandedClient === client.phone && (
                         <div className="border-t border-gray-100 p-4 space-y-4">
+
+                          {/* SMS Consent */}
+                          <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">SMS Consent</p>
+                              {client.sms_consent ? (
+                                <p className="text-sm font-semibold text-emerald-700">✓ Opted in{client.sms_consent_at ? ` · ${new Date(client.sms_consent_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : ''}</p>
+                              ) : (
+                                <p className="text-sm font-semibold text-amber-700">⚠ Not opted in — no texts sent</p>
+                              )}
+                            </div>
+                            {!client.sms_consent && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); grantSmsConsent(client.phone) }}
+                                disabled={smsConsentSaving === client.phone}
+                                className="text-xs font-semibold px-3 py-2 rounded-lg bg-sky-600 text-white disabled:opacity-50 flex-shrink-0"
+                                title="Use only after the client has verbally confirmed they want to receive SMS notifications"
+                              >
+                                {smsConsentSaving === client.phone ? 'Saving…' : 'Mark opted-in'}
+                              </button>
+                            )}
+                          </div>
 
                           {/* Pets */}
                           <div>
