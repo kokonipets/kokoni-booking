@@ -180,6 +180,17 @@ export async function PATCH(req: NextRequest) {
     updates.sms_consent_at = new Date().toISOString()
   }
 
+  // `name` is NOT NULL on the clients table. Postgres validates NOT NULL on the
+  // candidate row BEFORE it ever evaluates the upsert's ON CONFLICT clause, so an
+  // upsert that omits `name` fails outright — even when the row already exists and
+  // only e.g. sms_consent is changing (this is what broke "Mark opted-in": it sends
+  // only {phone, sms_consent}, no name). Carry the existing name forward so the
+  // candidate row always satisfies the constraint.
+  if (updates.name === undefined) {
+    const { data: existing } = await supabase.from('clients').select('name').eq('phone', phone).maybeSingle()
+    updates.name = existing?.name ?? phone
+  }
+
   // If phone number is changing, migrate all linked tables then upsert new record
   if (newPhone && newPhone !== phone) {
     await supabase.from('pets').update({ client_phone: newPhone }).eq('client_phone', phone)
