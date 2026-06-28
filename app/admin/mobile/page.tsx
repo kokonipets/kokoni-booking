@@ -413,6 +413,22 @@ export default function AdminPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [calendarDetailAppt, setCalendarDetailAppt] = useState<Appointment | null>(null)
   const [detailSheetTab, setDetailSheetTab] = useState<'appt'|'customer'|'history'|'future'|'notes'>('appt')
+  // Full appointment history for the client currently open in the detail sheet.
+  // The "History" tab used to derive past visits only from whatever was already
+  // loaded locally (today's appointments + the currently viewed calendar month),
+  // so a visit from a different month (e.g. a prior month) silently disappeared
+  // from "previous visits" even though it exists in the DB. Fetching the client's
+  // full record (same endpoint the desktop Pet Parents tab uses) fixes that.
+  const [fullClientAppts, setFullClientAppts] = useState<Appointment[] | null>(null)
+  useEffect(() => {
+    const phone = calendarDetailAppt?.client_phone
+    if (!phone) { setFullClientAppts(null); return }
+    setFullClientAppts(null)
+    fetch(`/api/admin/clients?phone=${encodeURIComponent(phone)}`)
+      .then(r => r.json())
+      .then(d => setFullClientAppts(d.clients?.[0]?.appointments ?? []))
+      .catch(() => setFullClientAppts([]))
+  }, [calendarDetailAppt?.client_phone])
   const [calendarStaffFilter, setCalendarStaffFilter] = useState<string>('all')
   const [blockedTimes, setBlockedTimes] = useState<{date:string;time:string;reason:string|null}[]>([])
 
@@ -3629,10 +3645,12 @@ export default function AdminPage() {
             const activeStaff = staff.filter(s => s.is_active)
             const svcDef = services.find(s => s.id === a.service)
             const tiers = (svcDef?.tiers ?? servicePricing[a.service] ?? []).filter((t: {label:string;price:string}) => t.label && t.price)
-            // History = past appts for same client (from calendarAppts + appointments)
+            // History = past appts for same client. Prefer the full per-client fetch
+            // (fullClientAppts, covers every month/status); fall back to whatever's
+            // already loaded locally while that fetch is in flight.
             const allKnownAppts = [...appointments, ...calendarAppts].filter((x,i,arr) => arr.findIndex(y=>y.id===x.id)===i)
             const clientPhone = a.client_phone
-            const clientAppts = allKnownAppts.filter(x => x.client_phone === clientPhone)
+            const clientAppts = fullClientAppts ?? allKnownAppts.filter(x => x.client_phone === clientPhone)
             const pastAppts = clientAppts.filter(x => x.appointment_date < a.appointment_date || (x.appointment_date === a.appointment_date && x.id !== a.id && x.status === 'completed')).sort((x,y)=>y.appointment_date.localeCompare(x.appointment_date))
             const futureAppts = clientAppts.filter(x => x.appointment_date > a.appointment_date).sort((x,y)=>x.appointment_date.localeCompare(y.appointment_date))
 
