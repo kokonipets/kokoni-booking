@@ -13,6 +13,9 @@ type SmsRow = {
   twilio_sid: string | null
   error: string | null
   suppressed_reason: string | null
+  delivery_status: string | null
+  delivery_error_code: string | null
+  delivered_at: string | null
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -20,6 +23,16 @@ const STATUS_STYLES: Record<string, string> = {
   redirected:  'bg-amber-100 text-amber-800 border-amber-200',
   suppressed:  'bg-gray-200 text-gray-700 border-gray-300',
   failed:      'bg-rose-100 text-rose-800 border-rose-200',
+}
+
+// Real carrier delivery status, reported async by Twilio's statusCallback —
+// distinct from `status` above, which only means "Twilio accepted the send".
+const DELIVERY_STYLES: Record<string, string> = {
+  delivered:    'bg-emerald-100 text-emerald-800 border-emerald-200',
+  sent:         'bg-sky-100 text-sky-800 border-sky-200',
+  queued:       'bg-gray-100 text-gray-600 border-gray-200',
+  undelivered:  'bg-rose-100 text-rose-800 border-rose-200',
+  failed:       'bg-rose-100 text-rose-800 border-rose-200',
 }
 
 const MODE_STYLES: Record<string, string> = {
@@ -107,6 +120,11 @@ export default function SmsLogPage() {
               <span className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase ${STATUS_STYLES[row.status]}`}>
                 {row.status}
               </span>
+              {row.delivery_status && (
+                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase ${DELIVERY_STYLES[row.delivery_status] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`} title="Real carrier delivery status, reported by Twilio">
+                  carrier: {row.delivery_status}
+                </span>
+              )}
               <span className="text-xs text-gray-500">{new Date(row.created_at).toLocaleString()}</span>
               {row.template && <span className="text-xs text-gray-400">· {row.template}</span>}
               <span className="ml-auto text-xs text-gray-500">
@@ -116,6 +134,11 @@ export default function SmsLogPage() {
             </div>
             <pre className="text-sm whitespace-pre-wrap font-sans text-gray-800">{row.body}</pre>
             {row.error && <div className="mt-1 text-xs text-rose-700">Error: {row.error}</div>}
+            {row.delivery_error_code && (
+              <div className="mt-1 text-xs text-rose-700">
+                Carrier error {row.delivery_error_code} — not actually delivered (e.g. landline/unreachable number)
+              </div>
+            )}
             {row.suppressed_reason && <div className="mt-1 text-xs text-gray-500">Suppressed: {row.suppressed_reason}</div>}
             {row.twilio_sid && <div className="mt-1 text-[10px] text-gray-400 font-mono">{row.twilio_sid}</div>}
           </div>
