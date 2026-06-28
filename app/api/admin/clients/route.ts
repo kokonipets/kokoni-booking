@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   //    won't surface a duplicate/orphan client row that happens to share a number.
   let clientQuery = supabase
     .from('clients')
-    .select('name, phone, email, address, created_at')
+    .select('name, phone, email, address, created_at, sms_consent, sms_consent_at')
     .order('created_at', { ascending: false })
   if (phoneFilter) clientQuery = clientQuery.eq('phone', phoneFilter)
 
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
   // Build synthetic client rows for phones only in appointments
   const syntheticClients = extraPhones
     .filter(p => !existingPhones.has(p))
-    .map(p => ({ name: p, phone: p, email: null, address: null, created_at: null }))
+    .map(p => ({ name: p, phone: p, email: null, address: null, created_at: null, sms_consent: false, sms_consent_at: null }))
 
   const clients = [...(clientRows ?? []), ...syntheticClients]
   if (clients.length === 0) return NextResponse.json({ clients: [] })
@@ -165,13 +165,20 @@ export async function DELETE(req: NextRequest) {
 // PATCH /api/admin/clients — update client info (name, email, address, phone)
 export async function PATCH(req: NextRequest) {
   const supabase = getAdminClient()
-  const { phone, newPhone, name, email, address } = await req.json()
+  const { phone, newPhone, name, email, address, sms_consent } = await req.json()
   if (!phone) return NextResponse.json({ error: 'Phone required' }, { status: 400 })
 
-  const updates: Record<string, string | null> = {}
+  const updates: Record<string, string | null | boolean> = {}
   if (name !== undefined) updates.name = name
   if (email !== undefined) updates.email = email || null
   if (address !== undefined) updates.address = address || null
+  // Staff can record SMS opt-in on the client's behalf (e.g. customer verbally
+  // agreed at checkout but didn't check the box during booking). Never used to
+  // turn consent OFF from this endpoint — only to capture a true opt-in.
+  if (sms_consent === true) {
+    updates.sms_consent = true
+    updates.sms_consent_at = new Date().toISOString()
+  }
 
   // If phone number is changing, migrate all linked tables then upsert new record
   if (newPhone && newPhone !== phone) {

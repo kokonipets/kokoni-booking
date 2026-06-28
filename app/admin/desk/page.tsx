@@ -76,7 +76,7 @@ type Appointment = {
   health_check_completed_at: string | null
   grooming_quality: any | null
   grooming_quality_completed_at: string | null
-  clients: { name: string; phone: string; email: string | null } | null
+  clients: { name: string; phone: string; email: string | null; sms_consent?: boolean | null } | null
   pets: { id?: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry?: string | null; photo_url: string | null } | null
   is_new_client?: boolean
 }
@@ -87,6 +87,8 @@ type ClientRecord = {
   email: string | null
   address?: string | null
   created_at: string
+  sms_consent?: boolean | null
+  sms_consent_at?: string | null
   pets: { id: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry: string | null; photo_url: string | null; tags?: { id: string; name: string; color: string }[] }[]
   appointments: { id: string; appointment_date: string; appointment_time: string; service: string; status: string; pet_id: string | null; assigned_groomer: string | null; assigned_bather: string | null; payment_amount: string | null; payment_method: string | null; created_at?: string | null; confirmed_at?: string | null; checked_in_at?: string | null; grooming_started_at?: string | null; grooming_finished_at?: string | null; notes?: string | null; notes_english?: string | null; notes_chinese?: string | null; notes_list?: { id: string; text: string; author: string; created_at: string; notes_english?: string | null; notes_chinese?: string | null; is_addon?: boolean }[] | null; health_check?: any | null; grooming_quality?: any | null; health_check_completed_at?: string | null; grooming_quality_completed_at?: string | null }[]
   authorized_pickups: { id: string; name: string; relationship: string | null }[]
@@ -303,7 +305,7 @@ type VaccineRecord = {
     vaccine_status: string
     vaccine_expiry: string | null
     client_phone: string
-    clients: { name: string; phone: string; email: string | null } | null
+    clients: { name: string; phone: string; email: string | null; sms_consent?: boolean | null } | null
   } | null
 }
 
@@ -435,6 +437,24 @@ export default function DeskAdmin() {
   const [detailTab, setDetailTab] = useState<'appt' | 'customer' | 'payment' | 'future' | 'notes'>('appt')
   const [detailClient, setDetailClient] = useState<ClientRecord | null>(null)
   const [detailClientLoading, setDetailClientLoading] = useState(false)
+  const [smsConsentSaving, setSmsConsentSaving] = useState(false)
+
+  // Staff-recorded SMS opt-in (e.g. customer agreed verbally at checkout but
+  // never checked the box during booking). Only ever turns consent ON.
+  const grantSmsConsent = async (phone: string) => {
+    setSmsConsentSaving(true)
+    try {
+      const res = await fetch('/api/admin/clients', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, sms_consent: true }),
+      })
+      if (res.ok) {
+        setDetailClient(prev => prev ? { ...prev, sms_consent: true, sms_consent_at: new Date().toISOString() } : prev)
+      }
+    } catch {/**/}
+    finally { setSmsConsentSaving(false) }
+  }
   const [detailFutureAppts, setDetailFutureAppts] = useState<Appointment[]>([])
   const [detailFutureLoading, setDetailFutureLoading] = useState(false)
   const [detailNotes, setDetailNotes] = useState('')
@@ -3495,6 +3515,26 @@ export default function DeskAdmin() {
                           <div className="col-span-2"><span className="text-xs text-gray-400 block">Member Since</span><p className="font-medium text-gray-700">{new Date(clientSince).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p></div>
                         )}
                       </div>
+                      <div className="pt-2 mt-2 border-t border-gray-100 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs text-gray-400 block">SMS Consent</span>
+                          {detailClient?.sms_consent ? (
+                            <p className="text-sm font-semibold text-emerald-700">✓ Opted in{detailClient.sms_consent_at ? ` · ${new Date(detailClient.sms_consent_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : ''}</p>
+                          ) : (
+                            <p className="text-sm font-semibold text-amber-700">⚠ Not opted in — no texts sent</p>
+                          )}
+                        </div>
+                        {!detailClient?.sms_consent && (
+                          <button
+                            onClick={() => clientPhone && grantSmsConsent(clientPhone)}
+                            disabled={smsConsentSaving || !clientPhone}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white disabled:opacity-50 hover:bg-sky-700"
+                            title="Use only after the client has verbally confirmed they want to receive SMS notifications"
+                          >
+                            {smsConsentSaving ? 'Saving…' : 'Mark opted-in'}
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Authorized pickups */}
@@ -4367,7 +4407,16 @@ export default function DeskAdmin() {
                                   </div>
                                   <TimeLine label="Started"     time={fmtTs(appt.grooming_started_at)}  colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-sky-700 bg-sky-50'} />
                                   <TimeLine label="Finished"    time={fmtTs(appt.grooming_finished_at)} colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-green-700 bg-green-50'} fallback={isInCare ? 'in progress' : 'not yet'} />
-                                  <TimeLine label="Msg sent"    time={fmtTs(appt.owner_notified_at)}    colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-emerald-700 bg-emerald-50'} suffix=" ✓" />
+                                  {appt.clients?.sms_consent === false ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-20 text-xs text-gray-400 flex-shrink-0">Msg sent</span>
+                                      <span className="text-xs font-semibold px-2 py-0.5 rounded-md text-amber-700 bg-amber-50" title="Client has not opted in to SMS (sms_consent = false) — no message was sent, regardless of owner_notified_at">
+                                        ⚠ no consent — not sent
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <TimeLine label="Msg sent"    time={fmtTs(appt.owner_notified_at)}    colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-emerald-700 bg-emerald-50'} suffix=" ✓" />
+                                  )}
                                   <TimeLine label="Checked out" time={fmtTs(appt.checked_out_at)}       colorClass="text-pink-500 bg-pink-50" suffix=" ✓" fallback={isReady ? 'waiting' : 'not yet'} />
                                 </div>
 

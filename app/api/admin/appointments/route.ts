@@ -19,7 +19,8 @@ const SELECT_FIELDS = `
   clients (
     name,
     phone,
-    email
+    email,
+    sms_consent
   ),
   pets!pet_id (
     id,
