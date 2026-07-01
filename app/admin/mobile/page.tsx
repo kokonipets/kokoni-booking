@@ -817,6 +817,21 @@ export default function AdminPage() {
     } catch { /**/ }
   }
 
+  // Immediately add a preset service as an add-on (no draft needed)
+  const addAddonQuick = async (apptId: string, name: string, price: string) => {
+    setSavingAddonId(apptId)
+    try {
+      const note: NoteEntry = { id: Date.now().toString(), text: name, price, is_addon: true }
+      const res = await fetch(`/api/admin/appointments/${apptId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add-note', note }),
+      })
+      const data = await res.json()
+      if (res.ok) setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, notes_list: data.notes_list } : a))
+    } catch { /**/ }
+    setSavingAddonId(null)
+  }
+
   const saveQuotePrice = async (apptId: string) => {
     setSavingPriceId(apptId)
     try {
@@ -2798,13 +2813,30 @@ export default function AdminPage() {
                   ))}
                 </div>
               )}
-              {/* Add new add-on */}
+              {/* Preset service chips */}
+              {(() => {
+                const existingAddonNames = new Set((appt.notes_list ?? []).filter(n => n.is_addon).map(n => n.text))
+                const presetChips = services.filter(s => s.id !== appt.service && (s as {visible?:boolean}).visible !== false && !existingAddonNames.has(s.name))
+                return presetChips.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {presetChips.map(s => (
+                      <button key={s.id}
+                        disabled={savingAddonId === appt.id}
+                        onClick={() => addAddonQuick(appt.id, s.name, s.tiers?.find((t: {price:string}) => t.price)?.price ?? '')}
+                        className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40">
+                        + {s.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : null
+              })()}
+              {/* Custom add-on */}
               <div className="flex gap-1.5">
                 <input
                   value={addonDraft[appt.id]?.text ?? ''}
                   onChange={e => setAddonDraft(prev => ({ ...prev, [appt.id]: { text: e.target.value, price: prev[appt.id]?.price ?? '' } }))}
                   onKeyDown={e => e.key === 'Enter' && addAddon(appt.id)}
-                  placeholder="Nail trim, ear clean…"
+                  placeholder="Custom add-on…"
                   className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
                 />
                 <input
