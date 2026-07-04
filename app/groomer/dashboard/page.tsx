@@ -1888,7 +1888,7 @@ export default function GroomerDashboard() {
                 const svcDef = serviceDefs.find(s => s.id === popupServiceVal)
                 const svcName = svcDef?.name ?? serviceMap[popupServiceVal] ?? popupServiceVal
                 const tiers = (svcDef?.tiers ?? []).filter(t => t.label)
-                const otherServices = serviceDefs.filter(s => s.id !== popupServiceVal && s.visible !== false)
+                const otherServices = serviceDefs.filter(s => s.id !== popupServiceVal)
                 const addOnTotal = popupAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
                 const baseAmt = parseFloat(popupBasePrice) || 0
                 const subtotal = baseAmt + addOnTotal
