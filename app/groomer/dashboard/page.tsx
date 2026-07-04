@@ -238,6 +238,7 @@ export default function GroomerDashboard() {
   const [popupBasePrice, setPopupBasePrice] = useState('')
   const [popupBaseTier, setPopupBaseTier] = useState('')
   const [popupAddOns, setPopupAddOns] = useState<{id:string;name:string;price:string}[]>([])
+  const [popupAddonDraft, setPopupAddonDraft] = useState({ text: '', price: '' })
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupDiscount, setPopupDiscount] = useState(false)
   const [popupIsFirstTime, setPopupIsFirstTime] = useState(false)
@@ -674,6 +675,7 @@ export default function GroomerDashboard() {
       .filter(n => n.is_addon)
       .map(n => ({ id: n.id, name: n.text, price: n.price ?? '' }))
     setPopupAddOns(savedAddOns)
+    setPopupAddonDraft({ text: '', price: '' })
     setPopupTotalSaved(!!appt.payment_amount)
     setPopupDiscount(false)
     setPopupCouponId(null)
@@ -2049,7 +2051,7 @@ export default function GroomerDashboard() {
                         )}
 
                         {/* Available add-on chips */}
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap gap-1.5 mb-2">
                           {otherServices
                             .filter(s => !popupAddOns.find(a => a.id === s.id))
                             .map(s => (
@@ -2064,6 +2066,38 @@ export default function GroomerDashboard() {
                               </button>
                             ))
                           }
+                        </div>
+
+                        {/* Custom add-on */}
+                        <div className="flex gap-1.5">
+                          <input
+                            value={popupAddonDraft.text}
+                            onChange={e => setPopupAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && popupAddonDraft.text.trim()) {
+                                setPopupAddOns(prev => [...prev, { id: Date.now().toString(), name: popupAddonDraft.text.trim(), price: popupAddonDraft.price }])
+                                setPopupAddonDraft({ text: '', price: '' })
+                                setPopupTotalSaved(false)
+                              }
+                            }}
+                            placeholder="Custom add-on…"
+                            className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                          />
+                          <input
+                            value={popupAddonDraft.price}
+                            onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setPopupAddonDraft(prev => ({ ...prev, price: v })) }}
+                            placeholder="$" type="text" inputMode="numeric"
+                            className="w-14 border border-gray-200 rounded-xl px-2 py-1.5 text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                          />
+                          <button
+                            onClick={() => {
+                              if (!popupAddonDraft.text.trim()) return
+                              setPopupAddOns(prev => [...prev, { id: Date.now().toString(), name: popupAddonDraft.text.trim(), price: popupAddonDraft.price }])
+                              setPopupAddonDraft({ text: '', price: '' })
+                              setPopupTotalSaved(false)
+                            }}
+                            disabled={!popupAddonDraft.text.trim()}
+                            className="px-3 py-1.5 bg-sky-500 text-white text-sm font-bold rounded-xl disabled:opacity-40">+</button>
                         </div>
                       </div>
                     )}

@@ -356,12 +356,14 @@ export default function AdminPage() {
   const [popupBasePrice, setPopupBasePrice] = useState('')
   const [popupBaseTier, setPopupBaseTier] = useState('')  // tier label to avoid same-price collision
   const [popupAddOns, setPopupAddOns] = useState<{id:string;name:string;price:string}[]>([])
+  const [popupAddonDraft, setPopupAddonDraft] = useState({ text: '', price: '' })
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
   const [editDraftBasePrice, setEditDraftBasePrice] = useState('')
   const [editDraftBaseTier, setEditDraftBaseTier] = useState('')  // tier label to avoid same-price collision
   const [editDraftAddOns, setEditDraftAddOns] = useState<{id:string;name:string;price:string}[]>([])
+  const [editDraftAddonDraft, setEditDraftAddonDraft] = useState({ text: '', price: '' })
   const [editDraftTotalSaved, setEditDraftTotalSaved] = useState(false)
   const [editDraftCouponId, setEditDraftCouponId] = useState<string | null>(null)
   const [savingEditDraftPayment, setSavingEditDraftPayment] = useState(false)
@@ -1644,6 +1646,7 @@ export default function AdminPage() {
                 setEditDraftBasePrice(baseCalc)
                 setEditDraftBaseTier((appt as { size_tier?: string | null }).size_tier || '')  // restore saved tier
                 setEditDraftAddOns(existingAddons)
+                setEditDraftAddonDraft({ text: '', price: '' })
                 {
                   const dl = (appt as { discount_label?: string | null }).discount_label || ''
                   const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || '')
@@ -1854,7 +1857,7 @@ export default function AdminPage() {
                                   ))}
                                 </div>
                               )}
-                              <div className="flex flex-wrap gap-1.5">
+                              <div className="flex flex-wrap gap-1.5 mb-2">
                                 {otherServices
                                   .filter((s: {id:string}) => !editDraftAddOns.find(a => a.id === s.id))
                                   .map((s: {id:string;name:string;tiers?:{label:string;price:string}[]}) => (
@@ -1868,6 +1871,36 @@ export default function AdminPage() {
                                       + {s.name ?? serviceMap[s.id] ?? s.id}
                                     </button>
                                   ))}
+                              </div>
+                              <div className="flex gap-1.5">
+                                <input
+                                  value={editDraftAddonDraft.text}
+                                  onChange={e => setEditDraftAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter' && editDraftAddonDraft.text.trim()) {
+                                      setEditDraftAddOns(prev => [...prev, { id: Date.now().toString(), name: editDraftAddonDraft.text.trim(), price: editDraftAddonDraft.price }])
+                                      setEditDraftAddonDraft({ text: '', price: '' })
+                                      setEditDraftTotalSaved(false)
+                                    }
+                                  }}
+                                  placeholder="Custom add-on…"
+                                  className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                />
+                                <input
+                                  value={editDraftAddonDraft.price}
+                                  onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setEditDraftAddonDraft(prev => ({ ...prev, price: v })) }}
+                                  placeholder="$" type="text" inputMode="numeric"
+                                  className="w-12 border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                />
+                                <button
+                                  onClick={() => {
+                                    if (!editDraftAddonDraft.text.trim()) return
+                                    setEditDraftAddOns(prev => [...prev, { id: Date.now().toString(), name: editDraftAddonDraft.text.trim(), price: editDraftAddonDraft.price }])
+                                    setEditDraftAddonDraft({ text: '', price: '' })
+                                    setEditDraftTotalSaved(false)
+                                  }}
+                                  disabled={!editDraftAddonDraft.text.trim()}
+                                  className="px-2.5 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-xl disabled:opacity-40">+</button>
                               </div>
                             </div>
                           )}
@@ -2836,7 +2869,7 @@ export default function AdminPage() {
                           ))}
                         </div>
                       )}
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 mb-2">
                         {otherServices
                           .filter((s: {id:string}) => !popupAddOns.find(a => a.id === s.id))
                           .map((s: {id:string;name:string;tiers?:{label:string;price:string}[]}) => (
@@ -2851,6 +2884,36 @@ export default function AdminPage() {
                             </button>
                           ))
                         }
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input
+                          value={popupAddonDraft.text}
+                          onChange={e => setPopupAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && popupAddonDraft.text.trim()) {
+                              setPopupAddOns(prev => [...prev, { id: Date.now().toString(), name: popupAddonDraft.text.trim(), price: popupAddonDraft.price }])
+                              setPopupAddonDraft({ text: '', price: '' })
+                              setPopupTotalSaved(false)
+                            }
+                          }}
+                          placeholder="Custom add-on…"
+                          className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                        />
+                        <input
+                          value={popupAddonDraft.price}
+                          onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setPopupAddonDraft(prev => ({ ...prev, price: v })) }}
+                          placeholder="$" type="text" inputMode="numeric"
+                          className="w-12 border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                        />
+                        <button
+                          onClick={() => {
+                            if (!popupAddonDraft.text.trim()) return
+                            setPopupAddOns(prev => [...prev, { id: Date.now().toString(), name: popupAddonDraft.text.trim(), price: popupAddonDraft.price }])
+                            setPopupAddonDraft({ text: '', price: '' })
+                            setPopupTotalSaved(false)
+                          }}
+                          disabled={!popupAddonDraft.text.trim()}
+                          className="px-2.5 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-xl disabled:opacity-40">+</button>
                       </div>
                     </div>
                   )}
@@ -2949,7 +3012,7 @@ export default function AdminPage() {
                     {appt.payment_amount ? `$${appt.payment_amount}` : '—'}
                   </span>
                   <button
-                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp); const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
+                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp); const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupAddonDraft({ text: '', price: '' }); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
                     className="text-gray-400 hover:text-sky-500 text-xs leading-none"
                     title="Set price"
                   >✏️</button>

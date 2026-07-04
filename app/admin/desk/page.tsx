@@ -503,6 +503,7 @@ export default function DeskAdmin() {
   const [detailBasePrice, setDetailBasePrice] = useState('')
   const [detailBaseTier, setDetailBaseTier] = useState('')  // tier label to avoid same-price collision
   const [detailAddOns, setDetailAddOns] = useState<{id: string; name: string; price: string}[]>([])
+  const [detailAddonDraft, setDetailAddonDraft] = useState({ text: '', price: '' })
   // Inline price editing for service tiers
   const [detailEditTiersMode, setDetailEditTiersMode] = useState(false)
   const [detailEditTiers, setDetailEditTiers] = useState<{label:string;price:string;duration:string}[]>([])
@@ -889,6 +890,7 @@ export default function DeskAdmin() {
       .filter((n: { is_addon?: boolean }) => n.is_addon)
       .map((n: { id: string; text: string; price?: string }) => ({ id: n.id, name: n.text, price: n.price ?? '' }))
     setDetailAddOns(savedAddOns)
+    setDetailAddonDraft({ text: '', price: '' })
     // Base price = total minus add-ons. payment_amount is post-discount, so add
     // the saved discount back to reconstruct the pre-discount base — the toggle
     // (restored above) then re-derives the same discounted total.
@@ -3260,7 +3262,7 @@ export default function DeskAdmin() {
                             )}
 
                             {/* Available add-on chips */}
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="flex flex-wrap gap-1.5 mb-2">
                               {otherServices
                                 .filter(s => !detailAddOns.find(a => a.id === s.id))
                                 .map(s => (
@@ -3274,6 +3276,36 @@ export default function DeskAdmin() {
                                   </button>
                                 ))
                               }
+                            </div>
+
+                            {/* Custom add-on */}
+                            <div className="flex gap-1.5">
+                              <input
+                                value={detailAddonDraft.text}
+                                onChange={e => setDetailAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && detailAddonDraft.text.trim()) {
+                                    setDetailAddOns(prev => [...prev, { id: Date.now().toString(), name: detailAddonDraft.text.trim(), price: detailAddonDraft.price }])
+                                    setDetailAddonDraft({ text: '', price: '' })
+                                  }
+                                }}
+                                placeholder="Custom add-on…"
+                                className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <input
+                                value={detailAddonDraft.price}
+                                onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setDetailAddonDraft(prev => ({ ...prev, price: v })) }}
+                                placeholder="$" type="text" inputMode="numeric"
+                                className="w-14 border border-gray-200 rounded-xl px-2 py-1.5 text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <button
+                                onClick={() => {
+                                  if (!detailAddonDraft.text.trim()) return
+                                  setDetailAddOns(prev => [...prev, { id: Date.now().toString(), name: detailAddonDraft.text.trim(), price: detailAddonDraft.price }])
+                                  setDetailAddonDraft({ text: '', price: '' })
+                                }}
+                                disabled={!detailAddonDraft.text.trim()}
+                                className="px-3 py-1.5 bg-sky-500 text-white text-sm font-bold rounded-xl disabled:opacity-40">+</button>
                             </div>
                           </div>
                         )}
