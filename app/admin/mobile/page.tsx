@@ -367,6 +367,13 @@ export default function AdminPage() {
   const [editDraftTotalSaved, setEditDraftTotalSaved] = useState(false)
   const [editDraftCouponId, setEditDraftCouponId] = useState<string | null>(null)
   const [savingEditDraftPayment, setSavingEditDraftPayment] = useState(false)
+  // Calendar detail sheet — Service & Price / Add-ons
+  const [calendarBasePrice, setCalendarBasePrice] = useState('')
+  const [calendarBaseTier, setCalendarBaseTier] = useState('')
+  const [calendarAddOns, setCalendarAddOns] = useState<{id:string;name:string;price:string}[]>([])
+  const [calendarAddonDraft, setCalendarAddonDraft] = useState({ text: '', price: '' })
+  const [calendarTotalSaved, setCalendarTotalSaved] = useState(false)
+  const [savingCalendarPayment, setSavingCalendarPayment] = useState(false)
   // Discount codes (shared with desk/groomer)
   type MobileCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
   const [availableCoupons, setAvailableCoupons] = useState<MobileCoupon[]>([])
@@ -3545,7 +3552,17 @@ export default function AdminPage() {
                           <div className="flex-1 border-l border-gray-100 py-2 px-3 flex flex-col gap-2">
                             {visibleAppts.length > 0 ? (
                               visibleAppts.map(appt => (
-                              <button key={appt.id} onClick={() => { setCalendarDetailAppt(appt); setDetailSheetTab('appt') }}
+                              <button key={appt.id} onClick={() => {
+                                const savedAddOns = (appt.notes_list ?? []).filter((n: {is_addon?:boolean}) => n.is_addon).map((n: {id:string;text:string;price?:string}) => ({ id: n.id, name: n.text, price: n.price ?? '' }))
+                                const addonTotal = savedAddOns.reduce((s: number, x: {price:string}) => s + (parseFloat(x.price) || 0), 0)
+                                const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0
+                                setCalendarAddOns(savedAddOns)
+                                setCalendarAddonDraft({ text: '', price: '' })
+                                setCalendarBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : '')
+                                setCalendarBaseTier((appt as { size_tier?: string | null }).size_tier || '')
+                                setCalendarTotalSaved(!!appt.payment_amount)
+                                setCalendarDetailAppt(appt); setDetailSheetTab('appt')
+                              }}
                                 className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left active:scale-98 ${
                                   appt.service === 'simply_cute' ? 'bg-sky-50 border border-sky-200' :
                                   appt.service === 'bath_brush'  ? 'bg-teal-50 border border-teal-200' :
@@ -3782,6 +3799,12 @@ export default function AdminPage() {
                       )}
 
                       {/* Service & Pricing */}
+                      {(() => {
+                        const otherServices = services.filter(s => s.id !== a.service)
+                        const addOnTotal = calendarAddOns.reduce((sum, ao) => sum + (parseFloat(ao.price) || 0), 0)
+                        const baseAmt = parseFloat(calendarBasePrice) || 0
+                        const grandTotal = Math.round((baseAmt + addOnTotal) * 100) / 100
+                        return (
                       <div className="bg-white border border-gray-100 rounded-2xl p-4">
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Service & Price</p>
                         <div className="flex items-center justify-between mb-3">
@@ -3790,31 +3813,166 @@ export default function AdminPage() {
                             a.service==='bath_brush' ? 'bg-teal-100 text-teal-700' :
                             a.service==='asian_fusion' ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'
                           }`}>{serviceMap[a.service] ?? a.service}</span>
-                          {a.payment_amount && (
-                            <span className={`text-base font-bold ${a.payment_status==='paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                              ${a.payment_amount} {a.payment_status==='paid' ? '✓ Paid' : 'Unpaid'}
-                            </span>
-                          )}
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                            a.payment_status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {a.payment_status === 'paid' ? `✓ Paid${a.payment_amount ? ` · $${a.payment_amount}` : ''}` : 'Unpaid'}
+                          </span>
                         </div>
                         {tiers.length > 0 && (
-                          <div className="grid grid-cols-2 gap-2">
-                            {tiers.map((t: {label:string;price:string;duration?:string}) => (
+                          <div className="grid grid-cols-2 gap-2 mb-3">
+                            {tiers.map((t: {label:string;price:string;duration?:string}) => {
+                              const priceVal = t.price.replace('$','')
+                              const isSelected = calendarBaseTier === t.label && calendarBasePrice === priceVal
+                              return (
                               <button key={t.label}
-                                onClick={() => patchAppt({ action:'record-payment', payment_amount: t.price.replace('$',''), payment_status: 'unpaid', payment_method: a.payment_method || 'cash', tip_amount: a.tip_amount || '0' })}
+                                onClick={() => { if (t.price) { setCalendarBasePrice(isSelected ? '' : priceVal); setCalendarBaseTier(isSelected ? '' : t.label); setCalendarTotalSaved(false) } }}
                                 className={`border-2 rounded-xl p-3 text-center transition-all ${
-                                  a.payment_amount === t.price.replace('$','') ? 'border-violet-400 bg-violet-50' : 'border-gray-100 hover:border-violet-200'
+                                  isSelected ? 'border-violet-400 bg-violet-50' : 'border-gray-100 hover:border-violet-200'
                                 }`}>
                                 <p className="text-xs text-gray-500">{t.label}</p>
                                 <p className="text-xl font-black text-gray-800">{t.price}</p>
                                 {t.duration && <p className="text-xs text-gray-400">⏱ {t.duration}</p>}
                               </button>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
+
+                        {/* Add-on Services */}
+                        {(otherServices.length > 0 || calendarAddOns.length > 0) && (
+                          <div className="border-t border-gray-100 pt-3 mt-1 mb-3">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Add-on Services</p>
+                            {calendarAddOns.length > 0 && (
+                              <div className="space-y-1.5 mb-2">
+                                {calendarAddOns.map(addon => (
+                                  <div key={addon.id} className="flex items-center gap-2 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
+                                    <span className="text-xs font-semibold text-sky-800 flex-1">{addon.name}</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-gray-500">$</span>
+                                      <input type="text" inputMode="numeric" pattern="[0-9]*" value={addon.price}
+                                        onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setCalendarAddOns(prev => prev.map(x => x.id === addon.id ? { ...x, price: v } : x)); setCalendarTotalSaved(false) }}
+                                        className="w-14 text-sm font-bold text-sky-700 bg-transparent focus:outline-none text-right" />
+                                    </div>
+                                    <button onClick={() => { setCalendarAddOns(prev => prev.filter(x => x.id !== addon.id)); setCalendarTotalSaved(false) }}
+                                      className="text-gray-300 hover:text-rose-400 text-base font-bold ml-1">✕</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              {otherServices
+                                .filter(s => !calendarAddOns.find(ao => ao.id === s.id))
+                                .map(s => (
+                                  <button key={s.id}
+                                    onClick={() => {
+                                      const defaultPrice = s.tiers?.find((t: {price:string}) => t.price)?.price ?? ''
+                                      setCalendarAddOns(prev => [...prev, { id: s.id, name: s.name ?? serviceMap[s.id] ?? s.id, price: defaultPrice }])
+                                      setCalendarTotalSaved(false)
+                                    }}
+                                    className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors">
+                                    + {s.name ?? serviceMap[s.id] ?? s.id}
+                                  </button>
+                                ))
+                              }
+                            </div>
+                            <div className="flex gap-1.5">
+                              <input
+                                value={calendarAddonDraft.text}
+                                onChange={e => setCalendarAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && calendarAddonDraft.text.trim()) {
+                                    setCalendarAddOns(prev => [...prev, { id: Date.now().toString(), name: calendarAddonDraft.text.trim(), price: calendarAddonDraft.price }])
+                                    setCalendarAddonDraft({ text: '', price: '' })
+                                    setCalendarTotalSaved(false)
+                                  }
+                                }}
+                                placeholder="Custom add-on…"
+                                className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <input
+                                value={calendarAddonDraft.price}
+                                onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setCalendarAddonDraft(prev => ({ ...prev, price: v })) }}
+                                placeholder="$" type="text" inputMode="numeric"
+                                className="w-12 border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <button
+                                onClick={() => {
+                                  if (!calendarAddonDraft.text.trim()) return
+                                  setCalendarAddOns(prev => [...prev, { id: Date.now().toString(), name: calendarAddonDraft.text.trim(), price: calendarAddonDraft.price }])
+                                  setCalendarAddonDraft({ text: '', price: '' })
+                                  setCalendarTotalSaved(false)
+                                }}
+                                disabled={!calendarAddonDraft.text.trim()}
+                                className="px-2.5 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-xl disabled:opacity-40">+</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Total breakdown */}
+                        {(calendarBasePrice || calendarAddOns.length > 0) && (
+                          <div className="bg-gray-50 rounded-xl px-3 py-2 mb-3 space-y-1 border border-gray-100">
+                            {calendarBasePrice && (
+                              <div className="flex justify-between text-xs text-gray-500">
+                                <span>{serviceMap[a.service] ?? a.service}</span>
+                                <span className="font-semibold">${calendarBasePrice}</span>
+                              </div>
+                            )}
+                            {calendarAddOns.map(ao => (
+                              <div key={ao.id} className="flex justify-between text-xs text-gray-500">
+                                <span>{ao.name}</span>
+                                <span className="font-semibold">${ao.price || '0'}</span>
+                              </div>
+                            ))}
+                            <div className="flex justify-between text-sm font-bold text-gray-800 pt-1 border-t border-gray-200">
+                              <span>Total</span>
+                              <span className={calendarTotalSaved && grandTotal > 0 ? 'text-emerald-600' : 'text-gray-800'}>${grandTotal.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Save Total */}
+                        <button
+                          disabled={grandTotal <= 0 || savingCalendarPayment}
+                          onClick={async () => {
+                            if (grandTotal <= 0) return
+                            const amount = grandTotal.toString()
+                            setSavingCalendarPayment(true)
+                            try {
+                              const res = await fetch(`/api/admin/appointments/${a.id}`, {
+                                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  action: 'record-payment', payment_amount: amount,
+                                  payment_status: a.payment_status || 'unpaid', payment_method: a.payment_method || 'cash',
+                                  tip_amount: a.tip_amount || '0', size_tier: calendarBaseTier || null, addons: calendarAddOns,
+                                }),
+                              })
+                              const data = await res.json()
+                              if (data.success) {
+                                const addonNotes = calendarAddOns.map(ao => ({ id: ao.id, text: ao.name, price: ao.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
+                                const nonAddonNotes = (a.notes_list ?? []).filter((n: {is_addon?:boolean}) => !n.is_addon)
+                                const updated = { ...a, payment_amount: amount, size_tier: calendarBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] }
+                                setCalendarDetailAppt(updated as typeof a)
+                                setAppointments(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x))
+                                setCalendarAppts(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x))
+                                setCalendarTotalSaved(true)
+                                showToast('✓ Total saved!')
+                              }
+                            } catch {/**/}
+                            finally { setSavingCalendarPayment(false) }
+                          }}
+                          className={`w-full py-2.5 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors ${
+                            grandTotal <= 0 ? 'bg-gray-300' : calendarTotalSaved ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-violet-500 hover:bg-violet-600'
+                          }`}>
+                          {savingCalendarPayment ? '⏳ Saving…' : grandTotal > 0 ? (calendarTotalSaved ? `✓ Saved · $${grandTotal.toFixed(2)}` : `💾 Save Total · $${grandTotal.toFixed(2)}`) : 'Select a size first'}
+                        </button>
+
                         {a.tip_amount && parseFloat(String(a.tip_amount)) > 0 && (
                           <p className="text-xs text-gray-400 mt-2">Tip: ${a.tip_amount} · Method: {a.payment_method || '—'}</p>
                         )}
                       </div>
+                        )
+                      })()}
 
                       {/* Health & Quality checks */}
                       {(a.health_check || a.grooming_quality) && (
