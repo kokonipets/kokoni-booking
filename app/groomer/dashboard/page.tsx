@@ -1128,7 +1128,8 @@ export default function GroomerDashboard() {
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
           <circle cx="12" cy="12" r="9" />
-          <path d="M12 7v1m0 8v1M9.5 9.5C9.5 8.4 10.6 8 12 8s2.5.4 2.5 1.5S13.4 11 12 11s-2.5.6-2.5 1.5S10.6 16 12 16s2.5-.4 2.5-1.5" />
+          <path d="M12 6.5v1.3M12 16.2v1.3" />
+          <path d="M14.6 10c0-1.1-1.2-2-2.6-2s-2.6.8-2.6 1.8c0 2.3 5.2 1 5.2 3.3c0 1-1.2 1.9-2.6 1.9s-2.6-.9-2.6-2" />
         </svg>
       ),
     },
