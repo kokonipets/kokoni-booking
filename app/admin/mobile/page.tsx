@@ -381,8 +381,6 @@ export default function AdminPage() {
   const epNoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const epIsComposingRef = useRef(false)
   const epNoteInputRef = useRef<HTMLTextAreaElement>(null)
-  const [addonDraft, setAddonDraft] = useState<Record<string, { text: string; price: string }>>({})
-  const [savingAddonId, setSavingAddonId] = useState<string | null>(null)
 
   // Customers state
   const [customers, setCustomers] = useState<ClientRecord[]>([])
@@ -785,51 +783,6 @@ export default function AdminPage() {
       }
     } catch { showToast('Failed to update service') }
     setSavingServiceId(null)
-  }
-
-  const addAddon = async (apptId: string) => {
-    const draft = addonDraft[apptId]
-    if (!draft?.text.trim()) return
-    setSavingAddonId(apptId)
-    try {
-      const note: NoteEntry = { id: Date.now().toString(), text: draft.text, price: draft.price, is_addon: true }
-      const res = await fetch(`/api/admin/appointments/${apptId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add-note', note }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, notes_list: data.notes_list } : a))
-        setAddonDraft(prev => ({ ...prev, [apptId]: { text: '', price: '' } }))
-      }
-    } catch { /**/ }
-    setSavingAddonId(null)
-  }
-
-  const removeAddon = async (apptId: string, noteId: string) => {
-    try {
-      const res = await fetch(`/api/admin/appointments/${apptId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete-note', noteId }),
-      })
-      const data = await res.json()
-      if (res.ok) setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, notes_list: data.notes_list } : a))
-    } catch { /**/ }
-  }
-
-  // Immediately add a preset service as an add-on (no draft needed)
-  const addAddonQuick = async (apptId: string, name: string, price: string) => {
-    setSavingAddonId(apptId)
-    try {
-      const note: NoteEntry = { id: Date.now().toString(), text: name, price, is_addon: true }
-      const res = await fetch(`/api/admin/appointments/${apptId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add-note', note }),
-      })
-      const data = await res.json()
-      if (res.ok) setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, notes_list: data.notes_list } : a))
-    } catch { /**/ }
-    setSavingAddonId(null)
   }
 
   const saveQuotePrice = async (apptId: string) => {
@@ -2793,68 +2746,6 @@ export default function AdminPage() {
               </p>
             </div>
 
-            {/* ── Add-on services ────────────────────────────────────────── */}
-            <div className="mb-3 border-t border-gray-100 pt-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">🐾 Add-on Services</p>
-              {/* Existing add-ons */}
-              {(appt.notes_list ?? []).filter(n => n.is_addon).length > 0 && (
-                <div className="space-y-1 mb-2">
-                  {(appt.notes_list ?? []).filter(n => n.is_addon).map((addon, i) => (
-                    <div key={addon.id ?? i} className="flex items-center justify-between bg-emerald-50 rounded-xl px-3 py-1.5">
-                      <span className="text-sm text-gray-700">{addon.text}</span>
-                      <div className="flex items-center gap-2">
-                        {addon.price && <span className="text-sm font-semibold text-emerald-600">${addon.price}</span>}
-                        <button
-                          onClick={() => removeAddon(appt.id, addon.id)}
-                          className="text-gray-400 hover:text-red-400 text-xs leading-none ml-1"
-                        >✕</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Preset service chips */}
-              {(() => {
-                const existingAddonNames = new Set((appt.notes_list ?? []).filter(n => n.is_addon).map(n => n.text))
-                const presetChips = services.filter(s => s.id !== appt.service && (s as {visible?:boolean}).visible !== false && !existingAddonNames.has(s.name))
-                return presetChips.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {presetChips.map(s => (
-                      <button key={s.id}
-                        disabled={savingAddonId === appt.id}
-                        onClick={() => addAddonQuick(appt.id, s.name, s.tiers?.find((t: {price:string}) => t.price)?.price ?? '')}
-                        className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40">
-                        + {s.name}
-                      </button>
-                    ))}
-                  </div>
-                ) : null
-              })()}
-              {/* Custom add-on */}
-              <div className="flex gap-1.5">
-                <input
-                  value={addonDraft[appt.id]?.text ?? ''}
-                  onChange={e => setAddonDraft(prev => ({ ...prev, [appt.id]: { text: e.target.value, price: prev[appt.id]?.price ?? '' } }))}
-                  onKeyDown={e => e.key === 'Enter' && addAddon(appt.id)}
-                  placeholder="Custom add-on…"
-                  className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                />
-                <input
-                  value={addonDraft[appt.id]?.price ?? ''}
-                  onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setAddonDraft(prev => ({ ...prev, [appt.id]: { text: prev[appt.id]?.text ?? '', price: v } })) }}
-                  placeholder="$"
-                  type="text"
-                  inputMode="numeric"
-                  className="w-16 border border-gray-200 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-sky-300"
-                />
-                <button
-                  onClick={() => addAddon(appt.id)}
-                  disabled={savingAddonId === appt.id || !addonDraft[appt.id]?.text?.trim()}
-                  className="px-3 py-1.5 bg-sky-500 text-white text-sm font-bold rounded-xl disabled:opacity-40"
-                >{savingAddonId === appt.id ? '…' : '+'}</button>
-              </div>
-            </div>
-
             {/* ── Pricing ─────────────────────────────────────────────── */}
             {editingPriceId === appt.id ? (() => {
               const svcDef = services.find(s => s.id === appt.service)
@@ -3020,16 +2911,20 @@ export default function AdminPage() {
                           const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ action: 'record-payment', payment_amount: amount, size_tier: popupBaseTier || null,
+                              addons: popupAddOns,
                               discount_label: popupCoupon ? popupCoupon.name : null,
                               discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
                               discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null }),
                           })
                           if ((await res.json()).success) {
                             setPopupTotalSaved(true)
+                            const addonNotes = popupAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
+                            const nonAddonNotes = (appt.notes_list ?? []).filter(n => !n.is_addon)
                             setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount, size_tier: popupBaseTier || null,
                               discount_label: popupCoupon ? popupCoupon.name : null,
                               discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
-                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null } : a))
+                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                              notes_list: [...nonAddonNotes, ...addonNotes] } : a))
                             showToast('✓ Total saved!')
                           }
                         } catch {/**/}
@@ -3054,7 +2949,7 @@ export default function AdminPage() {
                     {appt.payment_amount ? `$${appt.payment_amount}` : '—'}
                   </span>
                   <button
-                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns([]); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
+                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp); const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
                     className="text-gray-400 hover:text-sky-500 text-xs leading-none"
                     title="Set price"
                   >✏️</button>

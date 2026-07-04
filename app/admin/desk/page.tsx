@@ -535,8 +535,6 @@ export default function DeskAdmin() {
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('sky')
   const [savingTag, setSavingTag] = useState(false)
-  const [savingAddonId, setSavingAddonId] = useState<string | null>(null)
-  const [addonDraftDesk, setAddonDraftDesk] = useState<{ text: string; price: string }>({ text: '', price: '' })
 
   // Service pricing
   type PriceTier = { label: string; price: string; duration: string }
@@ -1136,58 +1134,6 @@ export default function DeskAdmin() {
       }
     } catch {/**/}
     finally { setSavingStaff(false) }
-  }
-
-  const addAddonQuick = async (name: string, price: string) => {
-    if (!detailAppt) return
-    setSavingAddonId(detailAppt.id)
-    try {
-      const note = { id: Date.now().toString(), text: name, price, is_addon: true }
-      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add-note', note }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setDetailAppt(prev => prev ? { ...prev, notes_list: data.notes_list } : prev)
-        setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, notes_list: data.notes_list } : a))
-      }
-    } catch {/**/}
-    setSavingAddonId(null)
-  }
-
-  const addAddonCustomDesk = async () => {
-    if (!detailAppt || !addonDraftDesk.text.trim()) return
-    setSavingAddonId(detailAppt.id)
-    try {
-      const note = { id: Date.now().toString(), text: addonDraftDesk.text, price: addonDraftDesk.price, is_addon: true }
-      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add-note', note }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setDetailAppt(prev => prev ? { ...prev, notes_list: data.notes_list } : prev)
-        setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, notes_list: data.notes_list } : a))
-        setAddonDraftDesk({ text: '', price: '' })
-      }
-    } catch {/**/}
-    setSavingAddonId(null)
-  }
-
-  const removeAddonDesk = async (noteId: string) => {
-    if (!detailAppt) return
-    try {
-      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete-note', noteId }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setDetailAppt(prev => prev ? { ...prev, notes_list: data.notes_list } : prev)
-        setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, notes_list: data.notes_list } : a))
-      }
-    } catch {/**/}
   }
 
   const rescheduleAppointment = async () => {
@@ -3844,64 +3790,6 @@ export default function DeskAdmin() {
               {/* ── NOTES TAB ────────────────────────────── */}
               {detailTab === 'notes' && (
                 <div className="space-y-3">
-
-                  {/* ── Add-on Services (standalone, immediate save) ── */}
-                  {(() => {
-                    const existingAddons = (detailAppt.notes_list ?? []).filter(n => n.is_addon)
-                    const existingNames = new Set(existingAddons.map(n => n.text))
-                    const presetChips = services.filter(s => s.id !== detailAppt.service && s.visible !== false && !existingNames.has(s.name))
-                    return (
-                      <div className="bg-gray-50 rounded-2xl border border-gray-100 p-4">
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">🐾 Add-on Services</p>
-                        {existingAddons.length > 0 && (
-                          <div className="space-y-1.5 mb-3">
-                            {existingAddons.map((addon, i) => (
-                              <div key={addon.id ?? i} className="flex items-center justify-between bg-emerald-50 rounded-xl px-3 py-2">
-                                <span className="text-sm text-gray-700 font-medium">{addon.text}</span>
-                                <div className="flex items-center gap-2">
-                                  {addon.price && <span className="text-sm font-semibold text-emerald-600">${addon.price}</span>}
-                                  <button onClick={() => removeAddonDesk(addon.id!)}
-                                    className="text-gray-400 hover:text-red-400 text-sm leading-none font-bold transition-colors">✕</button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {presetChips.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mb-3">
-                            {presetChips.map(s => (
-                              <button key={s.id}
-                                disabled={savingAddonId === detailAppt.id}
-                                onClick={() => addAddonQuick(s.name, s.tiers?.find((t: {price:string}) => t.price)?.price ?? '')}
-                                className="text-xs bg-white border-2 border-gray-200 hover:border-sky-300 hover:bg-sky-50 text-gray-600 hover:text-sky-700 px-3 py-1.5 rounded-full font-semibold transition-colors disabled:opacity-40">
-                                + {s.name}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex gap-2">
-                          <input
-                            value={addonDraftDesk.text}
-                            onChange={e => setAddonDraftDesk(prev => ({ ...prev, text: e.target.value }))}
-                            onKeyDown={e => e.key === 'Enter' && addAddonCustomDesk()}
-                            placeholder="Custom add-on…"
-                            className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
-                          />
-                          <input
-                            value={addonDraftDesk.price}
-                            onChange={e => setAddonDraftDesk(prev => ({ ...prev, price: e.target.value.replace(/[^0-9.]/g, '') }))}
-                            placeholder="$" type="text" inputMode="numeric"
-                            className="w-16 border border-gray-200 rounded-xl px-2 py-2 text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
-                          />
-                          <button onClick={addAddonCustomDesk}
-                            disabled={savingAddonId === detailAppt.id || !addonDraftDesk.text.trim()}
-                            className="px-4 py-2 bg-sky-500 text-white text-sm font-bold rounded-xl disabled:opacity-40 transition-colors hover:bg-sky-600">
-                            {savingAddonId === detailAppt.id ? '…' : '+'}
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })()}
 
                   {editingNotes ? (
                     /* ── EDIT MODE ── */

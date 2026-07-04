@@ -256,8 +256,6 @@ export default function GroomerDashboard() {
   const [savingPopupNote, setSavingPopupNote] = useState(false)
   // 'none' | 'staff-new' (adding new groomer note) | 'customer-edit' (editing customer request)
   const [noteEditorMode, setNoteEditorMode] = useState<'none' | 'staff-new' | 'customer-edit'>('none')
-  const [savingAddonId, setSavingAddonId] = useState<string | null>(null)
-  const [addonDraft, setAddonDraft] = useState<Record<string, { text: string; price: string }>>({})
   const noteTranslateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const noteIsComposingRef = useRef(false)
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
@@ -840,60 +838,6 @@ export default function GroomerDashboard() {
       }
     } catch {/**/}
     finally { setSavingPopupNote(false) }
-  }
-
-  const addAddonQuick = async (apptId: string, name: string, price: string) => {
-    setSavingAddonId(apptId)
-    try {
-      const note = { id: Date.now().toString(), text: name, price, is_addon: true }
-      const res = await fetch(`/api/admin/appointments/${apptId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add-note', note }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        const updated = { ...selectedAppt!, notes_list: data.notes_list }
-        setSelectedAppt(updated)
-        setAppointments(prev => prev.map(a => a.id === apptId ? updated : a))
-      }
-    } catch {/**/}
-    setSavingAddonId(null)
-  }
-
-  const addAddonCustom = async (apptId: string) => {
-    const draft = addonDraft[apptId]
-    if (!draft?.text.trim()) return
-    setSavingAddonId(apptId)
-    try {
-      const note = { id: Date.now().toString(), text: draft.text, price: draft.price, is_addon: true }
-      const res = await fetch(`/api/admin/appointments/${apptId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add-note', note }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        const updated = { ...selectedAppt!, notes_list: data.notes_list }
-        setSelectedAppt(updated)
-        setAppointments(prev => prev.map(a => a.id === apptId ? updated : a))
-        setAddonDraft(prev => ({ ...prev, [apptId]: { text: '', price: '' } }))
-      }
-    } catch {/**/}
-    setSavingAddonId(null)
-  }
-
-  const removeAddonGroomer = async (apptId: string, noteId: string) => {
-    try {
-      const res = await fetch(`/api/admin/appointments/${apptId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete-note', noteId }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        const updated = { ...selectedAppt!, notes_list: data.notes_list }
-        setSelectedAppt(updated)
-        setAppointments(prev => prev.map(a => a.id === apptId ? updated : a))
-      }
-    } catch {/**/}
   }
 
   // Save/update the customer request (legacy appointments.notes field)
@@ -1935,64 +1879,6 @@ export default function GroomerDashboard() {
 
             {/* Body */}
             <div className="overflow-y-auto flex-1 p-4 space-y-4">
-
-              {/* ── Add-on Services ── */}
-              {selectedAppt && (() => {
-                const existingAddons = (selectedAppt.notes_list ?? []).filter(n => n.is_addon)
-                const existingNames = new Set(existingAddons.map(n => n.text))
-                const presetChips = serviceDefs.filter(s => s.id !== selectedAppt.service && s.visible !== false && !existingNames.has(s.name))
-                return (
-                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 mb-1">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">🐾 Add-on Services</p>
-                    {existingAddons.length > 0 && (
-                      <div className="space-y-1 mb-2">
-                        {existingAddons.map((addon, i) => (
-                          <div key={addon.id ?? i} className="flex items-center justify-between bg-emerald-50 rounded-xl px-3 py-1.5">
-                            <span className="text-sm text-gray-700">{addon.text}</span>
-                            <div className="flex items-center gap-2">
-                              {addon.price && <span className="text-sm font-semibold text-emerald-600">${addon.price}</span>}
-                              <button onClick={() => removeAddonGroomer(selectedAppt.id, addon.id!)}
-                                className="text-gray-400 hover:text-red-400 text-xs leading-none">✕</button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {presetChips.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-2">
-                        {presetChips.map(s => (
-                          <button key={s.id}
-                            disabled={savingAddonId === selectedAppt.id}
-                            onClick={() => addAddonQuick(selectedAppt.id, s.name, s.tiers?.find((t: {price:string}) => t.price)?.price ?? '')}
-                            className="text-xs bg-white border border-gray-200 hover:border-sky-300 hover:bg-sky-50 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40">
-                            + {s.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex gap-1.5">
-                      <input
-                        value={addonDraft[selectedAppt.id]?.text ?? ''}
-                        onChange={e => setAddonDraft(prev => ({ ...prev, [selectedAppt.id]: { text: e.target.value, price: prev[selectedAppt.id]?.price ?? '' } }))}
-                        onKeyDown={e => e.key === 'Enter' && addAddonCustom(selectedAppt.id)}
-                        placeholder="Custom add-on…"
-                        className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
-                      />
-                      <input
-                        value={addonDraft[selectedAppt.id]?.price ?? ''}
-                        onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setAddonDraft(prev => ({ ...prev, [selectedAppt.id]: { text: prev[selectedAppt.id]?.text ?? '', price: v } })) }}
-                        placeholder="$" type="text" inputMode="numeric"
-                        className="w-14 border border-gray-200 rounded-xl px-2 py-1.5 text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
-                      />
-                      <button onClick={() => addAddonCustom(selectedAppt.id)}
-                        disabled={savingAddonId === selectedAppt.id || !addonDraft[selectedAppt.id]?.text?.trim()}
-                        className="px-3 py-1.5 bg-sky-500 text-white text-sm font-bold rounded-xl disabled:opacity-40">
-                        {savingAddonId === selectedAppt.id ? '…' : '+'}
-                      </button>
-                    </div>
-                  </div>
-                )
-              })()}
 
               {/* ── Service & Pricing card (admin-desk style) ── */}
               {(() => {
