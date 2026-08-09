@@ -801,6 +801,11 @@ export default function BookPageZhCn() {
                           {s.name.split('-')[0].trim()}
                           <span className="text-sky-400 ml-1">-{s.name.split('-')[1]}</span>
                         </>
+                      ) : s.name.includes('$') ? (
+                        <>
+                          {s.name.split('$')[0].trim()}
+                          <span className="text-sky-400 ml-1">${s.name.split('$')[1].trim()}</span>
+                        </>
                       ) : s.name}
                     </p>
                     <p className="text-sm text-gray-400 mt-0.5 max-h-0 overflow-hidden group-hover:max-h-20 transition-all duration-200">{s.desc}</p>
