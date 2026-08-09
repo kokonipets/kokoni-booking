@@ -589,7 +589,8 @@ export default function DeskAdmin() {
   const [reportSavingId, setReportSavingId] = useState<string | null>(null)
 
   // Cashier
-  const [cashierRange, setCashierRange] = useState<'today' | 'week' | 'month'>('today')
+  const [cashierRange, setCashierRange] = useState<'today' | 'week' | 'month' | 'custom'>('today')
+  const [cashierCustomDate, setCashierCustomDate] = useState('')
   const [cashierExpandedId, setCashierExpandedId] = useState<string | null>(null)
   const [cashierMode, setCashierMode] = useState<'pay' | 'edit' | null>(null)
   const [cashierAmount, setCashierAmount] = useState('')
@@ -6589,6 +6590,7 @@ export default function DeskAdmin() {
               if (a.status === 'cancelled') return false
               if (cashierRange === 'today') return a.appointment_date === todayStr
               if (cashierRange === 'week') return a.appointment_date >= weekAgoStr
+              if (cashierRange === 'custom') return !!cashierCustomDate && a.appointment_date === cashierCustomDate
               return a.appointment_date >= monthStart
             }).sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
 
@@ -6672,7 +6674,7 @@ export default function DeskAdmin() {
               return (
                 <div className={`border-b border-gray-50 last:border-0 ${isExpanded ? 'bg-gray-50/60' : ''}`}>
                   <div className={`flex items-center gap-3 px-4 py-2.5 group hover:bg-gray-50/80 transition-colors`}>
-                    {cashierRange !== 'today' && (
+                    {(cashierRange === 'week' || cashierRange === 'month') && (
                       <span className="text-[10px] text-gray-400 w-10 shrink-0 font-medium">
                         {new Date(appt.appointment_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </span>
@@ -6773,8 +6775,8 @@ export default function DeskAdmin() {
             return (
               <div className="max-w-3xl space-y-4">
                 {/* Range tabs */}
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-1.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     {(['today', 'week', 'month'] as const).map(r => (
                       <button key={r} onClick={() => setCashierRange(r)}
                         className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
@@ -6783,6 +6785,15 @@ export default function DeskAdmin() {
                         {r === 'today' ? 'Today' : r === 'week' ? 'This Week' : 'This Month'}
                       </button>
                     ))}
+                    <input
+                      type="date"
+                      value={cashierCustomDate}
+                      max={todayStr}
+                      onChange={e => { setCashierCustomDate(e.target.value); setCashierRange('custom') }}
+                      className={`px-3 py-1.5 rounded-full text-sm font-semibold border transition-colors focus:outline-none ${
+                        cashierRange === 'custom' ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'
+                      }`}
+                    />
                   </div>
                   <button onClick={() => fetchReports()} className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5">⟳ Refresh</button>
                 </div>

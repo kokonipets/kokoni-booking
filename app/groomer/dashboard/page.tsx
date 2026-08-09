@@ -266,6 +266,50 @@ export default function GroomerDashboard() {
   const [popupWeight, setPopupWeight] = useState('')
   const [popupPetTags, setPopupPetTags] = useState<PetTag[]>([])
   const [savingPetInfo, setSavingPetInfo] = useState(false)
+  const [uploadingPetId, setUploadingPetId] = useState<string | null>(null)
+  const [uploadDonePetId, setUploadDonePetId] = useState<string | null>(null)
+  const [petPhotoLightbox, setPetPhotoLightbox] = useState<{ petId: string; url: string; name?: string } | null>(null)
+
+  const uploadPetPhotoPopup = async (petId: string, file: File) => {
+    setUploadingPetId(petId)
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const img = new window.Image()
+        img.onload = () => {
+          const MAX = 1200
+          let { width, height } = img
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round((height / width) * MAX); width = MAX }
+            else { width = Math.round((width / height) * MAX); height = MAX }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width; canvas.height = height
+          canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+          resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1])
+        }
+        img.onerror = reject
+        img.src = URL.createObjectURL(file)
+      })
+      const res = await fetch('/api/pets/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ petId, fileBase64: base64, contentType: 'image/jpeg', ext: 'jpg' }),
+      })
+      const data = await res.json()
+      if (data.url) {
+        setAppointments(prev => prev.map(a =>
+          a.pets?.id === petId ? { ...a, pets: a.pets ? { ...a.pets, photo_url: data.url } : a.pets } : a
+        ))
+        setSelectedAppt(prev => prev && prev.pets?.id === petId ? { ...prev, pets: prev.pets ? { ...prev.pets, photo_url: data.url } : prev.pets } : prev)
+        setUploadDonePetId(petId)
+        setTimeout(() => setUploadDonePetId(null), 2000)
+        showToast('✓ Photo updated')
+      } else {
+        showToast('⚠️ Upload failed')
+      }
+    } catch { showToast('⚠️ Upload error') }
+    finally { setUploadingPetId(null) }
+  }
   // Service definitions loaded from settings (for tier/size pricing)
   const [serviceDefs, setServiceDefs] = useState<{id:string;name:string;tiers:{label:string;price:string;duration?:string}[];visible?:boolean}[]>([])
   // Dynamic lookup: static labels + anything added via Settings
@@ -1594,10 +1638,38 @@ export default function GroomerDashboard() {
                           appt.service === 'asian_fusion'? 'bg-pink-50 border border-pink-200' :
                           'bg-gray-50 border border-gray-200'
                         }`}>
-                          {appt.pets?.photo_url
-                            ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
-                            : <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl flex-shrink-0">🐾</div>
-                          }
+                          {/* Photo — has one: tap enlarges it; no photo yet: tap uploads directly */}
+                          <div className="relative group flex-shrink-0">
+                            {appt.pets?.photo_url
+                              ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
+                              : <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl flex-shrink-0">🐾</div>
+                            }
+                            {appt.pets?.id && (
+                              appt.pets.photo_url ? (
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); setPetPhotoLightbox({ petId: appt.pets!.id!, url: appt.pets!.photo_url!, name: appt.pets?.name }) }}
+                                  className="absolute inset-0 rounded-full flex items-center justify-center cursor-pointer transition-all bg-black/0 group-hover:bg-black/30"
+                                >
+                                  <span className="text-white text-[10px] opacity-0 group-hover:opacity-100">🔍</span>
+                                </button>
+                              ) : (
+                                <label
+                                  onClick={e => e.stopPropagation()}
+                                  className={`absolute inset-0 rounded-full flex items-center justify-center cursor-pointer transition-all
+                                    ${uploadingPetId===appt.pets.id ? 'bg-black/50' : uploadDonePetId===appt.pets.id ? 'bg-green-500/80' : 'bg-black/0 group-hover:bg-black/40 active:bg-black/40'}`}
+                                >
+                                  <input type="file" accept="image/*" className="hidden"
+                                    onChange={e => { const f = e.target.files?.[0]; if (f && appt.pets?.id) uploadPetPhotoPopup(appt.pets.id, f) }} />
+                                  {uploadingPetId===appt.pets.id
+                                    ? <svg className="w-3.5 h-3.5 text-white animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                                    : uploadDonePetId===appt.pets.id
+                                      ? <span className="text-white text-sm font-bold">✓</span>
+                                      : <span className="text-white text-[10px] opacity-0 group-hover:opacity-100">📷</span>}
+                                </label>
+                              )
+                            )}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-gray-800 text-sm truncate">{appt.pets?.name}{appt.payment_amount ? <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[10px] font-bold leading-none">$</span> : null}</p>
                             <p className="text-xs text-gray-500 truncate">{serviceMap[appt.service] ?? appt.service}</p>
@@ -2243,6 +2315,40 @@ export default function GroomerDashboard() {
                   )}
                 </div>
 
+                {/* Photo — tap to view/upload */}
+                {selectedAppt.pets?.id && (
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="relative group flex-shrink-0">
+                      {selectedAppt.pets?.photo_url
+                        ? <img src={selectedAppt.pets.photo_url} className="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow-sm" alt={selectedAppt.pets?.name || ''} />
+                        : <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl border-2 border-white shadow-sm">🐶</div>}
+                      {selectedAppt.pets?.photo_url ? (
+                        // Has a photo already — tap enlarges it, replace happens from the lightbox
+                        <button
+                          type="button"
+                          onClick={() => setPetPhotoLightbox({ petId: selectedAppt.pets!.id!, url: selectedAppt.pets!.photo_url!, name: selectedAppt.pets?.name })}
+                          className="absolute inset-0 rounded-2xl flex items-center justify-center cursor-pointer transition-all bg-black/0 group-hover:bg-black/30"
+                        >
+                          <span className="text-white text-sm opacity-0 group-hover:opacity-100">🔍</span>
+                        </button>
+                      ) : (
+                        // No photo yet — tap goes straight to the file picker
+                        <label className={`absolute inset-0 rounded-2xl flex items-center justify-center cursor-pointer transition-all
+                          ${uploadingPetId===selectedAppt.pets?.id ? 'bg-black/50' : uploadDonePetId===selectedAppt.pets?.id ? 'bg-green-500/80' : 'bg-black/0 group-hover:bg-black/40'}`}>
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f && selectedAppt.pets?.id) uploadPetPhotoPopup(selectedAppt.pets.id, f) }} />
+                          {uploadingPetId===selectedAppt.pets?.id
+                            ? <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                            : uploadDonePetId===selectedAppt.pets?.id
+                              ? <span className="text-white text-lg font-bold">✓</span>
+                              : <span className="text-white text-xs opacity-0 group-hover:opacity-100">📷</span>}
+                        </label>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400">{selectedAppt.pets?.photo_url ? 'Tap photo to view or replace' : 'Tap photo to add a picture'}</p>
+                  </div>
+                )}
+
                 {!editingPetInfo ? (
                   <div className="text-sm text-gray-700 space-y-0.5">
                     <p className="font-semibold">{popupPetName || selectedAppt.pets?.name || '—'}</p>
@@ -2497,6 +2603,35 @@ export default function GroomerDashboard() {
           })}
         </div>
       </nav>
+
+      {/* ── PET PHOTO LIGHTBOX ───────────────────────────────*/}
+      {petPhotoLightbox && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[9999]" onClick={() => setPetPhotoLightbox(null)}>
+          <div className="bg-white rounded-2xl shadow-lg max-w-sm w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <p className="font-bold text-gray-800">{petPhotoLightbox.name || 'Pet Photo'}</p>
+              <button onClick={() => setPetPhotoLightbox(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+            </div>
+            <img src={petPhotoLightbox.url} alt={petPhotoLightbox.name || ''} className="w-full max-h-[60vh] object-contain bg-gray-50" />
+            <div className="p-4 flex gap-2">
+              <label className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white text-center transition-colors cursor-pointer">
+                {uploadingPetId === petPhotoLightbox.petId ? 'Uploading…' : '🔄 Replace Photo'}
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingPetId === petPhotoLightbox.petId}
+                  onChange={e => {
+                    const f = e.target.files?.[0]
+                    if (f) { uploadPetPhotoPopup(petPhotoLightbox.petId, f); setPetPhotoLightbox(null) }
+                  }} />
+              </label>
+              <button
+                onClick={() => setPetPhotoLightbox(null)}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── HEALTH CHECK MODAL ────────────────────────────── */}
       {healthCheckAppt && (

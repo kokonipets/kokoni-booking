@@ -1153,7 +1153,13 @@ export default function CashierPage() {
       {/* Top bar */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-gray-800">🐾 Kokoni Cashier</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <a href="/front-desk" className="flex items-center gap-1 text-base text-gray-600 hover:text-gray-900 font-bold transition-colors">
+              ← Back
+            </a>
+            <div className="w-px h-4 bg-gray-200" />
+            <h1 className="text-2xl font-black text-gray-800">🐾 Kokoni Cashier</h1>
+          </div>
           <p className="text-gray-400 text-sm">{todayLabel}</p>
         </div>
         <div className="flex items-center gap-4">
