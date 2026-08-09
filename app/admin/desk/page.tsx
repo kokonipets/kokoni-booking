@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
 import ChatSidebarLink from '@/components/ChatSidebarLink'
 import ChatIconButton from '@/components/ChatIconButton'
-import { readAuthRaw } from '@/lib/authStorage'
+import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffMember = {
@@ -14,6 +15,7 @@ type StaffMember = {
   first_name?: string | null
   last_name?: string | null
   role: string
+  username?: string | null
   is_active: boolean
   commission_percent: number
   tip_percent: number
@@ -330,12 +332,14 @@ const TIME_OPTIONS = [
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function DeskAdmin() {
+  const router = useRouter()
   const [isBookMode, setIsBookMode] = useState(false)
   const [authed, setAuthed] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const [loggedInName, setLoggedInName] = useState('Kokoni')
-  const [pin, setPin] = useState('')
-  const [pinError, setPinError] = useState('')
-  const [pinLoading, setPinLoading] = useState(false)
+  // null = full access (either unrestricted, or not loaded yet). A non-null
+  // array restricts the sidebar (and this admin's access) to just those tabs.
+  const [allowedTabs, setAllowedTabs] = useState<string[] | null>(null)
 
   const [tab, setTab] = useState<TabKey>('today')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -640,41 +644,46 @@ export default function DeskAdmin() {
       setIsBookMode(true)
       setTab('calendar')
       setAuthed(true)
-    } else if (sessionStorage.getItem('admin_authed') === 'yes') {
-      setAuthed(true)
-    }
-    try {
-      const auth = JSON.parse(readAuthRaw('admin') || '{}')
-      // The admin desk identifies as the store. Only show a friendly admin name
-      // if one is set (and it isn't just the login username); never surface a
-      // non-admin/groomer name here. Otherwise show "Kokoni".
-      if (auth?.role === 'admin') {
-        setLoggedInName(auth.name && auth.name !== auth.username ? auth.name : 'Kokoni')
-      } else {
-        setLoggedInName('Kokoni')
+      setCheckingAuth(false)
+    } else {
+      try {
+        const auth = JSON.parse(readAuthRaw('admin') || 'null')
+        if (auth?.role === 'admin') {
+          setAuthed(true)
+          setLoggedInName(auth.name || 'Kokoni')
+          // Re-check permissions against the live staff record (not the
+          // possibly-stale login-time snapshot) so a change made in Settings
+          // takes effect on next page load, not next login.
+          fetch('/api/admin/staff').then(r => r.json()).then(d => {
+            const me = (d.staff || []).find((s: { username?: string }) => s.username?.toLowerCase() === auth.username?.toLowerCase())
+            const allowed = me?.permissions?.allowed_tabs
+            setAllowedTabs(Array.isArray(allowed) ? allowed : null)
+          }).catch(() => setAllowedTabs(null))
+        } else {
+          router.push('/login')
+        }
+      } catch {
+        router.push('/login')
       }
-    } catch {}
+      setCheckingAuth(false)
+    }
     // Load active discount codes for the appointment popup
     fetch('/api/admin/coupons').then(r => r.json()).then(d => {
       setAvailableCoupons((d.coupons ?? []).filter((c: DeskCoupon) => c.active))
     }).catch(() => {})
-  }, [])
+  }, [router])
+
+  // If this admin is restricted and the current tab isn't one they're allowed
+  // to see (e.g. the default 'today' tab), jump to their first allowed tab.
+  useEffect(() => {
+    if (allowedTabs && allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+      setTab(allowedTabs[0] as TabKey)
+    }
+  }, [allowedTabs, tab])
 
   // No-op — AudioContext created on demand inside play functions
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
-
-  // ── Auth ─────────────────────────────────────────────────────────────────
-  const handlePin = async () => {
-    setPinLoading(true); setPinError('')
-    try {
-      const res = await fetch('/api/admin/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ pin }) })
-      const data = await res.json()
-      if (data.success) { sessionStorage.setItem('admin_authed','yes'); setAuthed(true) }
-      else setPinError('Incorrect PIN.')
-    } catch { setPinError('Something went wrong.') }
-    setPinLoading(false)
-  }
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const fetchAppointments = useCallback(async (status: string, date?: string) => {
@@ -2379,26 +2388,17 @@ export default function DeskAdmin() {
     setActionLoading(null)
   }
 
-  // ── PIN screen ─────────────────────────────────────────────────────────────
+  // ── Auth gate ────────────────────────────────────────────────────────────
+  // Real login now happens on /login (username + password against the staff
+  // table). If we get here unauthenticated, we're just mid-redirect there.
   if (!authed) return (
     <div className="min-h-screen bg-white flex items-center justify-center p-6">
-      <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-8">
+      {!checkingAuth && (
+        <div className="flex flex-col items-center">
           <Image src="/logo.png" alt="Kokoni" width={140} height={140} className="mb-4" />
-          <h1 className="text-xl font-bold text-gray-800">Admin Dashboard</h1>
-          <p className="text-sm text-gray-400">Enter your PIN to continue</p>
+          <p className="text-sm text-gray-400">Redirecting to login…</p>
         </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 shadow-sm">
-          <input type="password" inputMode="numeric" placeholder="Enter PIN" value={pin}
-            onChange={e => setPin(e.target.value)} onKeyDown={e => e.key==='Enter' && handlePin()}
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-400 mb-3 bg-white" />
-          {pinError && <p className="text-red-500 text-sm text-center mb-3">{pinError}</p>}
-          <button onClick={handlePin} disabled={pinLoading||!pin}
-            className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
-            {pinLoading ? 'Checking...' : 'Enter'}
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   )
 
@@ -2752,7 +2752,8 @@ export default function DeskAdmin() {
                     </div>
                     {(() => {
                       const apptDate = detailAppt.appointment_date
-                      const activeStaff = staff.filter(s => s.is_active)
+                      // Admin accounts are dashboard-only logins, not assignable groomers/bathers.
+                      const activeStaff = staff.filter(s => s.is_active && s.role !== 'admin')
                       const isOff = (s: StaffMember) => s.days_off?.includes(apptDate) ?? false
 
                       const StaffPicker = ({ icon, label, value, onChange }: { icon: string; label: string; value: string; onChange: (v: string) => void }) => (
@@ -4072,7 +4073,7 @@ export default function DeskAdmin() {
 
         {/* Nav items */}
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-          {NAV.filter(({ key }) => !isBookMode || key === 'calendar').map(({ key, label, icon }) => (
+          {NAV.filter(({ key }) => (!isBookMode || key === 'calendar') && (!allowedTabs || allowedTabs.includes(key))).map(({ key, label, icon }) => (
             key === 'settings' ? (
               <a key={key} href="/admin/settings"
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left relative text-sky-600 hover:bg-sky-100 hover:text-sky-900`}
@@ -4136,7 +4137,8 @@ export default function DeskAdmin() {
           {/* Chat — two-way SMS with customers */}
           <ChatSidebarLink onClick={() => setSidebarOpen(false)} />
 
-          {/* Reviews */}
+          {/* Reviews — standalone page, gated by the 'reviews' permission key. */}
+          {(!allowedTabs || allowedTabs.includes('reviews')) && (
           <a
             href="/admin/reviews"
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
@@ -4145,8 +4147,10 @@ export default function DeskAdmin() {
             <span className="text-base leading-none w-5 text-center">⭐</span>
             <span className="flex-1">Reviews</span>
           </a>
+          )}
 
-          {/* Time Tracking */}
+          {/* Time Tracking — standalone page, gated by the 'timesheet' permission key. */}
+          {(!allowedTabs || allowedTabs.includes('timesheet')) && (
           <a
             href="/admin/timesheet"
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
@@ -4155,6 +4159,7 @@ export default function DeskAdmin() {
             <span className="text-base leading-none w-5 text-center">🕐</span>
             <span className="flex-1">Timesheet</span>
           </a>
+          )}
           <a
             href="/clock"
             target="_blank"
@@ -4187,7 +4192,7 @@ export default function DeskAdmin() {
               <div className="w-8 h-8 rounded-full bg-sky-400 flex items-center justify-center text-white text-sm font-bold">{loggedInName.charAt(0).toUpperCase()}</div>
               <span className="text-sky-800 text-sm font-medium">{loggedInName}</span>
             </div>
-            <button onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false) }}
+            <button onClick={() => { clearAuth('admin'); setAuthed(false); router.push('/login') }}
               className="text-sky-400 hover:text-sky-700 text-xs">Sign out</button>
           </div>
         </div>
@@ -6387,7 +6392,7 @@ export default function DeskAdmin() {
                       {staff.filter(s => s.role === 'groomer' || s.role === 'Groomer').map(s => (
                         <option key={s.id} value={s.name}>{s.name}</option>
                       ))}
-                      {staff.filter(s => s.role !== 'groomer' && s.role !== 'Groomer').map(s => (
+                      {staff.filter(s => s.role !== 'groomer' && s.role !== 'Groomer' && s.role !== 'admin').map(s => (
                         <option key={s.id} value={s.name}>{s.name} ({s.role})</option>
                       ))}
                     </select>
@@ -7943,7 +7948,7 @@ export default function DeskAdmin() {
                   </div>
 
                   {/* Staff filter chips */}
-                  {staff.filter(s => s.is_active).length > 0 && (
+                  {staff.filter(s => s.is_active && s.role !== 'admin').length > 0 && (
                     <div className="px-4 py-2.5 flex items-center gap-2 overflow-x-auto flex-shrink-0 border-b border-gray-100 bg-white">
                       <button
                         onClick={() => setCalendarStaffFilter('all')}
@@ -7954,7 +7959,7 @@ export default function DeskAdmin() {
                         }`}>
                         All
                       </button>
-                      {staff.filter(s => s.is_active).map(s => (
+                      {staff.filter(s => s.is_active && s.role !== 'admin').map(s => (
                         <button
                           key={s.id}
                           onClick={() => setCalendarStaffFilter(calendarStaffFilter === s.name ? 'all' : s.name)}

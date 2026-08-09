@@ -3,8 +3,25 @@
 import ChatIconButton from '@/components/ChatIconButton'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
+import { readAuthRaw, clearAuth } from '@/lib/authStorage'
+
+// Dashboard-tab permissions are managed once, on the desktop admin's tab set
+// (see DASHBOARD_TABS in app/admin/settings/page.tsx). Mobile has a smaller,
+// differently-named set of tabs, so each one maps to whichever desktop tab it
+// most closely corresponds to for the purpose of checking `allowed_tabs`.
+const MOBILE_TAB_PERMISSION_KEY: Record<string, string> = {
+  pending: 'requests',
+  today: 'today',
+  upcoming: 'requests',
+  all: 'requests',
+  calendar: 'calendar',
+  customers: 'clients',
+  checkout: 'cashier',
+  settings: 'settings',
+}
 
 type StaffMember = {
   id: string
@@ -232,10 +249,11 @@ function BreedInput({ value, onChange, className }: { value: string; onChange: (
 }
 
 export default function AdminPage() {
+  const router = useRouter()
   const [authed, setAuthed] = useState(false)
-  const [pin, setPin] = useState('')
-  const [pinError, setPinError] = useState('')
-  const [pinLoading, setPinLoading] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+  // null = full access (either unrestricted, or not loaded yet).
+  const [allowedTabs, setAllowedTabs] = useState<string[] | null>(null)
 
   const [tab, setTab] = useState<'pending' | 'today' | 'upcoming' | 'all' | 'calendar' | 'customers' | 'checkout' | 'settings'>('pending')
   const [pendingCount, setPendingCount] = useState(0)
@@ -459,12 +477,39 @@ export default function AdminPage() {
   const [savingBlock, setSavingBlock] = useState(false)
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('admin_authed')
-    if (stored === 'yes') setAuthed(true)
+    try {
+      const auth = JSON.parse(readAuthRaw('admin') || 'null')
+      if (auth?.role === 'admin') {
+        setAuthed(true)
+        // Re-check permissions against the live staff record (not the
+        // possibly-stale login-time snapshot).
+        fetch('/api/admin/staff').then(r => r.json()).then(d => {
+          const me = (d.staff || []).find((s: { username?: string }) => s.username?.toLowerCase() === auth.username?.toLowerCase())
+          const allowed = me?.permissions?.allowed_tabs
+          setAllowedTabs(Array.isArray(allowed) ? allowed : null)
+        }).catch(() => setAllowedTabs(null))
+      } else {
+        router.push('/login')
+      }
+    } catch {
+      router.push('/login')
+    }
+    setCheckingAuth(false)
     fetch('/api/admin/coupons').then(r => r.json()).then(d => {
       setAvailableCoupons((d.coupons ?? []).filter((c: MobileCoupon) => c.active))
     }).catch(() => {})
-  }, [])
+  }, [router])
+
+  // If this admin is restricted and the current tab maps to a desktop tab
+  // they're not allowed to see, jump to their first allowed tab (if any).
+  useEffect(() => {
+    if (!allowedTabs) return
+    const currentAllowed = allowedTabs.includes(MOBILE_TAB_PERMISSION_KEY[tab] ?? tab)
+    if (!currentAllowed) {
+      const firstOk = Object.keys(MOBILE_TAB_PERMISSION_KEY).find(k => allowedTabs.includes(MOBILE_TAB_PERMISSION_KEY[k]))
+      if (firstOk) setTab(firstOk as typeof tab)
+    }
+  }, [allowedTabs, tab])
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -545,28 +590,6 @@ export default function AdminPage() {
       finally { setTranslatingId(null) }
     }, 800)
   }, [])
-
-  const handlePin = async () => {
-    setPinLoading(true)
-    setPinError('')
-    try {
-      const res = await fetch('/api/admin/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        sessionStorage.setItem('admin_authed', 'yes')
-        setAuthed(true)
-      } else {
-        setPinError('Incorrect PIN. Try again.')
-      }
-    } catch {
-      setPinError('Something went wrong.')
-    }
-    setPinLoading(false)
-  }
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true)
@@ -1419,36 +1442,18 @@ export default function AdminPage() {
     finally { setEpSavingEditNote(false) }
   }
 
-  // ── PIN screen ─────────────────────────────────────────────
+  // ── Auth gate ────────────────────────────────────────────────
+  // Real login now happens on /login (username + password against the staff
+  // table). If we get here unauthenticated, we're just mid-redirect there.
   if (!authed) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-sky-50 to-white flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-sm">
-          <div className="flex flex-col items-center mb-8">
+        {!checkingAuth && (
+          <div className="flex flex-col items-center">
             <Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={120} height={120} className="mb-3" />
-            <h1 className="text-xl font-bold text-gray-800">Admin Dashboard</h1>
-            <p className="text-sm text-gray-500">Enter your PIN to continue</p>
+            <p className="text-sm text-gray-500">Redirecting to login…</p>
           </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <input
-              type="password"
-              inputMode="numeric"
-              placeholder="Enter PIN"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handlePin()}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-400 mb-3"
-            />
-            {pinError && <p className="text-red-500 text-sm text-center mb-3">{pinError}</p>}
-            <button
-              onClick={handlePin}
-              disabled={pinLoading || !pin}
-              className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors"
-            >
-              {pinLoading ? 'Checking...' : 'Enter'}
-            </button>
-          </div>
-        </div>
+        )}
       </div>
     )
   }
@@ -1584,7 +1589,7 @@ export default function AdminPage() {
         <div className="flex items-center gap-1">
           <ChatIconButton />
           <button
-            onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false) }}
+            onClick={() => { clearAuth('admin'); setAuthed(false); router.push('/login') }}
             className="text-xs text-gray-400 hover:text-gray-600 px-2"
           >
             Sign out
@@ -2612,7 +2617,7 @@ export default function AdminPage() {
                                     fetchAppointments()
                                   }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
                                     <option value="">✂️ Groomer…</option>
-                                    {staff.filter(s => s.is_active).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
                                   <select defaultValue="" onChange={async e => {
                                     if (!e.target.value) return
@@ -2620,7 +2625,7 @@ export default function AdminPage() {
                                     fetchAppointments()
                                   }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
                                     <option value="">🛁 Bather…</option>
-                                    {staff.filter(s => s.is_active).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
                                 </div>
                               </div>
@@ -2673,7 +2678,7 @@ export default function AdminPage() {
                                     fetchAppointments()
                                   }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white">
                                     <option value="">✂️ Change groomer…</option>
-                                    {staff.filter(s => s.is_active).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
                                   <select defaultValue="" onChange={async e => {
                                     if (!e.target.value) return
@@ -2681,7 +2686,7 @@ export default function AdminPage() {
                                     fetchAppointments()
                                   }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white">
                                     <option value="">🛁 Change bather…</option>
-                                    {staff.filter(s => s.is_active).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
                                 </div>
                               </div>
@@ -3497,7 +3502,7 @@ export default function AdminPage() {
                   </div>
 
                   {/* Staff filter chips */}
-                  {staff.filter(s => s.is_active).length > 0 && (
+                  {staff.filter(s => s.is_active && s.role !== 'admin').length > 0 && (
                     <div className="px-4 py-2.5 flex items-center gap-2 overflow-x-auto flex-shrink-0 border-b border-gray-100">
                       <button
                         onClick={() => setCalendarStaffFilter('all')}
@@ -3508,7 +3513,7 @@ export default function AdminPage() {
                         }`}>
                         All
                       </button>
-                      {staff.filter(s => s.is_active).map(s => (
+                      {staff.filter(s => s.is_active && s.role !== 'admin').map(s => (
                         <button
                           key={s.id}
                           onClick={() => setCalendarStaffFilter(calendarStaffFilter === s.name ? 'all' : s.name)}
@@ -3649,7 +3654,7 @@ export default function AdminPage() {
               pending:'bg-amber-100 text-amber-700', confirmed:'bg-emerald-100 text-emerald-700',
               completed:'bg-gray-100 text-gray-600', cancelled:'bg-red-100 text-red-600',
             }
-            const activeStaff = staff.filter(s => s.is_active)
+            const activeStaff = staff.filter(s => s.is_active && s.role !== 'admin')
             const svcDef = services.find(s => s.id === a.service)
             const tiers = (svcDef?.tiers ?? servicePricing[a.service] ?? []).filter((t: {label:string;price:string}) => t.label && t.price)
             // History = past appts for same client. Prefer the full per-client fetch
