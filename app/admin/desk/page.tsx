@@ -4202,7 +4202,7 @@ export default function DeskAdmin() {
       {/* ── Main content ──────────────────────────────────────────────────── */}
       <div className={`${isBookMode ? '' : 'md:ml-64'} flex-1 flex flex-col min-h-screen`}>
         {/* Top bar */}
-        <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-30">
+        <div className="bg-white border-b border-gray-200 px-4 md:px-6 flex items-center justify-between sticky top-0 z-30" style={{paddingTop: 'calc(env(safe-area-inset-top) + 12px)', paddingBottom: '12px'}}>
           <div className="flex items-center gap-3">
             {/* Hamburger — mobile only, hidden in book mode */}
             {!isBookMode && (
