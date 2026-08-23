@@ -1646,22 +1646,22 @@ export default function GroomerDashboard() {
                 <p className="text-sm text-gray-400 text-center py-8">No appointments this day</p>
               ) : (
                 <div className="divide-y divide-gray-50">
-                  {TIME_OPTIONS.filter(slot =>
-                    selectedDayAppts.some(a => a.appointment_time === slot)
-                  ).map(slot => {
-                    const appt = selectedDayAppts.find(a => a.appointment_time === slot)!
+                  {selectedDayAppts.map(appt => {
                     return (
-                      <button
-                        key={slot}
+                      <div
+                        key={appt.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => openApptPopup(appt)}
-                        className="w-full flex items-stretch min-h-[64px] text-left hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') openApptPopup(appt) }}
+                        className="w-full min-w-0 flex items-stretch min-h-[64px] text-left hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
                       >
                         {/* Time column */}
                         <div className="w-16 flex-shrink-0 flex items-center justify-end pr-3 py-3">
-                          <span className="text-xs font-semibold text-gray-400">{slot}</span>
+                          <span className="text-xs font-semibold text-gray-400">{appt.appointment_time}</span>
                         </div>
                         {/* Appointment card */}
-                        <div className={`flex-1 border-l border-gray-100 my-2 mr-3 rounded-xl px-3 py-2 flex items-center gap-3 ${
+                        <div className={`flex-1 min-w-0 border-l border-gray-100 my-2 mr-3 rounded-xl px-3 py-2 flex items-center gap-3 overflow-hidden ${
                           appt.service === 'simply_cute' ? 'bg-sky-50 border border-sky-200' :
                           appt.service === 'bath_brush'  ? 'bg-teal-50 border border-teal-200' :
                           appt.service === 'asian_fusion'? 'bg-pink-50 border border-pink-200' :
@@ -1711,7 +1711,7 @@ export default function GroomerDashboard() {
                             'bg-red-100 text-red-500'
                           }`}>{appt.status}</span>
                         </div>
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
