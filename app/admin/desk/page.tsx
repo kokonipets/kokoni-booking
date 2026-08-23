@@ -801,6 +801,22 @@ export default function DeskAdmin() {
 
   const [deletingClient, setDeletingClient] = useState<string|null>(null)
   const [confirmDeleteClient, setConfirmDeleteClient] = useState<string|null>(null)
+  const [showDeletedClients, setShowDeletedClients] = useState(false)
+  const [loadingDeletedClients, setLoadingDeletedClients] = useState(false)
+  const [deletedClientsData, setDeletedClientsData] = useState<{ id: string; deleted_at: string; phone: string; client?: { name?: string; email?: string; address?: string }; pets?: { id: string; name: string; breed?: string; weight?: string }[]; appointments?: { id: string; appointment_date: string; service: string; payment_amount?: string }[] }[]>([])
+  const [deletedClientsSearch, setDeletedClientsSearch] = useState('')
+  const [expandedDeletedId, setExpandedDeletedId] = useState<string|null>(null)
+
+  const openDeletedClients = async () => {
+    setShowDeletedClients(true)
+    setLoadingDeletedClients(true)
+    try {
+      const res = await fetch('/api/admin/deleted-clients')
+      const data = await res.json()
+      setDeletedClientsData(data.records ?? [])
+    } catch { /* noop */ }
+    finally { setLoadingDeletedClients(false) }
+  }
 
   const handleDeleteClient = async (phone: string) => {
     setDeletingClient(phone)
@@ -5435,6 +5451,11 @@ export default function DeskAdmin() {
                     className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white shadow-sm" />
                 </div>
                 <span className="text-sm text-gray-400 font-medium">{clients.length} clients</span>
+                <button
+                  onClick={openDeletedClients}
+                  className="text-xs font-semibold text-gray-400 hover:text-rose-500 border border-gray-200 hover:border-rose-300 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap">
+                  🗑️ Deleted Clients
+                </button>
               </div>
 
               {/* ── Tag filter chips ────────────────── */}
@@ -8518,6 +8539,90 @@ export default function DeskAdmin() {
 
         </div>
       </div>
+
+      {/* ── Deleted Clients (snapshot log kept whenever a client is removed) ── */}
+      {showDeletedClients && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowDeletedClients(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h3 className="font-bold text-gray-800">🗑️ Deleted Clients</h3>
+              <button onClick={() => setShowDeletedClients(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 text-lg">×</button>
+            </div>
+            <div className="px-5 pt-3 flex-shrink-0">
+              <input
+                type="text" placeholder="Search by name or phone…"
+                value={deletedClientsSearch}
+                onChange={e => setDeletedClientsSearch(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 mb-3"
+              />
+            </div>
+            <div className="overflow-y-auto flex-1 px-5 pb-5 space-y-2">
+              {loadingDeletedClients ? (
+                <p className="text-sm text-gray-400 text-center py-8">Loading…</p>
+              ) : (() => {
+                const q = deletedClientsSearch.trim().toLowerCase()
+                const qDigits = deletedClientsSearch.replace(/\D/g, '')
+                const filtered = deletedClientsData.filter(r => {
+                  if (!q) return true
+                  const name = (r.client?.name || '').toLowerCase()
+                  const phoneDigits = (r.phone || '').replace(/\D/g, '')
+                  return name.includes(q) || (qDigits && phoneDigits.includes(qDigits))
+                })
+                if (filtered.length === 0) return <p className="text-sm text-gray-400 text-center py-8">No deleted clients found</p>
+                return filtered.map(r => {
+                  const isExpanded = expandedDeletedId === r.id
+                  const pets = r.pets || []
+                  const appts = r.appointments || []
+                  return (
+                    <div key={r.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => setExpandedDeletedId(isExpanded ? null : r.id)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 text-left">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{r.client?.name || r.phone}</p>
+                          <p className="text-xs text-gray-400">{r.phone} · {pets.length} pet{pets.length === 1 ? '' : 's'} · {appts.length} appt{appts.length === 1 ? '' : 's'}</p>
+                        </div>
+                        <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">
+                          Deleted {new Date(r.deleted_at).toLocaleDateString()} {isExpanded ? '▲' : '▼'}
+                        </span>
+                      </button>
+                      {isExpanded && (
+                        <div className="border-t border-gray-100 px-4 py-3 bg-gray-50 space-y-3 text-sm">
+                          <div>
+                            <p className="text-xs font-bold uppercase text-gray-400 mb-1">Client Info</p>
+                            <p className="text-gray-700">Name: {r.client?.name || '—'}</p>
+                            <p className="text-gray-700">Phone: {r.phone}</p>
+                            {r.client?.email && <p className="text-gray-700">Email: {r.client.email}</p>}
+                            {r.client?.address && <p className="text-gray-700">Address: {r.client.address}</p>}
+                          </div>
+                          {pets.length > 0 && (
+                            <div>
+                              <p className="text-xs font-bold uppercase text-gray-400 mb-1">Pets</p>
+                              {pets.map(p => (
+                                <p key={p.id} className="text-gray-700">🐾 {p.name}{p.breed ? ` (${p.breed})` : ''}{p.weight ? ` · ${p.weight}` : ''}</p>
+                              ))}
+                            </div>
+                          )}
+                          {appts.length > 0 && (
+                            <div>
+                              <p className="text-xs font-bold uppercase text-gray-400 mb-1">Appointments ({appts.length})</p>
+                              {appts.slice(0, 10).map(a => (
+                                <p key={a.id} className="text-gray-700">{a.appointment_date} · {a.service}{a.payment_amount ? ` · $${a.payment_amount}` : ''}</p>
+                              ))}
+                              {appts.length > 10 && <p className="text-gray-400 text-xs">+ {appts.length - 10} more</p>}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -152,6 +152,23 @@ export async function DELETE(req: NextRequest) {
   const { phone } = await req.json()
   if (!phone) return NextResponse.json({ error: 'Phone required' }, { status: 400 })
 
+  // Snapshot everything before it's gone. The delete below is still permanent —
+  // this just keeps a record of what existed, so staff can look up a client's
+  // history later even after removing them from the live app.
+  const [{ data: clientRow }, { data: petsRows }, { data: apptRows }, { data: pickupRows }] = await Promise.all([
+    supabase.from('clients').select('*').eq('phone', phone).maybeSingle(),
+    supabase.from('pets').select('*').eq('client_phone', phone),
+    supabase.from('appointments').select('*').eq('client_phone', phone),
+    supabase.from('authorized_pickups').select('*').eq('client_phone', phone),
+  ])
+  await supabase.from('deleted_clients_log').insert({
+    phone,
+    client: clientRow ?? { phone },
+    pets: petsRows ?? [],
+    appointments: apptRows ?? [],
+    authorized_pickups: pickupRows ?? [],
+  })
+
   // Delete related records first
   await supabase.from('authorized_pickups').delete().eq('client_phone', phone)
   await supabase.from('appointments').delete().eq('client_phone', phone)
