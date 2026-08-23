@@ -31,6 +31,13 @@ type Appointment = {
   checked_in_at?: string | null
   grooming_started_at?: string | null
   grooming_finished_at?: string | null
+  grooming_quality?: {
+    groomer_diary?: string | null
+    groomer_diary_english?: string | null
+    groomer_diary_traditional?: string | null
+    groomer_diary_simplified?: string | null
+    [key: string]: unknown
+  } | null
 }
 
 type AuthUser = {
@@ -231,6 +238,8 @@ export default function GroomerDashboard() {
   const [calendarSelected, setCalendarSelected] = useState<string | null>(null)
   const [calView, setCalView] = useState<'3day' | 'week' | 'month'>('month')
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
+  // When true, the popup is showing a past visit opened from history — view only, no editing.
+  const [popupReadOnly, setPopupReadOnly] = useState(false)
   // Popup editing states
   const [popupServiceVal, setPopupServiceVal] = useState('')
   const [popupChangingService, setPopupChangingService] = useState(false)
@@ -238,9 +247,14 @@ export default function GroomerDashboard() {
   const [popupBasePrice, setPopupBasePrice] = useState('')
   const [popupBaseTier, setPopupBaseTier] = useState('')
   const [popupAddOns, setPopupAddOns] = useState<{id:string;name:string;price:string}[]>([])
+  const [popupAddonDraft, setPopupAddonDraft] = useState({ text: '', price: '' })
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupDiscount, setPopupDiscount] = useState(false)
   const [popupIsFirstTime, setPopupIsFirstTime] = useState(false)
+  // Past visits reuse the same Appointment shape so clicking one can reopen it
+  // in this same popup (openApptPopup below).
+  const [petHistory, setPetHistory] = useState<Appointment[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
   type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
   const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([])
   const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
@@ -259,12 +273,57 @@ export default function GroomerDashboard() {
   const noteTranslateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const noteIsComposingRef = useRef(false)
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
+  const apptPopupBodyRef = useRef<HTMLDivElement>(null)
   const [popupPetName, setPopupPetName] = useState('')
   const [editingPetInfo, setEditingPetInfo] = useState(false)
   const [popupBreed, setPopupBreed] = useState('')
   const [popupWeight, setPopupWeight] = useState('')
   const [popupPetTags, setPopupPetTags] = useState<PetTag[]>([])
   const [savingPetInfo, setSavingPetInfo] = useState(false)
+  const [uploadingPetId, setUploadingPetId] = useState<string | null>(null)
+  const [uploadDonePetId, setUploadDonePetId] = useState<string | null>(null)
+  const [petPhotoLightbox, setPetPhotoLightbox] = useState<{ petId: string; url: string; name?: string } | null>(null)
+
+  const uploadPetPhotoPopup = async (petId: string, file: File) => {
+    setUploadingPetId(petId)
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const img = new window.Image()
+        img.onload = () => {
+          const MAX = 1200
+          let { width, height } = img
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round((height / width) * MAX); width = MAX }
+            else { width = Math.round((width / height) * MAX); height = MAX }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width; canvas.height = height
+          canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+          resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1])
+        }
+        img.onerror = reject
+        img.src = URL.createObjectURL(file)
+      })
+      const res = await fetch('/api/pets/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ petId, fileBase64: base64, contentType: 'image/jpeg', ext: 'jpg' }),
+      })
+      const data = await res.json()
+      if (data.url) {
+        setAppointments(prev => prev.map(a =>
+          a.pets?.id === petId ? { ...a, pets: a.pets ? { ...a.pets, photo_url: data.url } : a.pets } : a
+        ))
+        setSelectedAppt(prev => prev && prev.pets?.id === petId ? { ...prev, pets: prev.pets ? { ...prev.pets, photo_url: data.url } : prev.pets } : prev)
+        setUploadDonePetId(petId)
+        setTimeout(() => setUploadDonePetId(null), 2000)
+        showToast('✓ Photo updated')
+      } else {
+        showToast('⚠️ Upload failed')
+      }
+    } catch { showToast('⚠️ Upload error') }
+    finally { setUploadingPetId(null) }
+  }
   // Service definitions loaded from settings (for tier/size pricing)
   const [serviceDefs, setServiceDefs] = useState<{id:string;name:string;tiers:{label:string;price:string;duration?:string}[];visible?:boolean}[]>([])
   // Dynamic lookup: static labels + anything added via Settings
@@ -666,7 +725,11 @@ export default function GroomerDashboard() {
 
   // ── Popup editing helpers ────────────────────────────────────────────────
 
-  const openApptPopup = async (appt: Appointment) => {
+  const openApptPopup = async (appt: Appointment, opts?: { readOnly?: boolean }) => {
+    setPopupReadOnly(!!opts?.readOnly)
+    // Reset scroll to top — the popup body div is reused (not remounted) when
+    // jumping from one visit's detail straight into another via Past Visits.
+    requestAnimationFrame(() => { apptPopupBodyRef.current?.scrollTo({ top: 0 }) })
     setPopupServiceVal(appt.service)
     setPopupChangingService(false)
     // Load saved add-ons from notes_list (is_addon: true entries)
@@ -674,6 +737,7 @@ export default function GroomerDashboard() {
       .filter(n => n.is_addon)
       .map(n => ({ id: n.id, name: n.text, price: n.price ?? '' }))
     setPopupAddOns(savedAddOns)
+    setPopupAddonDraft({ text: '', price: '' })
     setPopupTotalSaved(!!appt.payment_amount)
     setPopupDiscount(false)
     setPopupCouponId(null)
@@ -691,6 +755,7 @@ export default function GroomerDashboard() {
     setSavingPetInfo(false)
     setSelectedAppt(appt)
     setPopupPetTags([])
+    setPetHistory([])
 
     // Fetch pet tags
     if (appt.pets?.id) {
@@ -698,6 +763,16 @@ export default function GroomerDashboard() {
         .then(r => r.json())
         .then(d => setPopupPetTags((d.tags ?? []) as PetTag[]))
         .catch(() => {/**/})
+    }
+
+    // Fetch this pet's past visit history (service + price last time, etc.)
+    if (appt.pets?.id) {
+      setLoadingHistory(true)
+      fetch(`/api/groomer/pet-history?pet_id=${appt.pets.id}&exclude_id=${appt.id}`)
+        .then(r => r.json())
+        .then(d => setPetHistory((d.visits ?? []) as Appointment[]))
+        .catch(() => setPetHistory([]))
+        .finally(() => setLoadingHistory(false))
     }
 
     // Auto-translate legacy customer note if missing translation
@@ -1128,7 +1203,8 @@ export default function GroomerDashboard() {
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
           <circle cx="12" cy="12" r="9" />
-          <path d="M12 7v1m0 8v1M9.5 9.5C9.5 8.4 10.6 8 12 8s2.5.4 2.5 1.5S13.4 11 12 11s-2.5.6-2.5 1.5S10.6 16 12 16s2.5-.4 2.5-1.5" />
+          <path d="M12 6.5v1.3M12 16.2v1.3" />
+          <path d="M14.6 10c0-1.1-1.2-2-2.6-2s-2.6.8-2.6 1.8c0 2.3 5.2 1 5.2 3.3c0 1-1.2 1.9-2.6 1.9s-2.6-.9-2.6-2" />
         </svg>
       ),
     },
@@ -1591,10 +1667,38 @@ export default function GroomerDashboard() {
                           appt.service === 'asian_fusion'? 'bg-pink-50 border border-pink-200' :
                           'bg-gray-50 border border-gray-200'
                         }`}>
-                          {appt.pets?.photo_url
-                            ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
-                            : <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl flex-shrink-0">🐾</div>
-                          }
+                          {/* Photo — has one: tap enlarges it; no photo yet: tap uploads directly */}
+                          <div className="relative group flex-shrink-0">
+                            {appt.pets?.photo_url
+                              ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
+                              : <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl flex-shrink-0">🐾</div>
+                            }
+                            {appt.pets?.id && (
+                              appt.pets.photo_url ? (
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); setPetPhotoLightbox({ petId: appt.pets!.id!, url: appt.pets!.photo_url!, name: appt.pets?.name }) }}
+                                  className="absolute inset-0 rounded-full flex items-center justify-center cursor-pointer transition-all bg-black/0 group-hover:bg-black/30"
+                                >
+                                  <span className="text-white text-[10px] opacity-0 group-hover:opacity-100">🔍</span>
+                                </button>
+                              ) : (
+                                <label
+                                  onClick={e => e.stopPropagation()}
+                                  className={`absolute inset-0 rounded-full flex items-center justify-center cursor-pointer transition-all
+                                    ${uploadingPetId===appt.pets.id ? 'bg-black/50' : uploadDonePetId===appt.pets.id ? 'bg-green-500/80' : 'bg-black/0 group-hover:bg-black/40 active:bg-black/40'}`}
+                                >
+                                  <input type="file" accept="image/*" className="hidden"
+                                    onChange={e => { const f = e.target.files?.[0]; if (f && appt.pets?.id) uploadPetPhotoPopup(appt.pets.id, f) }} />
+                                  {uploadingPetId===appt.pets.id
+                                    ? <svg className="w-3.5 h-3.5 text-white animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                                    : uploadDonePetId===appt.pets.id
+                                      ? <span className="text-white text-sm font-bold">✓</span>
+                                      : <span className="text-white text-[10px] opacity-0 group-hover:opacity-100">📷</span>}
+                                </label>
+                              )
+                            )}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-gray-800 text-sm truncate">{appt.pets?.name}{appt.payment_amount ? <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[10px] font-bold leading-none">$</span> : null}</p>
                             <p className="text-xs text-gray-500 truncate">{serviceMap[appt.service] ?? appt.service}</p>
@@ -1877,15 +1981,21 @@ export default function GroomerDashboard() {
                 className="w-8 h-8 flex items-center justify-center rounded-full bg-white/70 text-gray-500 text-lg font-light hover:bg-white">×</button>
             </div>
 
+            {popupReadOnly && (
+              <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs font-semibold text-amber-700">👁️ Past visit · view only</span>
+              </div>
+            )}
+
             {/* Body */}
-            <div className="overflow-y-auto flex-1 p-4 space-y-4">
+            <div ref={apptPopupBodyRef} className="overflow-y-auto flex-1 p-4 space-y-4">
 
               {/* ── Service & Pricing card (admin-desk style) ── */}
               {(() => {
                 const svcDef = serviceDefs.find(s => s.id === popupServiceVal)
                 const svcName = svcDef?.name ?? serviceMap[popupServiceVal] ?? popupServiceVal
                 const tiers = (svcDef?.tiers ?? []).filter(t => t.label)
-                const otherServices = serviceDefs.filter(s => s.id !== popupServiceVal && s.visible !== false)
+                const otherServices = serviceDefs.filter(s => s.id !== popupServiceVal)
                 const addOnTotal = popupAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
                 const baseAmt = parseFloat(popupBasePrice) || 0
                 const subtotal = baseAmt + addOnTotal
@@ -1935,12 +2045,12 @@ export default function GroomerDashboard() {
                             </select>
                             <button onClick={() => setPopupChangingService(false)} className="text-xs text-gray-400">✕</button>
                           </div>
-                        ) : (
+                        ) : !popupReadOnly ? (
                           <button onClick={() => setPopupChangingService(true)}
                             className="text-xs text-gray-400 hover:text-sky-600 font-medium border border-gray-200 hover:border-sky-300 px-2 py-0.5 rounded-lg transition-colors">
                             {savingPopupServiceChange ? '…' : '🔄 Change'}
                           </button>
-                        )}
+                        ) : null}
                       </div>
                       <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
                         selectedAppt.payment_status === 'paid'
@@ -1952,7 +2062,7 @@ export default function GroomerDashboard() {
                     </div>
 
                     {/* Size tier buttons */}
-                    {tiers.length > 0 && (
+                    {tiers.length > 0 && !popupReadOnly && (
                       <>
                         <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Select Size</p>
                         <div className={`grid gap-2 mb-3 ${tiers.length <= 2 ? 'grid-cols-2' : tiers.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
@@ -1992,33 +2102,37 @@ export default function GroomerDashboard() {
                     )}
 
                     {/* Custom price input */}
-                    {popupBasePrice && !popupBaseTier && !selectedAppt.payment_amount && (
-                      <p className="text-[11px] text-sky-500 font-medium mb-1 px-1">📋 Last payment — confirm or adjust before saving</p>
+                    {!popupReadOnly && (
+                      <>
+                        {popupBasePrice && !popupBaseTier && !selectedAppt.payment_amount && (
+                          <p className="text-[11px] text-sky-500 font-medium mb-1 px-1">📋 Last payment — confirm or adjust before saving</p>
+                        )}
+                        {popupBasePrice && !popupBaseTier && selectedAppt.payment_amount && popupTotalSaved && (
+                          <p className="text-[11px] text-emerald-600 font-medium mb-1 px-1">✓ Price saved — tap to update if needed</p>
+                        )}
+                        <div className={`flex items-center rounded-2xl border-2 overflow-hidden mb-3 transition-all ${
+                          popupBasePrice && !popupBaseTier
+                            ? 'border-emerald-400 bg-emerald-50'
+                            : 'border-gray-200 bg-gray-50'
+                        }`}>
+                          <span className={`text-base font-black px-4 py-3 border-r-2 ${
+                            popupBasePrice && !popupBaseTier
+                              ? 'border-emerald-300 text-emerald-600'
+                              : 'border-gray-200 text-gray-400'
+                          }`}>$</span>
+                          <input
+                            type="text" inputMode="numeric" pattern="[0-9]*"
+                            placeholder={tiers.length > 0 ? 'or enter custom…' : 'enter price…'}
+                            value={popupBaseTier ? '' : popupBasePrice}
+                            onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setPopupBasePrice(v); setPopupBaseTier(''); setPopupTotalSaved(false) }}
+                            onFocus={() => { if (popupBaseTier) { setPopupBasePrice(''); setPopupTotalSaved(false) } }}
+                            className={`flex-1 text-xl font-black py-3 px-4 bg-transparent focus:outline-none placeholder:text-gray-300 ${
+                              popupBasePrice && !popupBaseTier ? 'text-emerald-700' : 'text-gray-700'
+                            }`}
+                          />
+                        </div>
+                      </>
                     )}
-                    {popupBasePrice && !popupBaseTier && selectedAppt.payment_amount && popupTotalSaved && (
-                      <p className="text-[11px] text-emerald-600 font-medium mb-1 px-1">✓ Price saved — tap to update if needed</p>
-                    )}
-                    <div className={`flex items-center rounded-2xl border-2 overflow-hidden mb-3 transition-all ${
-                      popupBasePrice && !popupBaseTier
-                        ? 'border-emerald-400 bg-emerald-50'
-                        : 'border-gray-200 bg-gray-50'
-                    }`}>
-                      <span className={`text-base font-black px-4 py-3 border-r-2 ${
-                        popupBasePrice && !popupBaseTier
-                          ? 'border-emerald-300 text-emerald-600'
-                          : 'border-gray-200 text-gray-400'
-                      }`}>$</span>
-                      <input
-                        type="text" inputMode="numeric" pattern="[0-9]*"
-                        placeholder={tiers.length > 0 ? 'or enter custom…' : 'enter price…'}
-                        value={popupBaseTier ? '' : popupBasePrice}
-                        onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setPopupBasePrice(v); setPopupBaseTier(''); setPopupTotalSaved(false) }}
-                        onFocus={() => { if (popupBaseTier) { setPopupBasePrice(''); setPopupTotalSaved(false) } }}
-                        className={`flex-1 text-xl font-black py-3 px-4 bg-transparent focus:outline-none placeholder:text-gray-300 ${
-                          popupBasePrice && !popupBaseTier ? 'text-emerald-700' : 'text-gray-700'
-                        }`}
-                      />
-                    </div>
 
                     {/* Add-on Services */}
                     {(otherServices.length > 0 || popupAddOns.length > 0) && (
@@ -2029,46 +2143,89 @@ export default function GroomerDashboard() {
                         {popupAddOns.length > 0 && (
                           <div className="space-y-2 mb-2">
                             {popupAddOns.map(addon => (
-                              <div key={addon.id} className="flex items-center gap-2 bg-sky-50 border-2 border-sky-200 rounded-2xl px-4 py-2.5">
-                                <span className="text-sm font-bold text-sky-800 flex-1">{addon.name}</span>
-                                <div className={`flex items-center rounded-xl border-2 border-sky-300 bg-white overflow-hidden`}>
-                                  <span className="text-sm font-black px-3 py-1.5 border-r-2 border-sky-200 text-sky-500">$</span>
-                                  <input
-                                    type="number" min="0" step="1"
-                                    value={addon.price}
-                                    onChange={e => { setPopupAddOns(prev => prev.map(a => a.id === addon.id ? { ...a, price: e.target.value } : a)); setPopupTotalSaved(false) }}
-                                    className="w-14 text-base font-black text-sky-700 bg-transparent focus:outline-none text-center py-1.5 px-2"
-                                  />
+                              popupReadOnly ? (
+                                <div key={addon.id} className="flex items-center gap-2 bg-sky-50 border-2 border-sky-200 rounded-2xl px-4 py-2.5">
+                                  <span className="text-sm font-bold text-sky-800 flex-1">{addon.name}</span>
+                                  <span className="text-sm font-black text-sky-700">${addon.price || '0'}</span>
                                 </div>
-                                <button onClick={() => { setPopupAddOns(prev => prev.filter(a => a.id !== addon.id)); setPopupTotalSaved(false) }}
-                                  className="w-7 h-7 rounded-full bg-rose-100 hover:bg-rose-200 text-rose-400 hover:text-rose-600 flex items-center justify-center text-sm font-bold transition-colors">✕</button>
-                              </div>
+                              ) : (
+                                <div key={addon.id} className="flex items-center gap-2 bg-sky-50 border-2 border-sky-200 rounded-2xl px-4 py-2.5">
+                                  <span className="text-sm font-bold text-sky-800 flex-1">{addon.name}</span>
+                                  <div className={`flex items-center rounded-xl border-2 border-sky-300 bg-white overflow-hidden`}>
+                                    <span className="text-sm font-black px-3 py-1.5 border-r-2 border-sky-200 text-sky-500">$</span>
+                                    <input
+                                      type="number" min="0" step="1"
+                                      value={addon.price}
+                                      onChange={e => { setPopupAddOns(prev => prev.map(a => a.id === addon.id ? { ...a, price: e.target.value } : a)); setPopupTotalSaved(false) }}
+                                      className="w-14 text-base font-black text-sky-700 bg-transparent focus:outline-none text-center py-1.5 px-2"
+                                    />
+                                  </div>
+                                  <button onClick={() => { setPopupAddOns(prev => prev.filter(a => a.id !== addon.id)); setPopupTotalSaved(false) }}
+                                    className="w-7 h-7 rounded-full bg-rose-100 hover:bg-rose-200 text-rose-400 hover:text-rose-600 flex items-center justify-center text-sm font-bold transition-colors">✕</button>
+                                </div>
+                              )
                             ))}
                           </div>
                         )}
 
-                        {/* Available add-on chips */}
-                        <div className="flex flex-wrap gap-1.5">
-                          {otherServices
-                            .filter(s => !popupAddOns.find(a => a.id === s.id))
-                            .map(s => (
-                              <button key={s.id}
+                        {!popupReadOnly && (
+                          <>
+                            {/* Available add-on chips */}
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              {otherServices
+                                .filter(s => !popupAddOns.find(a => a.id === s.id))
+                                .map(s => (
+                                  <button key={s.id}
+                                    onClick={() => {
+                                      const defaultPrice = s.tiers?.find(t => t.price)?.price ?? ''
+                                      setPopupAddOns(prev => [...prev, { id: s.id, name: s.name ?? serviceMap[s.id] ?? s.id, price: defaultPrice }])
+                                      setPopupTotalSaved(false)
+                                    }}
+                                    className="text-xs bg-white border-2 border-gray-200 hover:border-sky-300 hover:bg-sky-50 text-gray-600 hover:text-sky-700 px-3 py-1.5 rounded-full font-semibold transition-colors">
+                                    + {s.name ?? serviceMap[s.id] ?? s.id}
+                                  </button>
+                                ))
+                              }
+                            </div>
+
+                            {/* Custom add-on */}
+                            <div className="flex gap-1.5">
+                              <input
+                                value={popupAddonDraft.text}
+                                onChange={e => setPopupAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && popupAddonDraft.text.trim()) {
+                                    setPopupAddOns(prev => [...prev, { id: Date.now().toString(), name: popupAddonDraft.text.trim(), price: popupAddonDraft.price }])
+                                    setPopupAddonDraft({ text: '', price: '' })
+                                    setPopupTotalSaved(false)
+                                  }
+                                }}
+                                placeholder="Custom add-on…"
+                                className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <input
+                                value={popupAddonDraft.price}
+                                onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setPopupAddonDraft(prev => ({ ...prev, price: v })) }}
+                                placeholder="$" type="text" inputMode="numeric"
+                                className="w-14 border border-gray-200 rounded-xl px-2 py-1.5 text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <button
                                 onClick={() => {
-                                  const defaultPrice = s.tiers?.find(t => t.price)?.price ?? ''
-                                  setPopupAddOns(prev => [...prev, { id: s.id, name: s.name ?? serviceMap[s.id] ?? s.id, price: defaultPrice }])
+                                  if (!popupAddonDraft.text.trim()) return
+                                  setPopupAddOns(prev => [...prev, { id: Date.now().toString(), name: popupAddonDraft.text.trim(), price: popupAddonDraft.price }])
+                                  setPopupAddonDraft({ text: '', price: '' })
                                   setPopupTotalSaved(false)
                                 }}
-                                className="text-xs bg-white border-2 border-gray-200 hover:border-sky-300 hover:bg-sky-50 text-gray-600 hover:text-sky-700 px-3 py-1.5 rounded-full font-semibold transition-colors">
-                                + {s.name ?? serviceMap[s.id] ?? s.id}
-                              </button>
-                            ))
-                          }
-                        </div>
+                                disabled={!popupAddonDraft.text.trim()}
+                                className="px-3 py-1.5 bg-sky-500 text-white text-sm font-bold rounded-xl disabled:opacity-40">+</button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
 
                     {/* Coupon / Discount selector */}
-                    {subtotal > 0 && (
+                    {subtotal > 0 && !popupReadOnly && (
                       <div className="mb-3">
                         {availableCoupons.length > 0 ? (
                           <div className={`rounded-2xl border-2 transition-all overflow-hidden ${popupCouponId ? 'border-pink-300 bg-pink-50' : 'border-gray-200 bg-gray-50'}`}>
@@ -2150,7 +2307,12 @@ export default function GroomerDashboard() {
                       </div>
                     )}
 
-                    {/* Save Total button */}
+                    {/* Save Total button (hidden for past visits — view only) */}
+                    {popupReadOnly ? (
+                      <div className="w-full py-2.5 text-center text-sm font-bold rounded-xl bg-emerald-50 text-emerald-700">
+                        ✓ Paid · ${grandTotal.toFixed(2)}
+                      </div>
+                    ) : (
                     <button
                       disabled={grandTotal <= 0 || savingPopupPayment}
                       onClick={async () => {
@@ -2194,19 +2356,112 @@ export default function GroomerDashboard() {
                       }`}>
                       {savingPopupPayment ? '⏳ Saving…' : grandTotal > 0 ? (popupTotalSaved ? `✓ Total · $${grandTotal}` : `💾 Save Total · $${grandTotal}`) : 'Select a size first'}
                     </button>
+                    )}
                   </div>
                 )
               })()}
+
+              {/* ── Past Visits (service + price history for this pet) ── */}
+              {selectedAppt.pets?.id && (
+                <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Past Visits</p>
+                  {loadingHistory ? (
+                    <p className="text-sm text-gray-400 text-center py-3">Loading…</p>
+                  ) : petHistory.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-3">No previous paid visits yet</p>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto">
+                      {petHistory.map(v => {
+                        const addOns = (v.notes_list ?? []).filter(n => n.is_addon)
+                        const groomerName = v.assigned_groomer || v.assigned_bather
+                        const diaryNote = v.grooming_quality?.groomer_diary
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => openApptPopup(v, { readOnly: true })}
+                            className="w-full flex flex-col gap-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-gray-200 transition-colors px-3 py-2 text-left"
+                          >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-800 truncate">{serviceMap[v.service] ?? v.service}</p>
+                              <p className="text-xs text-gray-400">
+                                {formatDate(v.appointment_date)}
+                                {groomerName ? ` · ${groomerName}` : ''}
+                              </p>
+                              {addOns.length > 0 && (
+                                <p className="text-xs text-gray-400 truncate">+ {addOns.map(a => a.text).join(', ')}</p>
+                              )}
+                            </div>
+                            <div className="text-right flex-shrink-0 whitespace-nowrap">
+                              <p className="text-sm font-bold text-gray-700 whitespace-nowrap">${v.payment_amount}</p>
+                              {v.tip_amount && parseFloat(v.tip_amount) > 0 ? (
+                                <p className="text-[11px] text-emerald-600 whitespace-nowrap">+${v.tip_amount} tip</p>
+                              ) : (
+                                <p className="text-[11px] text-gray-300 whitespace-nowrap">no tip</p>
+                              )}
+                            </div>
+                          </div>
+                          {diaryNote ? (
+                            <p className="text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1.5 whitespace-pre-wrap">
+                              📓 {diaryNote}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-300 bg-gray-50 rounded-lg px-2 py-1.5">
+                              📓 Groomer Notes — none saved for this visit
+                            </p>
+                          )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Pet Info — read-only with edit pencil */}
               <div className="rounded-2xl border border-gray-200 bg-white p-4">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Pet Info</p>
-                  {!editingPetInfo && (
+                  {!editingPetInfo && !popupReadOnly && (
                     <button onClick={() => setEditingPetInfo(true)}
                       className="text-xs font-semibold text-gray-400 hover:text-emerald-600 flex items-center gap-1">✏️ Edit</button>
                   )}
                 </div>
+
+                {/* Photo — tap to view/upload */}
+                {selectedAppt.pets?.id && (
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="relative group flex-shrink-0">
+                      {selectedAppt.pets?.photo_url
+                        ? <img src={selectedAppt.pets.photo_url} className="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow-sm" alt={selectedAppt.pets?.name || ''} />
+                        : <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl border-2 border-white shadow-sm">🐶</div>}
+                      {selectedAppt.pets?.photo_url ? (
+                        // Has a photo already — tap enlarges it, replace happens from the lightbox
+                        <button
+                          type="button"
+                          onClick={() => setPetPhotoLightbox({ petId: selectedAppt.pets!.id!, url: selectedAppt.pets!.photo_url!, name: selectedAppt.pets?.name })}
+                          className="absolute inset-0 rounded-2xl flex items-center justify-center cursor-pointer transition-all bg-black/0 group-hover:bg-black/30"
+                        >
+                          <span className="text-white text-sm opacity-0 group-hover:opacity-100">🔍</span>
+                        </button>
+                      ) : (
+                        // No photo yet — tap goes straight to the file picker
+                        <label className={`absolute inset-0 rounded-2xl flex items-center justify-center cursor-pointer transition-all
+                          ${uploadingPetId===selectedAppt.pets?.id ? 'bg-black/50' : uploadDonePetId===selectedAppt.pets?.id ? 'bg-green-500/80' : 'bg-black/0 group-hover:bg-black/40'}`}>
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f && selectedAppt.pets?.id) uploadPetPhotoPopup(selectedAppt.pets.id, f) }} />
+                          {uploadingPetId===selectedAppt.pets?.id
+                            ? <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                            : uploadDonePetId===selectedAppt.pets?.id
+                              ? <span className="text-white text-lg font-bold">✓</span>
+                              : <span className="text-white text-xs opacity-0 group-hover:opacity-100">📷</span>}
+                        </label>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400">{selectedAppt.pets?.photo_url ? 'Tap photo to view or replace' : 'Tap photo to add a picture'}</p>
+                  </div>
+                )}
 
                 {!editingPetInfo ? (
                   <div className="text-sm text-gray-700 space-y-0.5">
@@ -2319,6 +2574,20 @@ export default function GroomerDashboard() {
                 </div>
               )}
 
+              {/* ─── GROOMER NOTES (internal diary, read-only display) ─── */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-purple-500 px-1">📓 Groomer Notes</p>
+                {selectedAppt.grooming_quality?.groomer_diary ? (
+                  <p className="text-sm text-purple-700 bg-purple-50 rounded-2xl px-4 py-3 whitespace-pre-wrap">
+                    {selectedAppt.grooming_quality.groomer_diary}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-300 bg-gray-50 rounded-2xl px-4 py-3">
+                    None saved for this visit
+                  </p>
+                )}
+              </div>
+
               {/* ─── CUSTOMER REQUESTS ─── */}
               {(() => {
                 const apptAny = selectedAppt as unknown as { notes?: string | null; notes_english?: string | null; notes_chinese?: string | null }
@@ -2328,7 +2597,7 @@ export default function GroomerDashboard() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between px-1">
                       <p className="text-xs font-bold uppercase tracking-widest text-amber-500">📋 Customer Requests</p>
-                      {hasCustomerReq && !isEditingCustomerReq && (
+                      {hasCustomerReq && !isEditingCustomerReq && !popupReadOnly && (
                         <button
                           onClick={() => {
                             if (noteTranslateTimerRef.current) clearTimeout(noteTranslateTimerRef.current)
@@ -2407,7 +2676,7 @@ export default function GroomerDashboard() {
                           )}
                         </div>
                       </div>
-                    ) : (
+                    ) : !popupReadOnly ? (
                       <button
                         onClick={() => {
                           if (noteTranslateTimerRef.current) clearTimeout(noteTranslateTimerRef.current)
@@ -2417,7 +2686,7 @@ export default function GroomerDashboard() {
                         className="w-full py-2.5 rounded-xl text-xs font-semibold border-2 border-dashed border-amber-200 text-amber-500 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50">
                         + Add Customer Request
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 )
               })()}
@@ -2462,6 +2731,35 @@ export default function GroomerDashboard() {
           })}
         </div>
       </nav>
+
+      {/* ── PET PHOTO LIGHTBOX ───────────────────────────────*/}
+      {petPhotoLightbox && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[9999]" onClick={() => setPetPhotoLightbox(null)}>
+          <div className="bg-white rounded-2xl shadow-lg max-w-sm w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <p className="font-bold text-gray-800">{petPhotoLightbox.name || 'Pet Photo'}</p>
+              <button onClick={() => setPetPhotoLightbox(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+            </div>
+            <img src={petPhotoLightbox.url} alt={petPhotoLightbox.name || ''} className="w-full max-h-[60vh] object-contain bg-gray-50" />
+            <div className="p-4 flex gap-2">
+              <label className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white text-center transition-colors cursor-pointer">
+                {uploadingPetId === petPhotoLightbox.petId ? 'Uploading…' : '🔄 Replace Photo'}
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingPetId === petPhotoLightbox.petId}
+                  onChange={e => {
+                    const f = e.target.files?.[0]
+                    if (f) { uploadPetPhotoPopup(petPhotoLightbox.petId, f); setPetPhotoLightbox(null) }
+                  }} />
+              </label>
+              <button
+                onClick={() => setPetPhotoLightbox(null)}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── HEALTH CHECK MODAL ────────────────────────────── */}
       {healthCheckAppt && (
