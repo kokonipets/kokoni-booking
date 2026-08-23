@@ -22,6 +22,7 @@ type Message = {
   twilio_sid: string | null
   read_at: string | null
   template?: string | null
+  media_count?: number | null
 }
 
 // Labels for automated (system-sent) messages, keyed by sms template name
@@ -271,7 +272,21 @@ export default function ChatView() {
                     }`}
                   >
                     {autoLabel && <div className="text-[10px] font-bold text-gray-500 mb-1">{autoLabel} · automated</div>}
-                    <div className={`whitespace-pre-wrap ${autoLabel ? 'text-xs' : 'text-sm'}`}>{m.body}</div>
+                    {/* Photos (MMS) sent by the client */}
+                    {m.direction === 'inbound' && (m.media_count ?? 0) > 0 && m.twilio_sid && (
+                      <div className="flex flex-wrap gap-1.5 mb-1">
+                        {Array.from({ length: m.media_count ?? 0 }).map((_, k) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <a key={k} href={`/api/admin/chat/media?sid=${m.twilio_sid}&i=${k}`} target="_blank" rel="noreferrer">
+                            <img src={`/api/admin/chat/media?sid=${m.twilio_sid}&i=${k}`} alt="Photo from customer"
+                              className="rounded-lg max-h-48 object-cover border border-gray-200" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    {m.body
+                      ? <div className={`whitespace-pre-wrap ${autoLabel ? 'text-xs' : 'text-sm'}`}>{m.body}</div>
+                      : (m.media_count ?? 0) > 0 ? <div className="text-xs text-gray-400 italic">📷 Photo</div> : null}
                     <div
                       className={`text-[10px] mt-1 ${
                         autoLabel ? 'text-gray-400' : m.direction === 'outbound' ? 'text-sky-100' : 'text-gray-400'

@@ -56,6 +56,20 @@ function fmtMoney(v: string | null | number | undefined) {
 function firstName(name: string) {
   return name?.split(' ')[0] ?? name
 }
+function normalizePhone(p?: string | null) {
+  return (p || '').replace(/\D/g, '')
+}
+// Split a total tip across appointments proportionally by each one's service amount.
+// Cents are rounded per item and any rounding remainder is added to the first item
+// so the parts always sum exactly to the requested total.
+function splitTip(serviceAmts: number[], totalTip: number): number[] {
+  const sum = serviceAmts.reduce((s, v) => s + v, 0)
+  if (totalTip <= 0 || sum <= 0) return serviceAmts.map(() => 0)
+  const parts = serviceAmts.map(v => Math.round((totalTip * v / sum) * 100) / 100)
+  const diff = Math.round((totalTip - parts.reduce((s, v) => s + v, 0)) * 100) / 100
+  if (parts.length) parts[0] = Math.round((parts[0] + diff) * 100) / 100
+  return parts
+}
 
 // ── Checkout Modal ────────────────────────────────────────────────────────────
 function CheckoutModal({
@@ -302,6 +316,269 @@ function CheckoutModal({
   )
 }
 
+// ── Group Checkout Modal (multiple dogs, one client) ──────────────────────────
+function GroupCheckoutModal({
+  appts,
+  onClose,
+  onSuccess,
+  serviceLabels,
+}: {
+  appts: Appt[]
+  onClose: () => void
+  onSuccess: (updates: { id: string; updated: Partial<Appt> }[]) => void
+  serviceLabels?: Record<string, string>
+}) {
+  const [method, setMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>('card')
+  const [amounts, setAmounts] = useState<Record<string, string>>(
+    () => Object.fromEntries(appts.map(a => [a.id, a.payment_amount || '']))
+  )
+  const [tip, setTip] = useState('')
+  const [discount, setDiscount] = useState(false)
+  const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
+
+  // First-time = none of these pets has a prior recorded payment.
+  useEffect(() => {
+    let cancelled = false
+    Promise.all(appts.map(a =>
+      a.pets?.id
+        ? fetch(`/api/groomer/last-payment?pet_id=${a.pets.id}&exclude_id=${a.id}`).then(r => r.json()).then(d => !d.amount).catch(() => false)
+        : Promise.resolve(false)
+    )).then(results => { if (!cancelled) setIsFirstTime(results.every(Boolean)) })
+    return () => { cancelled = true }
+  }, [appts])
+
+  const owner = appts[0]?.clients?.name ?? ''
+  const rawSubtotal = appts.reduce((s, a) => s + (parseFloat(amounts[a.id]) || 0), 0)
+  const discountAmt = discount ? Math.round(rawSubtotal * 0.20 * 100) / 100 : 0
+  const serviceSubtotal = rawSubtotal - discountAmt
+  const tipAmt = parseFloat(tip) || 0
+  const total = serviceSubtotal + tipAmt
+  const allHaveAmount = appts.every(a => (parseFloat(amounts[a.id]) || 0) > 0)
+
+  const cardTipPcts = [15, 18, 20, 25]
+  const setTipPct = (pct: number) => setTip((serviceSubtotal * pct / 100).toFixed(2))
+
+  const pm = PM[method]
+
+  const confirm = async () => {
+    if (!allHaveAmount) return
+    setSaving(true)
+    try {
+      // Each dog's discounted service amount, then proportional tip split.
+      const serviceAmts = appts.map(a => {
+        const raw = parseFloat(amounts[a.id]) || 0
+        return discount ? Math.round(raw * 0.80 * 100) / 100 : raw
+      })
+      const tipParts = splitTip(serviceAmts, tipAmt)
+
+      const results = await Promise.all(appts.map((a, i) => {
+        const raw = parseFloat(amounts[a.id]) || 0
+        const dDiscount = discount ? Math.round(raw * 0.20 * 100) / 100 : 0
+        return fetch(`/api/admin/appointments/${a.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'record-payment',
+            payment_amount: serviceAmts[i].toFixed(2),
+            tip_amount: tipParts[i].toFixed(2),
+            payment_method: method,
+            payment_status: 'paid',
+            discount_label: discount ? 'First-time customer 20% off' : null,
+            discount_percent: discount ? '20' : null,
+            discount_amount: discount ? dDiscount.toFixed(2) : null,
+          }),
+        }).then(r => r.json()).then(d => ({ ok: !!d.success, i }))
+      }))
+
+      if (results.every(r => r.ok)) {
+        setDone(true)
+        onSuccess(appts.map((a, i) => ({
+          id: a.id,
+          updated: {
+            payment_amount: serviceAmts[i].toFixed(2),
+            tip_amount: tipParts[i].toFixed(2),
+            payment_method: method,
+            payment_status: 'paid',
+          },
+        })))
+        setTimeout(onClose, 1200)
+      }
+    } catch {/**/}
+    setSaving(false)
+  }
+
+  if (done) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/60" />
+        <div className="relative bg-white rounded-3xl p-10 text-center shadow-2xl">
+          <p className="text-6xl mb-3">✅</p>
+          <p className="text-2xl font-black text-gray-800">{appts.length} Payments Recorded!</p>
+          <p className="text-gray-400 mt-1">{pm.icon} {pm.label} · {fmtMoney(total)}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-violet-600 to-violet-700 px-6 py-4 flex items-center gap-4 flex-shrink-0">
+          <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-3xl flex-shrink-0">🐾</div>
+          <div className="flex-1">
+            <p className="text-xl font-black text-white">{appts.length} pets · pay together</p>
+            <p className="text-violet-200 text-sm">{owner} · {appts.map(a => a.pets?.name).filter(Boolean).join(' & ')}</p>
+          </div>
+          <button onClick={onClose} className="text-white/60 hover:text-white text-2xl leading-none">✕</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5 overflow-y-auto">
+          {/* Payment method */}
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Payment Method</p>
+            <div className="grid grid-cols-4 gap-2">
+              {(['card', 'cash', 'zelle', 'venmo'] as const).map(m => (
+                <button key={m} onClick={() => setMethod(m)}
+                  className={`py-3 rounded-2xl font-bold text-sm transition-all flex flex-col items-center gap-1 border-2 ${
+                    method === m
+                      ? `${PM[m].bg} ${PM[m].text} ${PM[m].border} scale-105 shadow-sm`
+                      : 'bg-gray-50 border-gray-200 text-gray-400'
+                  }`}>
+                  <span className="text-xl">{PM[m].icon}</span>
+                  <span className="text-xs">{PM[m].label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Per-dog service amounts */}
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Service Amount per Pet</p>
+            <div className="space-y-2">
+              {appts.map(a => (
+                <div key={a.id} className="flex items-center gap-3">
+                  {a.pets?.photo_url
+                    ? <img src={a.pets.photo_url} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" alt="" />
+                    : <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-gray-800 text-sm truncate">{a.pets?.name}</p>
+                    <p className="text-gray-400 text-xs truncate">{(serviceLabels ?? SERVICE_LABELS)[a.service] ?? a.service}</p>
+                  </div>
+                  <div className={`flex items-center rounded-xl border-2 overflow-hidden ${pm.border} ${pm.bg} w-32`}>
+                    <span className={`text-sm font-black px-2.5 py-2 border-r-2 ${pm.border} ${pm.text}`}>$</span>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={amounts[a.id]} onChange={e => { setAmounts(prev => ({ ...prev, [a.id]: e.target.value })); setDiscount(false) }}
+                      placeholder="0.00"
+                      className={`flex-1 w-full text-base font-black py-2 px-2 bg-transparent focus:outline-none ${pm.text} placeholder:text-gray-300`}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* First-time discount toggle — only when every pet is new */}
+            {rawSubtotal > 0 && isFirstTime === true && (
+              <button
+                onClick={() => setDiscount(d => !d)}
+                className={`mt-2 w-full flex items-center justify-between rounded-2xl px-4 py-2.5 border-2 transition-all ${
+                  discount
+                    ? 'bg-pink-50 border-pink-300 text-pink-700'
+                    : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-pink-200 hover:text-pink-500'
+                }`}>
+                <span className="font-bold text-sm">🎉 First-time customer 20% off</span>
+                <span className={`text-xs font-black px-2.5 py-1 rounded-full ${discount ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                  {discount ? 'ON' : 'OFF'}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* Tip (on combined subtotal) */}
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+              Tip {method === 'card' ? '(select % or enter)' : '(enter manually)'} · split across pets
+            </p>
+            {method === 'card' && (
+              <div className="grid grid-cols-4 gap-2 mb-2">
+                {cardTipPcts.map(pct => (
+                  <button key={pct} onClick={() => setTipPct(pct)}
+                    disabled={!serviceSubtotal}
+                    className={`py-2 rounded-xl text-sm font-bold border-2 transition-all disabled:opacity-30 ${
+                      tip === (serviceSubtotal * pct / 100).toFixed(2)
+                        ? 'bg-sky-500 text-white border-sky-500'
+                        : 'bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100'
+                    }`}>
+                    {pct}%
+                    {serviceSubtotal > 0 && <span className="block text-[10px] opacity-70">${(serviceSubtotal * pct / 100).toFixed(2)}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className={`flex items-center rounded-2xl border-2 overflow-hidden ${
+              method === 'card' ? 'border-sky-200 bg-sky-50' :
+              method === 'cash' ? 'border-green-200 bg-green-50' :
+              method === 'zelle' ? 'border-yellow-200 bg-yellow-50' :
+              'border-blue-200 bg-blue-50'
+            }`}>
+              <span className={`text-sm font-bold px-4 py-2.5 border-r-2 ${pm.border} ${pm.text}`}>Tip $</span>
+              <input
+                type="number" min="0" step="0.01"
+                value={tip} onChange={e => setTip(e.target.value)}
+                placeholder="0.00"
+                className={`flex-1 text-lg font-black py-2.5 px-4 bg-transparent focus:outline-none ${pm.text} placeholder:text-gray-300`}
+              />
+              {tip && parseFloat(tip) > 0 && (
+                <button onClick={() => setTip('')} className="px-3 text-gray-300 hover:text-gray-500 text-lg">✕</button>
+              )}
+            </div>
+          </div>
+
+          {/* Total */}
+          <div className={`rounded-2xl border-2 ${pm.border} ${pm.bg} px-5 py-4`}>
+            <div className="flex items-center justify-between text-sm">
+              <span className={`font-bold ${pm.text} opacity-70`}>Service ({appts.length} pets)</span>
+              <div className="flex items-center gap-2">
+                {discount && rawSubtotal > 0 && <span className="text-xs text-gray-400 line-through">{fmtMoney(rawSubtotal.toFixed(2))}</span>}
+                <span className={`font-bold ${discount ? 'text-pink-600' : pm.text}`}>{fmtMoney(serviceSubtotal.toFixed(2))}</span>
+              </div>
+            </div>
+            {discount && discountAmt > 0 && (
+              <div className="flex items-center justify-between text-xs text-pink-500 mt-0.5">
+                <span>🎉 20% off</span><span>−{fmtMoney(discountAmt.toFixed(2))}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-xs mt-0.5">
+              <span className={`${pm.text} opacity-60`}>Tip</span>
+              <span className={`${pm.text} opacity-70`}>+{fmtMoney(tip || '0')}</span>
+            </div>
+            <div className={`border-t-2 ${pm.border} mt-3 pt-3 flex items-center justify-between`}>
+              <p className={`text-lg font-black ${pm.text}`}>Total</p>
+              <p className={`text-3xl font-black ${discount ? 'text-pink-600' : pm.text}`}>{fmtMoney(total)}</p>
+            </div>
+          </div>
+
+          {/* Confirm */}
+          <button
+            onClick={confirm}
+            disabled={!allHaveAmount || saving}
+            className={`w-full py-4 rounded-2xl font-black text-xl text-white shadow-lg disabled:opacity-40 transition-all active:scale-95 ${
+              method === 'card'  ? 'bg-sky-500 hover:bg-sky-600' :
+              method === 'cash'  ? 'bg-green-500 hover:bg-green-600' :
+              method === 'zelle' ? 'bg-yellow-500 hover:bg-yellow-600' :
+                                   'bg-blue-500 hover:bg-blue-600'
+            }`}>
+            {saving ? 'Saving…' : `${pm.icon} Pay ${appts.length} pets · ${fmtMoney(total)}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Phone search (check-in tab) ───────────────────────────────────────────────
 function PhoneSearch({ onDone, serviceLabels }: { onDone: () => void; serviceLabels?: Record<string, string> }) {
   const [phone, setPhone] = useState('')
@@ -436,6 +713,7 @@ export default function CashierPage() {
   const [alerts, setAlerts] = useState<{ id: string; pet: string; owner: string; method: string; amount: string | null; tip: string | null; time: string }[]>([])
   const [now, setNow] = useState(new Date())
   const [checkoutAppt, setCheckoutAppt] = useState<Appt | null>(null)
+  const [groupCheckout, setGroupCheckout] = useState<Appt[] | null>(null)
   const [cashPopup, setCashPopup] = useState<Appt | null>(null)
   const [vzPopup, setVzPopup] = useState<Appt | null>(null)
   const [vzTipInput, setVzTipInput] = useState('')
@@ -461,6 +739,17 @@ export default function CashierPage() {
     && a.payment_status !== 'paid' && a.payment_status !== 'cash_pending'
     && a.payment_status !== 'venmo_pending' && a.payment_status !== 'zelle_pending'
   )
+  // Group unpaid dogs by client (normalized phone) so a family can pay together.
+  const unpaidGroups: Appt[][] = (() => {
+    const byPhone = new Map<string, Appt[]>()
+    const order: string[] = []
+    for (const a of unpaid) {
+      const key = normalizePhone(a.clients?.phone) || `id:${a.id}`
+      if (!byPhone.has(key)) { byPhone.set(key, []); order.push(key) }
+      byPhone.get(key)!.push(a)
+    }
+    return order.map(k => byPhone.get(k)!)
+  })()
   const cashPending = todayAppts.filter(a => a.payment_status === 'cash_pending')
   const vzPending = todayAppts.filter(a => a.payment_status === 'venmo_pending' || a.payment_status === 'zelle_pending')
   const paid = todayAppts.filter(a => a.payment_status === 'paid')
@@ -616,6 +905,12 @@ export default function CashierPage() {
   const handlePaymentSuccess = (apptId: string, updated: Partial<Appt>) => {
     setAllAppts(prev => prev.map(a => a.id === apptId ? { ...a, ...updated } : a))
     seenIds.current.add(apptId)
+  }
+
+  const handleGroupPaymentSuccess = (updates: { id: string; updated: Partial<Appt> }[]) => {
+    const map = new Map(updates.map(u => [u.id, u.updated]))
+    setAllAppts(prev => prev.map(a => map.has(a.id) ? { ...a, ...map.get(a.id)! } : a))
+    updates.forEach(u => seenIds.current.add(u.id))
   }
 
   const confirmCashPopup = async (appt: Appt, tip: number | null) => {
@@ -858,7 +1153,13 @@ export default function CashierPage() {
       {/* Top bar */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-gray-800">🐾 Kokoni Cashier</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <a href="/front-desk" className="flex items-center gap-1 text-base text-gray-600 hover:text-gray-900 font-bold transition-colors">
+              ← Back
+            </a>
+            <div className="w-px h-4 bg-gray-200" />
+            <h1 className="text-2xl font-black text-gray-800">🐾 Kokoni Cashier</h1>
+          </div>
           <p className="text-gray-400 text-sm">{todayLabel}</p>
         </div>
         <div className="flex items-center gap-4">
@@ -1003,17 +1304,42 @@ export default function CashierPage() {
                       </div>
                     )
                   })}
-                  {unpaid.map(a => (
-                    <div key={a.id} className="flex items-center gap-3 px-5 py-3 hover:bg-rose-50/30 transition-colors">
-                      {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-black text-gray-800 truncate">{a.pets?.name} <span className="text-gray-400 font-normal text-sm">· {a.clients?.name}</span></p>
-                        <p className="text-gray-400 text-sm truncate">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
+                  {unpaidGroups.map(group => group.length === 1 ? (
+                    (a => (
+                      <div key={a.id} className="flex items-center gap-3 px-5 py-3 hover:bg-rose-50/30 transition-colors">
+                        {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-black text-gray-800 truncate">{a.pets?.name} <span className="text-gray-400 font-normal text-sm">· {a.clients?.name}</span></p>
+                          <p className="text-gray-400 text-sm truncate">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
+                        </div>
+                        <button onClick={() => setCheckoutAppt(a)}
+                          className="flex-shrink-0 bg-violet-600 hover:bg-violet-700 text-white font-black px-4 py-2 rounded-xl text-sm shadow transition-colors">
+                          💳 Pay
+                        </button>
                       </div>
-                      <button onClick={() => setCheckoutAppt(a)}
-                        className="flex-shrink-0 bg-violet-600 hover:bg-violet-700 text-white font-black px-4 py-2 rounded-xl text-sm shadow transition-colors">
-                        💳 Pay
-                      </button>
+                    ))(group[0])
+                  ) : (
+                    <div key={group[0].id} className="bg-violet-50/40 border-y border-violet-100">
+                      <div className="flex items-center justify-between px-5 pt-3 pb-2">
+                        <p className="text-xs font-black text-violet-600 uppercase tracking-wide">🐾 {group[0].clients?.name} · {group.length} pets</p>
+                        <button onClick={() => setGroupCheckout(group)}
+                          className="flex-shrink-0 bg-violet-600 hover:bg-violet-700 text-white font-black px-4 py-2 rounded-xl text-sm shadow transition-colors">
+                          💳 Pay all {group.length} together
+                        </button>
+                      </div>
+                      {group.map(a => (
+                        <div key={a.id} className="flex items-center gap-3 px-5 py-2 pl-7 hover:bg-violet-100/30 transition-colors">
+                          {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-gray-800 truncate">{a.pets?.name}</p>
+                            <p className="text-gray-400 text-xs truncate">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
+                          </div>
+                          <button onClick={() => setCheckoutAppt(a)}
+                            className="flex-shrink-0 bg-white border-2 border-violet-200 text-violet-600 hover:bg-violet-50 font-bold px-3 py-1.5 rounded-xl text-xs shadow-sm transition-colors">
+                            Pay separately
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>}
@@ -1202,37 +1528,50 @@ export default function CashierPage() {
               </div>
             ) : unpaid.length > 0 ? (
               <div className="space-y-3">
-                {unpaid.map(a => (
-                  <div key={a.id} className="bg-white rounded-2xl border-2 border-rose-100 shadow-sm overflow-hidden">
-                    <div className="flex items-center gap-4 p-4">
-                      {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-16 h-16 rounded-2xl object-cover flex-shrink-0" alt="" /> : <div className="w-16 h-16 rounded-2xl bg-rose-100 flex items-center justify-center text-3xl flex-shrink-0">🐶</div>}
-                      <div className="flex-1">
-                        <p className="text-xl font-black text-gray-800">{a.pets?.name} <span className="text-gray-400 font-normal text-base">· {a.clients?.name}</span></p>
-                        <p className="text-gray-500 text-sm">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
-                        {staffList.length > 0 ? (
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <select value={a.assigned_groomer || ''} disabled={assigningId === a.id}
-                              onChange={e => assignStaff(a.id, e.target.value || null, a.assigned_bather)}
-                              className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none">
-                              <option value="">✂️ Groomer</option>
-                              {staffList.map(s => <option key={s} value={s}>{s.split(' ')[0]}</option>)}
-                            </select>
-                            <select value={a.assigned_bather || ''} disabled={assigningId === a.id}
-                              onChange={e => assignStaff(a.id, a.assigned_groomer, e.target.value || null)}
-                              className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none">
-                              <option value="">🛁 Bather</option>
-                              {staffList.map(s => <option key={s} value={s}>{s.split(' ')[0]}</option>)}
-                            </select>
-                          </div>
-                        ) : a.assigned_groomer ? (
-                          <p className="text-gray-400 text-xs">✂️ {firstName(a.assigned_groomer)}</p>
-                        ) : null}
+                {unpaidGroups.map(group => (
+                  <div key={group[0].id} className={group.length > 1 ? 'bg-violet-50/50 border-2 border-violet-200 rounded-2xl p-3 space-y-2' : ''}>
+                    {group.length > 1 && (
+                      <div className="flex items-center justify-between px-1">
+                        <p className="font-black text-violet-700">🐾 {group[0].clients?.name} · {group.length} pets</p>
+                        <button onClick={() => setGroupCheckout(group)}
+                          className="bg-violet-600 hover:bg-violet-700 text-white font-black px-5 py-2.5 rounded-2xl text-base shadow transition-colors active:scale-95">
+                          💳 Pay all {group.length} together
+                        </button>
                       </div>
-                      <button onClick={() => setCheckoutAppt(a)}
-                        className="bg-violet-600 hover:bg-violet-700 text-white font-black px-6 py-3 rounded-2xl text-base shadow transition-colors active:scale-95">
-                        💳 Checkout
-                      </button>
-                    </div>
+                    )}
+                    {group.map(a => (
+                      <div key={a.id} className="bg-white rounded-2xl border-2 border-rose-100 shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-4 p-4">
+                          {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-16 h-16 rounded-2xl object-cover flex-shrink-0" alt="" /> : <div className="w-16 h-16 rounded-2xl bg-rose-100 flex items-center justify-center text-3xl flex-shrink-0">🐶</div>}
+                          <div className="flex-1">
+                            <p className="text-xl font-black text-gray-800">{a.pets?.name} <span className="text-gray-400 font-normal text-base">· {a.clients?.name}</span></p>
+                            <p className="text-gray-500 text-sm">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
+                            {staffList.length > 0 ? (
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                <select value={a.assigned_groomer || ''} disabled={assigningId === a.id}
+                                  onChange={e => assignStaff(a.id, e.target.value || null, a.assigned_bather)}
+                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none">
+                                  <option value="">✂️ Groomer</option>
+                                  {staffList.map(s => <option key={s} value={s}>{s.split(' ')[0]}</option>)}
+                                </select>
+                                <select value={a.assigned_bather || ''} disabled={assigningId === a.id}
+                                  onChange={e => assignStaff(a.id, a.assigned_groomer, e.target.value || null)}
+                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none">
+                                  <option value="">🛁 Bather</option>
+                                  {staffList.map(s => <option key={s} value={s}>{s.split(' ')[0]}</option>)}
+                                </select>
+                              </div>
+                            ) : a.assigned_groomer ? (
+                              <p className="text-gray-400 text-xs">✂️ {firstName(a.assigned_groomer)}</p>
+                            ) : null}
+                          </div>
+                          <button onClick={() => setCheckoutAppt(a)}
+                            className={`text-white font-black px-6 py-3 rounded-2xl text-base shadow transition-colors active:scale-95 ${group.length > 1 ? 'bg-white !text-violet-600 border-2 border-violet-300 hover:bg-violet-50' : 'bg-violet-600 hover:bg-violet-700'}`}>
+                            {group.length > 1 ? 'Pay separately' : '💳 Checkout'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -1279,6 +1618,17 @@ export default function CashierPage() {
           onSuccess={(updated) => {
             handlePaymentSuccess(checkoutAppt.id, updated)
             setCheckoutAppt(null)
+          }}
+          serviceLabels={serviceMap}
+        />
+      )}
+      {groupCheckout && groupCheckout.length > 0 && (
+        <GroupCheckoutModal
+          appts={groupCheckout}
+          onClose={() => setGroupCheckout(null)}
+          onSuccess={(updates) => {
+            handleGroupPaymentSuccess(updates)
+            setGroupCheckout(null)
           }}
           serviceLabels={serviceMap}
         />

@@ -19,7 +19,8 @@ const SELECT_FIELDS = `
   clients (
     name,
     phone,
-    email
+    email,
+    sms_consent
   ),
   pets!pet_id (
     id,
@@ -184,32 +185,57 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ appointments: result.data })
 }
 
+// Normalize a phone to bare digits so the same number is stored and matched
+// consistently regardless of the format it was typed in.
+function normalizePhone(p?: string | null): string {
+  return (p || '').replace(/\D/g, '')
+}
+
+// All common stored formats for a 10-digit number — used to find an existing
+// client that may have been saved in a different format than what was typed.
+function phoneVariants(digits: string): string[] {
+  const v = [digits]
+  if (digits.length === 10) {
+    v.push(`(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`)
+    v.push(`${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`)
+    v.push(`+1${digits}`)
+  }
+  return v
+}
+
 // POST /api/admin/appointments — admin quick-add appointment
 export async function POST(req: NextRequest) {
   const supabase = getAdminClient()
   const { phone, clientName, email, petId, petName, breed, weight, vaccineStatus, service, date, time } = await req.json()
 
-  if (!phone || !service || !date || !time) {
+  const digits = normalizePhone(phone)
+  if (!digits || !service || !date || !time) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  // Check if client already exists
-  const { data: existingClient } = await supabase
+  // Check if client already exists — match by any stored phone format so a client
+  // saved as "(555) 123-4567" is still found when "5551234567" is typed.
+  const { data: existingMatches } = await supabase
     .from('clients')
     .select('phone')
-    .eq('phone', phone)
-    .maybeSingle()
+    .in('phone', phoneVariants(digits))
+  // Prefer the canonical digit-format row if one exists.
+  const existingClient = existingMatches?.find(m => m.phone === digits) ?? existingMatches?.[0] ?? null
   const isNewClient = !existingClient
+
+  // Reuse the existing client's stored phone string so we don't create a duplicate
+  // row; brand-new clients are stored as normalized digits going forward.
+  const clientPhone = existingClient?.phone ?? digits
 
   // Upsert client — never overwrite an existing client's saved name/email with blanks.
   // Only columns present in the payload are written, so omitting name/email for an
   // existing client leaves their stored values untouched. A brand-new client falls
   // back to the phone number so the row always has a name.
-  const clientFields: Record<string, string> = { phone }
+  const clientFields: Record<string, string> = { phone: clientPhone }
   if (clientName?.trim()) {
     clientFields.name = clientName.trim()
   } else if (isNewClient) {
-    clientFields.name = phone
+    clientFields.name = clientPhone
   }
   if (email?.trim()) clientFields.email = email.trim()
   const { error: clientError } = await supabase
@@ -221,7 +247,7 @@ export async function POST(req: NextRequest) {
   let resolvedPetId = petId || null
   if (!resolvedPetId && petName) {
     const petFields: Record<string, string> = {
-      client_phone: phone,
+      client_phone: clientPhone,
       name: petName,
       vaccine_status: vaccineStatus || 'pending',
     }
@@ -241,7 +267,7 @@ export async function POST(req: NextRequest) {
   // Existing clients → auto-confirmed as before
   const now = new Date().toISOString()
   const apptFields: Record<string, string | null> = {
-    client_phone: phone,
+    client_phone: clientPhone,
     pet_id: resolvedPetId,
     service,
     appointment_date: date,

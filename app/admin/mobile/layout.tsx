@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 
+// Render this admin page per-request (don't serve a statically-cached shell), so
+// a new deploy's UI shows up immediately instead of a stale build.
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'Kokoni — Admin Mobile',
   description: 'Admin mobile portal for Kokoni Pet Grooming Salon',

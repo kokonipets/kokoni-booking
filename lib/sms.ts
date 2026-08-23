@@ -133,6 +133,10 @@ export async function sendSMS(to: string, body: string, template?: string) {
       body: finalBody,
       from: process.env.TWILIO_PHONE_NUMBER!,
       to: actualTo,
+      // Twilio will POST delivery updates (delivered/undelivered/failed +
+      // error code) here so sms_log reflects real carrier outcomes, not just
+      // "we handed it to Twilio". See app/api/sms/status/route.ts.
+      statusCallback: 'https://book.kokonipets.com/api/sms/status',
     })
     await logSms({
       mode,

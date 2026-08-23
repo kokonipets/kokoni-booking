@@ -25,7 +25,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const supabase = getAdminClient()
-  const { first_name, last_name, name, role, username, email, phone, address, password, pay_type, hourly_rate, commission_percent, tip_percent, work_hours, days_off, special_hours } = await req.json()
+  const { first_name, last_name, name, role, username, email, phone, address, password, pay_type, hourly_rate, commission_percent, tip_percent, work_hours, days_off, special_hours, permissions } = await req.json()
 
   if (!first_name?.trim()) return NextResponse.json({ error: 'First name is required' }, { status: 400 })
   if (!username?.trim()) return NextResponse.json({ error: 'Username is required' }, { status: 400 })
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     work_hours: work_hours || {},
     days_off: days_off || [],
     special_hours: special_hours || {},
-    permissions: {}
+    permissions: permissions || {}
   }
 
   let { data: staffData, error: staffError } = await supabase.from('staff').insert(baseInsert).select().single()

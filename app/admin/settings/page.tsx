@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { tagClasses, type Tag } from '@/lib/tags'
 import { readAuthRaw, saveAuth } from '@/lib/authStorage'
@@ -23,6 +24,12 @@ type StaffMember = {
   work_hours: Record<string, { start: string; end: string }>
   days_off: string[]
   special_hours?: Record<string, { start: string; end: string }>
+  // Most keys are plain booleans (e.g. view_revenue). One key, `allowed_tabs`,
+  // is instead a string[] restricting an admin account to specific dashboard
+  // tabs (see DASHBOARD_TABS below); absent = full access to every tab. Kept
+  // as `Record<string, boolean>` here (with `any`-casts at the two read/write
+  // sites for allowed_tabs) rather than widening this type, since it's read
+  // as a boolean via `[perm.key]` all over this file already.
   permissions: Record<string, boolean>
   username?: string
   email?: string
@@ -51,6 +58,26 @@ const PERMISSION_OPTIONS = [
   { key: 'manage_schedule', label: 'Manage Schedule' },
 ]
 
+// Every tab available in the desktop admin dashboard (app/admin/desk/page.tsx NAV).
+// Used to let an "Admin" account be restricted to only certain tabs (e.g. an
+// accountant who should only see Payroll / Cashier / Reports).
+const DASHBOARD_TABS = [
+  { key: 'requests',   label: 'Pending Request' },
+  { key: 'calendar',   label: 'Calendar' },
+  { key: 'today',      label: 'Today' },
+  { key: 'grooming',   label: 'Grooming Board' },
+  { key: 'clients',    label: 'Pet Parents' },
+  { key: 'vaccines',   label: 'Vaccine Records' },
+  { key: 'payroll',    label: 'Payroll' },
+  { key: 'intake',     label: 'New Client Intake' },
+  { key: 'waitlist',   label: 'Waitlist' },
+  { key: 'cashier',    label: 'Cashier' },
+  { key: 'reviews',    label: 'SMS Reviews' },
+  { key: 'reports',    label: 'Reports' },
+  { key: 'settings',   label: 'Settings' },
+  { key: 'timesheet',  label: 'Timesheet' },
+]
+
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const CALENDAR_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -73,6 +100,8 @@ const getCalendarDates = (year: number, month: number) => {
 }
 
 export default function SettingsPage() {
+  const router = useRouter()
+  const [authChecked, setAuthChecked] = useState(false)
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -118,6 +147,26 @@ export default function SettingsPage() {
       setCoupons(data.coupons || [])
     } catch {}
   }
+
+  // Auth gate: must be logged in as admin, and (if restricted) must have
+  // 'settings' in their allowed dashboard tabs. Re-checks against the live
+  // staff record rather than trusting the (possibly stale) login-time snapshot,
+  // so a permission change takes effect on next page load, not next login.
+  useEffect(() => {
+    (async () => {
+      let auth: { role?: string; username?: string } | null = null
+      try { auth = JSON.parse(readAuthRaw('admin') || 'null') } catch { auth = null }
+      if (auth?.role !== 'admin') { router.push('/login'); return }
+      try {
+        const res = await fetch('/api/admin/staff', { cache: 'no-store' })
+        const data = await res.json()
+        const me = (data.staff || []).find((s: StaffMember) => s.username?.toLowerCase() === auth!.username?.toLowerCase())
+        const allowed = (me?.permissions as any)?.allowed_tabs
+        if (Array.isArray(allowed) && !allowed.includes('settings')) { router.push('/admin/desk'); return }
+      } catch { /* if the check fails, fail open rather than locking the owner out */ }
+      setAuthChecked(true)
+    })()
+  }, [router])
 
   useEffect(() => {
     loadStaff()
@@ -361,6 +410,7 @@ export default function SettingsPage() {
             work_hours: formData.work_hours || {},
             days_off: formData.days_off || [],
             special_hours: formData.special_hours || {},
+            permissions: formData.permissions || {},
           }),
         })
         if (!res.ok) {
@@ -420,6 +470,38 @@ export default function SettingsPage() {
         [key]: !(prev.permissions?.[key] ?? false)
       }
     }))
+  }
+
+  // Dashboard tab restriction: permissions.allowed_tabs is undefined/absent = full
+  // access to every tab; an array (even empty) means access is limited to just
+  // those tab keys. toggleTabRestriction flips between the two modes. (See the
+  // comment on StaffMember.permissions for why `any` is used here.)
+  const rawAllowedTabs = (formData.permissions as any)?.allowed_tabs
+  const tabRestrictionEnabled = Array.isArray(rawAllowedTabs)
+  const allowedTabs: string[] = rawAllowedTabs || []
+
+  const toggleTabRestriction = () => {
+    setFormData(prev => {
+      const perms: any = { ...(prev.permissions || {}) }
+      if (Array.isArray(perms.allowed_tabs)) {
+        delete perms.allowed_tabs // turn restriction off -> full access
+      } else {
+        perms.allowed_tabs = [] // turn on, start with none checked
+      }
+      return { ...prev, permissions: perms }
+    })
+  }
+
+  const toggleTabAccess = (key: string) => {
+    setFormData(prev => {
+      const current: string[] = (prev.permissions as any)?.allowed_tabs || []
+      const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key]
+      return { ...prev, permissions: { ...(prev.permissions || {}), allowed_tabs: next } as any }
+    })
+  }
+
+  if (!authChecked) {
+    return <div className="min-h-screen bg-gray-50" />
   }
 
   return (
@@ -594,6 +676,14 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                {/* Admin/Owner accounts are dashboard-only logins — they don't
+                    groom pets on a schedule, so pay/hours/days-off don't apply. */}
+                {formData.role === 'admin' ? (
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-500">
+                    Admin accounts are for dashboard access only — they don&rsquo;t need pay, work hours, or days off. They also won&rsquo;t show up as an assignable groomer/bather on appointments.
+                  </div>
+                ) : (
+                <>
                 {/* Pay Type */}
                 <div>
                   <label className="text-xs font-semibold text-gray-600 block mb-1">Pay Type</label>
@@ -1074,6 +1164,8 @@ export default function SettingsPage() {
                     </div>
                   ) : null}
                 </div>
+                </>
+                )}
 
                 {/* Permissions */}
                 <div>
@@ -1092,6 +1184,41 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Dashboard tab access — only meaningful for Admin/Owner accounts,
+                    which are the only role that logs into /admin/desk & /admin/mobile. */}
+                {formData.role === 'admin' && (
+                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                      <input
+                        type="checkbox"
+                        checked={tabRestrictionEnabled}
+                        onChange={toggleTabRestriction}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                      <span className="text-xs font-semibold text-amber-800">
+                        Restrict this admin to specific dashboard tabs
+                      </span>
+                    </label>
+                    {!tabRestrictionEnabled ? (
+                      <p className="text-xs text-amber-700 pl-6">Full access to every tab (default).</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 pl-6">
+                        {DASHBOARD_TABS.map(t => (
+                          <label key={t.key} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={allowedTabs.includes(t.key)}
+                              onChange={() => toggleTabAccess(t.key)}
+                              className="w-4 h-4 rounded border-gray-300"
+                            />
+                            <span className="text-xs text-gray-700">{t.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Buttons */}
                 <div className="flex gap-2">

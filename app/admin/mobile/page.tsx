@@ -3,8 +3,25 @@
 import ChatIconButton from '@/components/ChatIconButton'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
+import { readAuthRaw, clearAuth } from '@/lib/authStorage'
+
+// Dashboard-tab permissions are managed once, on the desktop admin's tab set
+// (see DASHBOARD_TABS in app/admin/settings/page.tsx). Mobile has a smaller,
+// differently-named set of tabs, so each one maps to whichever desktop tab it
+// most closely corresponds to for the purpose of checking `allowed_tabs`.
+const MOBILE_TAB_PERMISSION_KEY: Record<string, string> = {
+  pending: 'requests',
+  today: 'today',
+  upcoming: 'requests',
+  all: 'requests',
+  calendar: 'calendar',
+  customers: 'clients',
+  checkout: 'cashier',
+  settings: 'settings',
+}
 
 type StaffMember = {
   id: string
@@ -35,6 +52,8 @@ type ClientRecord = {
   phone: string
   email: string | null
   created_at: string
+  sms_consent?: boolean | null
+  sms_consent_at?: string | null
   pets: Pet[]
   appointments: { id: string; appointment_date: string; appointment_time: string; service: string; status: string; assigned_groomer?: string | null; assigned_bather?: string | null }[]
 }
@@ -230,10 +249,11 @@ function BreedInput({ value, onChange, className }: { value: string; onChange: (
 }
 
 export default function AdminPage() {
+  const router = useRouter()
   const [authed, setAuthed] = useState(false)
-  const [pin, setPin] = useState('')
-  const [pinError, setPinError] = useState('')
-  const [pinLoading, setPinLoading] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+  // null = full access (either unrestricted, or not loaded yet).
+  const [allowedTabs, setAllowedTabs] = useState<string[] | null>(null)
 
   const [tab, setTab] = useState<'pending' | 'today' | 'upcoming' | 'all' | 'calendar' | 'customers' | 'checkout' | 'settings'>('pending')
   const [pendingCount, setPendingCount] = useState(0)
@@ -247,6 +267,12 @@ export default function AdminPage() {
   const [checkoutPayStatus, setCheckoutPayStatus] = useState<Record<string, string>>({})
   const [savingCheckoutId, setSavingCheckoutId] = useState<string | null>(null)
   const [todaySearch, setTodaySearch] = useState('')
+  // Period reports on the Check Out tab (Today uses today's list; wider ranges
+  // load all appointments and filter client-side, like the desktop Reports tab).
+  const [reportRange, setReportRange] = useState<'today' | 'yesterday' | 'week' | 'month' | 'last_month' | 'all' | 'custom'>('today')
+  const [reportCustomDate, setReportCustomDate] = useState('') // YYYY-MM-DD for "pick a day"
+  const [reportAppts, setReportAppts] = useState<Appointment[]>([])
+  const [reportLoading, setReportLoading] = useState(false)
   const [groomerFilter, setGroomerFilter] = useState<string | null>(null)
   const [expandedApptId, setExpandedApptId] = useState<string | null>(null)
   const [expandedPetTags, setExpandedPetTags] = useState<PetTag[]>([])
@@ -348,15 +374,24 @@ export default function AdminPage() {
   const [popupBasePrice, setPopupBasePrice] = useState('')
   const [popupBaseTier, setPopupBaseTier] = useState('')  // tier label to avoid same-price collision
   const [popupAddOns, setPopupAddOns] = useState<{id:string;name:string;price:string}[]>([])
+  const [popupAddonDraft, setPopupAddonDraft] = useState({ text: '', price: '' })
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
   const [editDraftBasePrice, setEditDraftBasePrice] = useState('')
   const [editDraftBaseTier, setEditDraftBaseTier] = useState('')  // tier label to avoid same-price collision
   const [editDraftAddOns, setEditDraftAddOns] = useState<{id:string;name:string;price:string}[]>([])
+  const [editDraftAddonDraft, setEditDraftAddonDraft] = useState({ text: '', price: '' })
   const [editDraftTotalSaved, setEditDraftTotalSaved] = useState(false)
   const [editDraftCouponId, setEditDraftCouponId] = useState<string | null>(null)
   const [savingEditDraftPayment, setSavingEditDraftPayment] = useState(false)
+  // Calendar detail sheet — Service & Price / Add-ons
+  const [calendarBasePrice, setCalendarBasePrice] = useState('')
+  const [calendarBaseTier, setCalendarBaseTier] = useState('')
+  const [calendarAddOns, setCalendarAddOns] = useState<{id:string;name:string;price:string}[]>([])
+  const [calendarAddonDraft, setCalendarAddonDraft] = useState({ text: '', price: '' })
+  const [calendarTotalSaved, setCalendarTotalSaved] = useState(false)
+  const [savingCalendarPayment, setSavingCalendarPayment] = useState(false)
   // Discount codes (shared with desk/groomer)
   type MobileCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
   const [availableCoupons, setAvailableCoupons] = useState<MobileCoupon[]>([])
@@ -373,8 +408,6 @@ export default function AdminPage() {
   const epNoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const epIsComposingRef = useRef(false)
   const epNoteInputRef = useRef<HTMLTextAreaElement>(null)
-  const [addonDraft, setAddonDraft] = useState<Record<string, { text: string; price: string }>>({})
-  const [savingAddonId, setSavingAddonId] = useState<string | null>(null)
 
   // Customers state
   const [customers, setCustomers] = useState<ClientRecord[]>([])
@@ -405,6 +438,22 @@ export default function AdminPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [calendarDetailAppt, setCalendarDetailAppt] = useState<Appointment | null>(null)
   const [detailSheetTab, setDetailSheetTab] = useState<'appt'|'customer'|'history'|'future'|'notes'>('appt')
+  // Full appointment history for the client currently open in the detail sheet.
+  // The "History" tab used to derive past visits only from whatever was already
+  // loaded locally (today's appointments + the currently viewed calendar month),
+  // so a visit from a different month (e.g. a prior month) silently disappeared
+  // from "previous visits" even though it exists in the DB. Fetching the client's
+  // full record (same endpoint the desktop Pet Parents tab uses) fixes that.
+  const [fullClientAppts, setFullClientAppts] = useState<Appointment[] | null>(null)
+  useEffect(() => {
+    const phone = calendarDetailAppt?.client_phone
+    if (!phone) { setFullClientAppts(null); return }
+    setFullClientAppts(null)
+    fetch(`/api/admin/clients?phone=${encodeURIComponent(phone)}`)
+      .then(r => r.json())
+      .then(d => setFullClientAppts(d.clients?.[0]?.appointments ?? []))
+      .catch(() => setFullClientAppts([]))
+  }, [calendarDetailAppt?.client_phone])
   const [calendarStaffFilter, setCalendarStaffFilter] = useState<string>('all')
   const [blockedTimes, setBlockedTimes] = useState<{date:string;time:string;reason:string|null}[]>([])
 
@@ -428,12 +477,39 @@ export default function AdminPage() {
   const [savingBlock, setSavingBlock] = useState(false)
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('admin_authed')
-    if (stored === 'yes') setAuthed(true)
+    try {
+      const auth = JSON.parse(readAuthRaw('admin') || 'null')
+      if (auth?.role === 'admin') {
+        setAuthed(true)
+        // Re-check permissions against the live staff record (not the
+        // possibly-stale login-time snapshot).
+        fetch('/api/admin/staff').then(r => r.json()).then(d => {
+          const me = (d.staff || []).find((s: { username?: string }) => s.username?.toLowerCase() === auth.username?.toLowerCase())
+          const allowed = me?.permissions?.allowed_tabs
+          setAllowedTabs(Array.isArray(allowed) ? allowed : null)
+        }).catch(() => setAllowedTabs(null))
+      } else {
+        router.push('/login')
+      }
+    } catch {
+      router.push('/login')
+    }
+    setCheckingAuth(false)
     fetch('/api/admin/coupons').then(r => r.json()).then(d => {
       setAvailableCoupons((d.coupons ?? []).filter((c: MobileCoupon) => c.active))
     }).catch(() => {})
-  }, [])
+  }, [router])
+
+  // If this admin is restricted and the current tab maps to a desktop tab
+  // they're not allowed to see, jump to their first allowed tab (if any).
+  useEffect(() => {
+    if (!allowedTabs) return
+    const currentAllowed = allowedTabs.includes(MOBILE_TAB_PERMISSION_KEY[tab] ?? tab)
+    if (!currentAllowed) {
+      const firstOk = Object.keys(MOBILE_TAB_PERMISSION_KEY).find(k => allowedTabs.includes(MOBILE_TAB_PERMISSION_KEY[k]))
+      if (firstOk) setTab(firstOk as typeof tab)
+    }
+  }, [allowedTabs, tab])
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -514,28 +590,6 @@ export default function AdminPage() {
       finally { setTranslatingId(null) }
     }, 800)
   }, [])
-
-  const handlePin = async () => {
-    setPinLoading(true)
-    setPinError('')
-    try {
-      const res = await fetch('/api/admin/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        sessionStorage.setItem('admin_authed', 'yes')
-        setAuthed(true)
-      } else {
-        setPinError('Incorrect PIN. Try again.')
-      }
-    } catch {
-      setPinError('Something went wrong.')
-    }
-    setPinLoading(false)
-  }
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true)
@@ -761,36 +815,6 @@ export default function AdminPage() {
       }
     } catch { showToast('Failed to update service') }
     setSavingServiceId(null)
-  }
-
-  const addAddon = async (apptId: string) => {
-    const draft = addonDraft[apptId]
-    if (!draft?.text.trim()) return
-    setSavingAddonId(apptId)
-    try {
-      const note: NoteEntry = { id: Date.now().toString(), text: draft.text, price: draft.price, is_addon: true }
-      const res = await fetch(`/api/admin/appointments/${apptId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add-note', note }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, notes_list: data.notes_list } : a))
-        setAddonDraft(prev => ({ ...prev, [apptId]: { text: '', price: '' } }))
-      }
-    } catch { /**/ }
-    setSavingAddonId(null)
-  }
-
-  const removeAddon = async (apptId: string, noteId: string) => {
-    try {
-      const res = await fetch(`/api/admin/appointments/${apptId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete-note', noteId }),
-      })
-      const data = await res.json()
-      if (res.ok) setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, notes_list: data.notes_list } : a))
-    } catch { /**/ }
   }
 
   const saveQuotePrice = async (apptId: string) => {
@@ -1026,6 +1050,27 @@ export default function AdminPage() {
     setCustomersLoading(false)
   }, [])
 
+  const [smsConsentSaving, setSmsConsentSaving] = useState<string | null>(null)
+  // Staff-recorded SMS opt-in (e.g. customer agreed verbally at checkout but
+  // never checked the box during booking, or the appointment was created by
+  // staff via admin quick-add, which never asks for consent at all). Only
+  // ever turns consent ON — never used to revoke it from here.
+  const grantSmsConsent = async (phone: string) => {
+    setSmsConsentSaving(phone)
+    try {
+      const res = await fetch('/api/admin/clients', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, sms_consent: true }),
+      })
+      if (res.ok) {
+        const consentAt = new Date().toISOString()
+        setCustomers(prev => prev.map(c => c.phone === phone ? { ...c, sms_consent: true, sms_consent_at: consentAt } : c))
+      }
+    } catch {/**/}
+    finally { setSmsConsentSaving(null) }
+  }
+
   const fetchCheckout = useCallback(async () => {
     setCheckoutLoading(true)
     try {
@@ -1052,6 +1097,19 @@ export default function AdminPage() {
       setCheckoutAppts([])
     }
     setCheckoutLoading(false)
+  }, [])
+
+  // Load all appointments for the wider-period reports (week/month/etc.)
+  const fetchReportAppts = useCallback(async () => {
+    setReportLoading(true)
+    try {
+      const res = await fetch('/api/admin/appointments?status=all')
+      const data = await res.json()
+      setReportAppts(data.appointments || [])
+    } catch {
+      setReportAppts([])
+    }
+    setReportLoading(false)
   }, [])
 
   const uploadPetPhoto = async (petId: string, file: File) => {
@@ -1095,6 +1153,11 @@ export default function AdminPage() {
     // Always load service settings so pricing tiers are available in all tabs
     if (tab !== 'settings') fetchSettings()
   }, [authed, tab, fetchAppointments, fetchCalendar, fetchSettings, fetchCustomers, fetchCheckout])
+
+  // Load all-appointment data for the Check Out tab's wider-period reports.
+  useEffect(() => {
+    if (authed && tab === 'checkout' && reportRange !== 'today') fetchReportAppts()
+  }, [authed, tab, reportRange, fetchReportAppts])
 
   // Always load staff on login so groomer/bather dropdowns work on any tab
   useEffect(() => {
@@ -1379,36 +1442,18 @@ export default function AdminPage() {
     finally { setEpSavingEditNote(false) }
   }
 
-  // ── PIN screen ─────────────────────────────────────────────
+  // ── Auth gate ────────────────────────────────────────────────
+  // Real login now happens on /login (username + password against the staff
+  // table). If we get here unauthenticated, we're just mid-redirect there.
   if (!authed) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-sky-50 to-white flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-sm">
-          <div className="flex flex-col items-center mb-8">
+        {!checkingAuth && (
+          <div className="flex flex-col items-center">
             <Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={120} height={120} className="mb-3" />
-            <h1 className="text-xl font-bold text-gray-800">Admin Dashboard</h1>
-            <p className="text-sm text-gray-500">Enter your PIN to continue</p>
+            <p className="text-sm text-gray-500">Redirecting to login…</p>
           </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <input
-              type="password"
-              inputMode="numeric"
-              placeholder="Enter PIN"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handlePin()}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-400 mb-3"
-            />
-            {pinError && <p className="text-red-500 text-sm text-center mb-3">{pinError}</p>}
-            <button
-              onClick={handlePin}
-              disabled={pinLoading || !pin}
-              className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors"
-            >
-              {pinLoading ? 'Checking...' : 'Enter'}
-            </button>
-          </div>
-        </div>
+        )}
       </div>
     )
   }
@@ -1544,7 +1589,7 @@ export default function AdminPage() {
         <div className="flex items-center gap-1">
           <ChatIconButton />
           <button
-            onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false) }}
+            onClick={() => { clearAuth('admin'); setAuthed(false); router.push('/login') }}
             className="text-xs text-gray-400 hover:text-gray-600 px-2"
           >
             Sign out
@@ -1613,6 +1658,7 @@ export default function AdminPage() {
                 setEditDraftBasePrice(baseCalc)
                 setEditDraftBaseTier((appt as { size_tier?: string | null }).size_tier || '')  // restore saved tier
                 setEditDraftAddOns(existingAddons)
+                setEditDraftAddonDraft({ text: '', price: '' })
                 {
                   const dl = (appt as { discount_label?: string | null }).discount_label || ''
                   const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || '')
@@ -1823,7 +1869,7 @@ export default function AdminPage() {
                                   ))}
                                 </div>
                               )}
-                              <div className="flex flex-wrap gap-1.5">
+                              <div className="flex flex-wrap gap-1.5 mb-2">
                                 {otherServices
                                   .filter((s: {id:string}) => !editDraftAddOns.find(a => a.id === s.id))
                                   .map((s: {id:string;name:string;tiers?:{label:string;price:string}[]}) => (
@@ -1837,6 +1883,36 @@ export default function AdminPage() {
                                       + {s.name ?? serviceMap[s.id] ?? s.id}
                                     </button>
                                   ))}
+                              </div>
+                              <div className="flex gap-1.5">
+                                <input
+                                  value={editDraftAddonDraft.text}
+                                  onChange={e => setEditDraftAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter' && editDraftAddonDraft.text.trim()) {
+                                      setEditDraftAddOns(prev => [...prev, { id: Date.now().toString(), name: editDraftAddonDraft.text.trim(), price: editDraftAddonDraft.price }])
+                                      setEditDraftAddonDraft({ text: '', price: '' })
+                                      setEditDraftTotalSaved(false)
+                                    }
+                                  }}
+                                  placeholder="Custom add-on…"
+                                  className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                />
+                                <input
+                                  value={editDraftAddonDraft.price}
+                                  onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setEditDraftAddonDraft(prev => ({ ...prev, price: v })) }}
+                                  placeholder="$" type="text" inputMode="numeric"
+                                  className="w-12 border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                                />
+                                <button
+                                  onClick={() => {
+                                    if (!editDraftAddonDraft.text.trim()) return
+                                    setEditDraftAddOns(prev => [...prev, { id: Date.now().toString(), name: editDraftAddonDraft.text.trim(), price: editDraftAddonDraft.price }])
+                                    setEditDraftAddonDraft({ text: '', price: '' })
+                                    setEditDraftTotalSaved(false)
+                                  }}
+                                  disabled={!editDraftAddonDraft.text.trim()}
+                                  className="px-2.5 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-xl disabled:opacity-40">+</button>
                               </div>
                             </div>
                           )}
@@ -2541,7 +2617,7 @@ export default function AdminPage() {
                                     fetchAppointments()
                                   }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
                                     <option value="">✂️ Groomer…</option>
-                                    {staff.filter(s => s.is_active).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
                                   <select defaultValue="" onChange={async e => {
                                     if (!e.target.value) return
@@ -2549,7 +2625,7 @@ export default function AdminPage() {
                                     fetchAppointments()
                                   }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
                                     <option value="">🛁 Bather…</option>
-                                    {staff.filter(s => s.is_active).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
                                 </div>
                               </div>
@@ -2602,7 +2678,7 @@ export default function AdminPage() {
                                     fetchAppointments()
                                   }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white">
                                     <option value="">✂️ Change groomer…</option>
-                                    {staff.filter(s => s.is_active).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
                                   <select defaultValue="" onChange={async e => {
                                     if (!e.target.value) return
@@ -2610,7 +2686,7 @@ export default function AdminPage() {
                                     fetchAppointments()
                                   }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white">
                                     <option value="">🛁 Change bather…</option>
-                                    {staff.filter(s => s.is_active).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
                                 </div>
                               </div>
@@ -2715,51 +2791,6 @@ export default function AdminPage() {
               </p>
             </div>
 
-            {/* ── Add-on services ────────────────────────────────────────── */}
-            <div className="mb-3 border-t border-gray-100 pt-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">🐾 Add-on Services</p>
-              {/* Existing add-ons */}
-              {(appt.notes_list ?? []).filter(n => n.is_addon).length > 0 && (
-                <div className="space-y-1 mb-2">
-                  {(appt.notes_list ?? []).filter(n => n.is_addon).map((addon, i) => (
-                    <div key={addon.id ?? i} className="flex items-center justify-between bg-emerald-50 rounded-xl px-3 py-1.5">
-                      <span className="text-sm text-gray-700">{addon.text}</span>
-                      <div className="flex items-center gap-2">
-                        {addon.price && <span className="text-sm font-semibold text-emerald-600">${addon.price}</span>}
-                        <button
-                          onClick={() => removeAddon(appt.id, addon.id)}
-                          className="text-gray-400 hover:text-red-400 text-xs leading-none ml-1"
-                        >✕</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Add new add-on */}
-              <div className="flex gap-1.5">
-                <input
-                  value={addonDraft[appt.id]?.text ?? ''}
-                  onChange={e => setAddonDraft(prev => ({ ...prev, [appt.id]: { text: e.target.value, price: prev[appt.id]?.price ?? '' } }))}
-                  onKeyDown={e => e.key === 'Enter' && addAddon(appt.id)}
-                  placeholder="Nail trim, ear clean…"
-                  className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                />
-                <input
-                  value={addonDraft[appt.id]?.price ?? ''}
-                  onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setAddonDraft(prev => ({ ...prev, [appt.id]: { text: prev[appt.id]?.text ?? '', price: v } })) }}
-                  placeholder="$"
-                  type="text"
-                  inputMode="numeric"
-                  className="w-16 border border-gray-200 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-sky-300"
-                />
-                <button
-                  onClick={() => addAddon(appt.id)}
-                  disabled={savingAddonId === appt.id || !addonDraft[appt.id]?.text?.trim()}
-                  className="px-3 py-1.5 bg-sky-500 text-white text-sm font-bold rounded-xl disabled:opacity-40"
-                >{savingAddonId === appt.id ? '…' : '+'}</button>
-              </div>
-            </div>
-
             {/* ── Pricing ─────────────────────────────────────────────── */}
             {editingPriceId === appt.id ? (() => {
               const svcDef = services.find(s => s.id === appt.service)
@@ -2850,7 +2881,7 @@ export default function AdminPage() {
                           ))}
                         </div>
                       )}
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 mb-2">
                         {otherServices
                           .filter((s: {id:string}) => !popupAddOns.find(a => a.id === s.id))
                           .map((s: {id:string;name:string;tiers?:{label:string;price:string}[]}) => (
@@ -2865,6 +2896,36 @@ export default function AdminPage() {
                             </button>
                           ))
                         }
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input
+                          value={popupAddonDraft.text}
+                          onChange={e => setPopupAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && popupAddonDraft.text.trim()) {
+                              setPopupAddOns(prev => [...prev, { id: Date.now().toString(), name: popupAddonDraft.text.trim(), price: popupAddonDraft.price }])
+                              setPopupAddonDraft({ text: '', price: '' })
+                              setPopupTotalSaved(false)
+                            }
+                          }}
+                          placeholder="Custom add-on…"
+                          className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                        />
+                        <input
+                          value={popupAddonDraft.price}
+                          onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setPopupAddonDraft(prev => ({ ...prev, price: v })) }}
+                          placeholder="$" type="text" inputMode="numeric"
+                          className="w-12 border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                        />
+                        <button
+                          onClick={() => {
+                            if (!popupAddonDraft.text.trim()) return
+                            setPopupAddOns(prev => [...prev, { id: Date.now().toString(), name: popupAddonDraft.text.trim(), price: popupAddonDraft.price }])
+                            setPopupAddonDraft({ text: '', price: '' })
+                            setPopupTotalSaved(false)
+                          }}
+                          disabled={!popupAddonDraft.text.trim()}
+                          className="px-2.5 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-xl disabled:opacity-40">+</button>
                       </div>
                     </div>
                   )}
@@ -2925,16 +2986,20 @@ export default function AdminPage() {
                           const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ action: 'record-payment', payment_amount: amount, size_tier: popupBaseTier || null,
+                              addons: popupAddOns,
                               discount_label: popupCoupon ? popupCoupon.name : null,
                               discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
                               discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null }),
                           })
                           if ((await res.json()).success) {
                             setPopupTotalSaved(true)
+                            const addonNotes = popupAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
+                            const nonAddonNotes = (appt.notes_list ?? []).filter(n => !n.is_addon)
                             setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount, size_tier: popupBaseTier || null,
                               discount_label: popupCoupon ? popupCoupon.name : null,
                               discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
-                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null } : a))
+                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                              notes_list: [...nonAddonNotes, ...addonNotes] } : a))
                             showToast('✓ Total saved!')
                           }
                         } catch {/**/}
@@ -2959,7 +3024,7 @@ export default function AdminPage() {
                     {appt.payment_amount ? `$${appt.payment_amount}` : '—'}
                   </span>
                   <button
-                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns([]); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
+                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp); const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupAddonDraft({ text: '', price: '' }); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
                     className="text-gray-400 hover:text-sky-500 text-xs leading-none"
                     title="Set price"
                   >✏️</button>
@@ -3437,7 +3502,7 @@ export default function AdminPage() {
                   </div>
 
                   {/* Staff filter chips */}
-                  {staff.filter(s => s.is_active).length > 0 && (
+                  {staff.filter(s => s.is_active && s.role !== 'admin').length > 0 && (
                     <div className="px-4 py-2.5 flex items-center gap-2 overflow-x-auto flex-shrink-0 border-b border-gray-100">
                       <button
                         onClick={() => setCalendarStaffFilter('all')}
@@ -3448,7 +3513,7 @@ export default function AdminPage() {
                         }`}>
                         All
                       </button>
-                      {staff.filter(s => s.is_active).map(s => (
+                      {staff.filter(s => s.is_active && s.role !== 'admin').map(s => (
                         <button
                           key={s.id}
                           onClick={() => setCalendarStaffFilter(calendarStaffFilter === s.name ? 'all' : s.name)}
@@ -3492,7 +3557,17 @@ export default function AdminPage() {
                           <div className="flex-1 border-l border-gray-100 py-2 px-3 flex flex-col gap-2">
                             {visibleAppts.length > 0 ? (
                               visibleAppts.map(appt => (
-                              <button key={appt.id} onClick={() => { setCalendarDetailAppt(appt); setDetailSheetTab('appt') }}
+                              <button key={appt.id} onClick={() => {
+                                const savedAddOns = (appt.notes_list ?? []).filter((n: {is_addon?:boolean}) => n.is_addon).map((n: {id:string;text:string;price?:string}) => ({ id: n.id, name: n.text, price: n.price ?? '' }))
+                                const addonTotal = savedAddOns.reduce((s: number, x: {price:string}) => s + (parseFloat(x.price) || 0), 0)
+                                const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0
+                                setCalendarAddOns(savedAddOns)
+                                setCalendarAddonDraft({ text: '', price: '' })
+                                setCalendarBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : '')
+                                setCalendarBaseTier((appt as { size_tier?: string | null }).size_tier || '')
+                                setCalendarTotalSaved(!!appt.payment_amount)
+                                setCalendarDetailAppt(appt); setDetailSheetTab('appt')
+                              }}
                                 className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left active:scale-98 ${
                                   appt.service === 'simply_cute' ? 'bg-sky-50 border border-sky-200' :
                                   appt.service === 'bath_brush'  ? 'bg-teal-50 border border-teal-200' :
@@ -3579,13 +3654,15 @@ export default function AdminPage() {
               pending:'bg-amber-100 text-amber-700', confirmed:'bg-emerald-100 text-emerald-700',
               completed:'bg-gray-100 text-gray-600', cancelled:'bg-red-100 text-red-600',
             }
-            const activeStaff = staff.filter(s => s.is_active)
+            const activeStaff = staff.filter(s => s.is_active && s.role !== 'admin')
             const svcDef = services.find(s => s.id === a.service)
             const tiers = (svcDef?.tiers ?? servicePricing[a.service] ?? []).filter((t: {label:string;price:string}) => t.label && t.price)
-            // History = past appts for same client (from calendarAppts + appointments)
+            // History = past appts for same client. Prefer the full per-client fetch
+            // (fullClientAppts, covers every month/status); fall back to whatever's
+            // already loaded locally while that fetch is in flight.
             const allKnownAppts = [...appointments, ...calendarAppts].filter((x,i,arr) => arr.findIndex(y=>y.id===x.id)===i)
             const clientPhone = a.client_phone
-            const clientAppts = allKnownAppts.filter(x => x.client_phone === clientPhone)
+            const clientAppts = fullClientAppts ?? allKnownAppts.filter(x => x.client_phone === clientPhone)
             const pastAppts = clientAppts.filter(x => x.appointment_date < a.appointment_date || (x.appointment_date === a.appointment_date && x.id !== a.id && x.status === 'completed')).sort((x,y)=>y.appointment_date.localeCompare(x.appointment_date))
             const futureAppts = clientAppts.filter(x => x.appointment_date > a.appointment_date).sort((x,y)=>x.appointment_date.localeCompare(y.appointment_date))
 
@@ -3727,6 +3804,12 @@ export default function AdminPage() {
                       )}
 
                       {/* Service & Pricing */}
+                      {(() => {
+                        const otherServices = services.filter(s => s.id !== a.service)
+                        const addOnTotal = calendarAddOns.reduce((sum, ao) => sum + (parseFloat(ao.price) || 0), 0)
+                        const baseAmt = parseFloat(calendarBasePrice) || 0
+                        const grandTotal = Math.round((baseAmt + addOnTotal) * 100) / 100
+                        return (
                       <div className="bg-white border border-gray-100 rounded-2xl p-4">
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Service & Price</p>
                         <div className="flex items-center justify-between mb-3">
@@ -3735,31 +3818,166 @@ export default function AdminPage() {
                             a.service==='bath_brush' ? 'bg-teal-100 text-teal-700' :
                             a.service==='asian_fusion' ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'
                           }`}>{serviceMap[a.service] ?? a.service}</span>
-                          {a.payment_amount && (
-                            <span className={`text-base font-bold ${a.payment_status==='paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                              ${a.payment_amount} {a.payment_status==='paid' ? '✓ Paid' : 'Unpaid'}
-                            </span>
-                          )}
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                            a.payment_status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {a.payment_status === 'paid' ? `✓ Paid${a.payment_amount ? ` · $${a.payment_amount}` : ''}` : 'Unpaid'}
+                          </span>
                         </div>
                         {tiers.length > 0 && (
-                          <div className="grid grid-cols-2 gap-2">
-                            {tiers.map((t: {label:string;price:string;duration?:string}) => (
+                          <div className="grid grid-cols-2 gap-2 mb-3">
+                            {tiers.map((t: {label:string;price:string;duration?:string}) => {
+                              const priceVal = t.price.replace('$','')
+                              const isSelected = calendarBaseTier === t.label && calendarBasePrice === priceVal
+                              return (
                               <button key={t.label}
-                                onClick={() => patchAppt({ action:'record-payment', payment_amount: t.price.replace('$',''), payment_status: 'unpaid', payment_method: a.payment_method || 'cash', tip_amount: a.tip_amount || '0' })}
+                                onClick={() => { if (t.price) { setCalendarBasePrice(isSelected ? '' : priceVal); setCalendarBaseTier(isSelected ? '' : t.label); setCalendarTotalSaved(false) } }}
                                 className={`border-2 rounded-xl p-3 text-center transition-all ${
-                                  a.payment_amount === t.price.replace('$','') ? 'border-violet-400 bg-violet-50' : 'border-gray-100 hover:border-violet-200'
+                                  isSelected ? 'border-violet-400 bg-violet-50' : 'border-gray-100 hover:border-violet-200'
                                 }`}>
                                 <p className="text-xs text-gray-500">{t.label}</p>
                                 <p className="text-xl font-black text-gray-800">{t.price}</p>
                                 {t.duration && <p className="text-xs text-gray-400">⏱ {t.duration}</p>}
                               </button>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
+
+                        {/* Add-on Services */}
+                        {(otherServices.length > 0 || calendarAddOns.length > 0) && (
+                          <div className="border-t border-gray-100 pt-3 mt-1 mb-3">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Add-on Services</p>
+                            {calendarAddOns.length > 0 && (
+                              <div className="space-y-1.5 mb-2">
+                                {calendarAddOns.map(addon => (
+                                  <div key={addon.id} className="flex items-center gap-2 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
+                                    <span className="text-xs font-semibold text-sky-800 flex-1">{addon.name}</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-gray-500">$</span>
+                                      <input type="text" inputMode="numeric" pattern="[0-9]*" value={addon.price}
+                                        onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setCalendarAddOns(prev => prev.map(x => x.id === addon.id ? { ...x, price: v } : x)); setCalendarTotalSaved(false) }}
+                                        className="w-14 text-sm font-bold text-sky-700 bg-transparent focus:outline-none text-right" />
+                                    </div>
+                                    <button onClick={() => { setCalendarAddOns(prev => prev.filter(x => x.id !== addon.id)); setCalendarTotalSaved(false) }}
+                                      className="text-gray-300 hover:text-rose-400 text-base font-bold ml-1">✕</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              {otherServices
+                                .filter(s => !calendarAddOns.find(ao => ao.id === s.id))
+                                .map(s => (
+                                  <button key={s.id}
+                                    onClick={() => {
+                                      const defaultPrice = s.tiers?.find((t: {price:string}) => t.price)?.price ?? ''
+                                      setCalendarAddOns(prev => [...prev, { id: s.id, name: s.name ?? serviceMap[s.id] ?? s.id, price: defaultPrice }])
+                                      setCalendarTotalSaved(false)
+                                    }}
+                                    className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors">
+                                    + {s.name ?? serviceMap[s.id] ?? s.id}
+                                  </button>
+                                ))
+                              }
+                            </div>
+                            <div className="flex gap-1.5">
+                              <input
+                                value={calendarAddonDraft.text}
+                                onChange={e => setCalendarAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && calendarAddonDraft.text.trim()) {
+                                    setCalendarAddOns(prev => [...prev, { id: Date.now().toString(), name: calendarAddonDraft.text.trim(), price: calendarAddonDraft.price }])
+                                    setCalendarAddonDraft({ text: '', price: '' })
+                                    setCalendarTotalSaved(false)
+                                  }
+                                }}
+                                placeholder="Custom add-on…"
+                                className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <input
+                                value={calendarAddonDraft.price}
+                                onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setCalendarAddonDraft(prev => ({ ...prev, price: v })) }}
+                                placeholder="$" type="text" inputMode="numeric"
+                                className="w-12 border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <button
+                                onClick={() => {
+                                  if (!calendarAddonDraft.text.trim()) return
+                                  setCalendarAddOns(prev => [...prev, { id: Date.now().toString(), name: calendarAddonDraft.text.trim(), price: calendarAddonDraft.price }])
+                                  setCalendarAddonDraft({ text: '', price: '' })
+                                  setCalendarTotalSaved(false)
+                                }}
+                                disabled={!calendarAddonDraft.text.trim()}
+                                className="px-2.5 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-xl disabled:opacity-40">+</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Total breakdown */}
+                        {(calendarBasePrice || calendarAddOns.length > 0) && (
+                          <div className="bg-gray-50 rounded-xl px-3 py-2 mb-3 space-y-1 border border-gray-100">
+                            {calendarBasePrice && (
+                              <div className="flex justify-between text-xs text-gray-500">
+                                <span>{serviceMap[a.service] ?? a.service}</span>
+                                <span className="font-semibold">${calendarBasePrice}</span>
+                              </div>
+                            )}
+                            {calendarAddOns.map(ao => (
+                              <div key={ao.id} className="flex justify-between text-xs text-gray-500">
+                                <span>{ao.name}</span>
+                                <span className="font-semibold">${ao.price || '0'}</span>
+                              </div>
+                            ))}
+                            <div className="flex justify-between text-sm font-bold text-gray-800 pt-1 border-t border-gray-200">
+                              <span>Total</span>
+                              <span className={calendarTotalSaved && grandTotal > 0 ? 'text-emerald-600' : 'text-gray-800'}>${grandTotal.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Save Total */}
+                        <button
+                          disabled={grandTotal <= 0 || savingCalendarPayment}
+                          onClick={async () => {
+                            if (grandTotal <= 0) return
+                            const amount = grandTotal.toString()
+                            setSavingCalendarPayment(true)
+                            try {
+                              const res = await fetch(`/api/admin/appointments/${a.id}`, {
+                                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  action: 'record-payment', payment_amount: amount,
+                                  payment_status: a.payment_status || 'unpaid', payment_method: a.payment_method || 'cash',
+                                  tip_amount: a.tip_amount || '0', size_tier: calendarBaseTier || null, addons: calendarAddOns,
+                                }),
+                              })
+                              const data = await res.json()
+                              if (data.success) {
+                                const addonNotes = calendarAddOns.map(ao => ({ id: ao.id, text: ao.name, price: ao.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
+                                const nonAddonNotes = (a.notes_list ?? []).filter((n: {is_addon?:boolean}) => !n.is_addon)
+                                const updated = { ...a, payment_amount: amount, size_tier: calendarBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] }
+                                setCalendarDetailAppt(updated as typeof a)
+                                setAppointments(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x))
+                                setCalendarAppts(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x))
+                                setCalendarTotalSaved(true)
+                                showToast('✓ Total saved!')
+                              }
+                            } catch {/**/}
+                            finally { setSavingCalendarPayment(false) }
+                          }}
+                          className={`w-full py-2.5 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors ${
+                            grandTotal <= 0 ? 'bg-gray-300' : calendarTotalSaved ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-violet-500 hover:bg-violet-600'
+                          }`}>
+                          {savingCalendarPayment ? '⏳ Saving…' : grandTotal > 0 ? (calendarTotalSaved ? `✓ Saved · $${grandTotal.toFixed(2)}` : `💾 Save Total · $${grandTotal.toFixed(2)}`) : 'Select a size first'}
+                        </button>
+
                         {a.tip_amount && parseFloat(String(a.tip_amount)) > 0 && (
                           <p className="text-xs text-gray-400 mt-2">Tip: ${a.tip_amount} · Method: {a.payment_method || '—'}</p>
                         )}
                       </div>
+                        )
+                      })()}
 
                       {/* Health & Quality checks */}
                       {(a.health_check || a.grooming_quality) && (
@@ -4516,35 +4734,100 @@ export default function AdminPage() {
 
           {/* ── Checkout Tab ── */}
           {tab === 'checkout' && (() => {
-            const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' })
+            const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' })
+            // Today's collection lists (always today) — drive the payment list below.
             const paidAppts  = checkoutAppts.filter(a => a.payment_status === 'paid')
             const unpaidAppts = checkoutAppts.filter(a => a.payment_status !== 'paid' && a.status !== 'cancelled')
-            const totalRevenue = paidAppts.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
-            const totalTips    = paidAppts.reduce((s, a) => s + parseFloat(a.tip_amount    || '0'), 0)
-            const totalAll     = totalRevenue + totalTips
 
-            // Payment method breakdown
+            // ── Period report (mirrors the desktop Reports tab) ──
+            const tzStr = (dt: Date) => dt.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+            const todayStr = tzStr(new Date())
+            const yd = new Date(); yd.setDate(yd.getDate() - 1); const yesterdayStr = tzStr(yd)
+            const wa = new Date(); wa.setDate(wa.getDate() - 6); const weekAgoStr = tzStr(wa)
+            const monthStart = todayStr.slice(0, 7) + '-01'
+            const [yNow, mNow] = todayStr.split('-').map(Number)
+            const lmDate = new Date(yNow, mNow - 1, 1); lmDate.setMonth(lmDate.getMonth() - 1)
+            const lastMonthStart = `${lmDate.getFullYear()}-${String(lmDate.getMonth() + 1).padStart(2, '0')}-01`
+            const inReportRange = (date: string) => {
+              if (reportRange === 'today') return date === todayStr
+              if (reportRange === 'yesterday') return date === yesterdayStr
+              if (reportRange === 'week') return date >= weekAgoStr
+              if (reportRange === 'month') return date >= monthStart
+              if (reportRange === 'last_month') return date >= lastMonthStart && date < monthStart
+              if (reportRange === 'custom') return !!reportCustomDate && date === reportCustomDate
+              return true // all
+            }
+            const reportSrc = reportRange === 'today' ? checkoutAppts : reportAppts
+            const rangeAppts = reportSrc.filter(a => a.payment_status === 'paid' && inReportRange(a.appointment_date))
+            const totalRevenue = rangeAppts.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
+            const totalTips    = rangeAppts.reduce((s, a) => s + parseFloat(a.tip_amount    || '0'), 0)
+            const totalAll     = totalRevenue + totalTips
+            const fmtDay = (dstr: string) => dstr ? new Date(dstr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Pick a day'
+            const rangeLabel: string = reportRange === 'custom'
+              ? fmtDay(reportCustomDate)
+              : ({ today: 'Today', yesterday: 'Yesterday', week: 'Last 7 Days', month: 'This Month', last_month: 'Last Month', all: 'All Time' } as Record<string, string>)[reportRange]
+            const reportBusy = reportRange !== 'today' && reportLoading
+
+            // Payment method breakdown (selected period)
             const methodTotals: Record<string, number> = {}
-            paidAppts.forEach(a => {
+            rangeAppts.forEach(a => {
               const m = a.payment_method || 'other'
               methodTotals[m] = (methodTotals[m] || 0) + parseFloat(a.payment_amount || '0')
             })
             const methodIcons: Record<string, string> = { cash: '💵', card: '💳', venmo: '📱', zelle: '🔵', check: '📝', other: '⋯' }
+
+            // Per-groomer breakdown (selected period)
+            const groomerAgg: Record<string, { name: string; rev: number; tips: number; count: number }> = {}
+            rangeAppts.forEach(a => {
+              const k = a.assigned_groomer || '(Unassigned)'
+              if (!groomerAgg[k]) groomerAgg[k] = { name: k, rev: 0, tips: 0, count: 0 }
+              groomerAgg[k].rev += parseFloat(a.payment_amount || '0')
+              groomerAgg[k].tips += parseFloat(a.tip_amount || '0')
+              groomerAgg[k].count += 1
+            })
+            const groomerRows = Object.values(groomerAgg).sort((a, b) => b.rev - a.rev)
+            const periodChips: { k: typeof reportRange; label: string }[] = [
+              { k: 'today', label: 'Today' }, { k: 'yesterday', label: 'Yesterday' }, { k: 'week', label: 'Week' },
+              { k: 'month', label: 'Month' }, { k: 'last_month', label: 'Last Mo' }, { k: 'all', label: 'All' },
+              { k: 'custom', label: '📅 Day' },
+            ]
 
             return (
               <div className="pb-6">
                 {checkoutLoading && <div className="text-center py-12 text-gray-400 text-sm">Loading...</div>}
                 {!checkoutLoading && (
                   <>
-                    {/* ── Daily Summary Header ── */}
+                    {/* ── Sales Report Header (period-aware) ── */}
                     <div className="bg-[#1e2a4a] px-4 pt-4 pb-5">
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <p className="text-white/60 text-xs font-medium">Daily Report</p>
-                          <p className="text-white text-sm font-bold">{today}</p>
+                          <p className="text-white/60 text-xs font-medium">📊 Sales Report</p>
+                          <p className="text-white text-sm font-bold">{reportRange === 'today' ? todayLabel : rangeLabel}</p>
                         </div>
-                        <button onClick={fetchCheckout} className="text-white/60 hover:text-white text-sm px-2 py-1 rounded-lg border border-white/20">↻ Refresh</button>
+                        <button onClick={() => { fetchCheckout(); if (reportRange !== 'today') fetchReportAppts() }} className="text-white/60 hover:text-white text-sm px-2 py-1 rounded-lg border border-white/20">↻ Refresh</button>
                       </div>
+                      {/* Period selector — grid forces 2 rows (4 + 3), never scrolls */}
+                      <div className="grid grid-cols-4 gap-1.5 mb-3">
+                        {periodChips.map(c => (
+                          <button key={c.k} onClick={() => setReportRange(c.k)}
+                            className={`px-2 py-1.5 rounded-full text-xs font-bold text-center truncate transition-colors ${reportRange === c.k ? 'bg-sky-500 text-white' : 'bg-white/10 text-white/70'}`}>
+                            {c.label}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Pick-a-day date picker */}
+                      {reportRange === 'custom' && (
+                        <div className="mb-3 flex items-center gap-2">
+                          <input
+                            type="date"
+                            value={reportCustomDate}
+                            max={todayStr}
+                            onChange={e => setReportCustomDate(e.target.value)}
+                            className="bg-white/10 text-white text-sm rounded-lg px-3 py-2 border border-white/20 focus:outline-none [color-scheme:dark]"
+                          />
+                          {!reportCustomDate && <span className="text-white/50 text-xs">Choose a day to see its totals</span>}
+                        </div>
+                      )}
                       {/* Big numbers */}
                       <div className="grid grid-cols-3 gap-2">
                         <div className="bg-white/10 rounded-xl p-3 text-center">
@@ -4560,6 +4843,7 @@ export default function AdminPage() {
                           <p className="text-white/60 text-[10px] font-bold uppercase tracking-wide mt-0.5">Total</p>
                         </div>
                       </div>
+                      <p className="text-white/50 text-[11px] mt-2">{reportBusy ? 'Loading…' : `${rangeAppts.length} pet${rangeAppts.length === 1 ? '' : 's'} paid · ${rangeLabel}`}</p>
                       {/* Method breakdown */}
                       {Object.keys(methodTotals).length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-3">
@@ -4567,6 +4851,18 @@ export default function AdminPage() {
                             <span key={m} className="bg-white/10 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
                               {methodIcons[m] ?? '⋯'} {m.charAt(0).toUpperCase() + m.slice(1)}: ${amt.toFixed(0)}
                             </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Per-groomer breakdown */}
+                      {groomerRows.length > 0 && (
+                        <div className="mt-3 bg-white/5 rounded-xl p-2.5 space-y-1.5">
+                          <p className="text-white/50 text-[10px] font-bold uppercase tracking-wide px-1">By Groomer</p>
+                          {groomerRows.map(g => (
+                            <div key={g.name} className="flex items-center justify-between px-1">
+                              <span className="text-white/90 text-xs font-medium truncate">{g.name.split(' ')[0]}</span>
+                              <span className="text-white/70 text-xs shrink-0">{g.count} · <span className="text-white font-bold">${g.rev.toFixed(0)}</span>{g.tips > 0 && <span className="text-emerald-300"> +${g.tips.toFixed(0)} tip</span>}</span>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -4762,6 +5058,28 @@ export default function AdminPage() {
                       {/* Expanded details */}
                       {expandedClient === client.phone && (
                         <div className="border-t border-gray-100 p-4 space-y-4">
+
+                          {/* SMS Consent */}
+                          <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">SMS Consent</p>
+                              {client.sms_consent ? (
+                                <p className="text-sm font-semibold text-emerald-700">✓ Opted in{client.sms_consent_at ? ` · ${new Date(client.sms_consent_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : ''}</p>
+                              ) : (
+                                <p className="text-sm font-semibold text-amber-700">⚠ Not opted in — no texts sent</p>
+                              )}
+                            </div>
+                            {!client.sms_consent && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); grantSmsConsent(client.phone) }}
+                                disabled={smsConsentSaving === client.phone}
+                                className="text-xs font-semibold px-3 py-2 rounded-lg bg-sky-600 text-white disabled:opacity-50 flex-shrink-0"
+                                title="Use only after the client has verbally confirmed they want to receive SMS notifications"
+                              >
+                                {smsConsentSaving === client.phone ? 'Saving…' : 'Mark opted-in'}
+                              </button>
+                            )}
+                          </div>
 
                           {/* Pets */}
                           <div>

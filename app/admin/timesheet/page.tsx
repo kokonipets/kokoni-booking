@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useAdminGuard } from '@/lib/useAdminGuard'
 
 type DayRow = { date: string; work_minutes: number; break_minutes: number }
 type StaffReport = {
@@ -41,6 +42,7 @@ function fmtDateShort(dateStr: string) {
 }
 
 export default function TimesheetPage() {
+  const guardReady = useAdminGuard('timesheet')
   const [from, setFrom] = useState(mondayOf(todayISO()))
   const [to, setTo] = useState(addDays(mondayOf(todayISO()), 6))
   const [report, setReport] = useState<StaffReport[]>([])
@@ -119,6 +121,8 @@ export default function TimesheetPage() {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
+
+  if (!guardReady) return <div className="min-h-screen bg-gray-50" />
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">

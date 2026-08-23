@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { useAdminGuard } from '@/lib/useAdminGuard'
 
 type Review = {
   id: string
@@ -39,6 +40,7 @@ function formatDate(iso: string | null) {
 }
 
 export default function ReviewsPage() {
+  const guardReady = useAdminGuard('reviews')
   const [reviews, setReviews] = useState<Review[]>([])
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
@@ -149,6 +151,8 @@ export default function ReviewsPage() {
     if (r.status === 'negative') return <span className="px-2 py-0.5 text-xs font-semibold bg-rose-100 text-rose-700 rounded-full">⚠️ Negative</span>
     return <span className="px-2 py-0.5 text-xs font-semibold bg-gray-100 text-gray-500 rounded-full">⏳ Pending</span>
   }
+
+  if (!guardReady) return <div className="min-h-screen bg-gray-50" />
 
   return (
     <div className="min-h-screen bg-gray-50">

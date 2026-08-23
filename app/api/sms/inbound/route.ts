@@ -24,8 +24,11 @@ export async function POST(req: NextRequest) {
   const to = String(formData.get('To') ?? '')             // our Twilio number
   const body = String(formData.get('Body') ?? '').trim()
   const sid = String(formData.get('MessageSid') ?? '')
+  const mediaCount = parseInt(String(formData.get('NumMedia') ?? '0'), 10) || 0
 
-  if (!from || !body) {
+  // Skip only if there's nothing at all (no text AND no photo). A photo-only MMS
+  // has an empty body but should still be logged so it shows in the chat.
+  if (!from || (!body && mediaCount === 0)) {
     return xmlResponse('') // empty TwiML
   }
 
@@ -34,33 +37,20 @@ export async function POST(req: NextRequest) {
   // Normalize the customer's number to 10-digit for joining with clients.phone
   const tenDigit = toTenDigits(from)
 
-  // Log the inbound message — upsert on twilio_sid to prevent duplicates
-  // (Twilio retries webhooks if it doesn't get a fast 200, which causes double-inserts)
-  if (sid) {
-    const { data: existing } = await sb
-      .from('sms_messages')
-      .select('id')
-      .eq('twilio_sid', sid)
-      .maybeSingle()
-    if (!existing) {
-      await sb.from('sms_messages').insert({
-        direction: 'inbound',
-        from_number: from,
-        to_number: to,
-        body,
-        twilio_sid: sid,
-        client_phone: tenDigit,
-      })
-    }
-  } else {
-    await sb.from('sms_messages').insert({
-      direction: 'inbound',
-      from_number: from,
-      to_number: to,
-      body,
-      twilio_sid: sid,
-      client_phone: tenDigit,
-    })
+  // Log the inbound message. The DB has a unique index on twilio_sid, so even if
+  // Twilio retries the webhook (or the poller races), duplicates are rejected —
+  // we just ignore the 23505 conflict instead of erroring.
+  const { error: insertErr } = await sb.from('sms_messages').insert({
+    direction: 'inbound',
+    from_number: from,
+    to_number: to,
+    body,
+    twilio_sid: sid,
+    client_phone: tenDigit,
+    media_count: mediaCount,
+  })
+  if (insertErr && insertErr.code !== '23505') {
+    console.error('Inbound SMS insert error:', insertErr)
   }
 
   // Handle keyword responses (Twilio also handles STOP automatically, but we

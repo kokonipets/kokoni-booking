@@ -535,9 +535,11 @@ export async function PATCH(
             petName: a.pets?.name ?? 'your pet',
             customerNote: gq?.customer_note_english || gq?.customer_note_raw || undefined,
           }).catch((e: unknown) => console.error('Grooming ready SMS failed:', e))
+          // Stamp owner_notified_at only when an SMS was actually attempted —
+          // previously this ran unconditionally, so clients without sms_consent
+          // showed "Msg sent ✓" in the desk UI despite never receiving anything.
+          await supabase.from('appointments').update({ owner_notified_at: now }).eq('id', id)
         }
-        // Stamp owner_notified_at after SMS dispatch
-        await supabase.from('appointments').update({ owner_notified_at: now }).eq('id', id)
       }
     }
 

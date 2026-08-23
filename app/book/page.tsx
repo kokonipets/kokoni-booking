@@ -248,7 +248,10 @@ export default function BookPage() {
   const [vaccineContactMethod, setVaccineContactMethod] = useState<'email' | 'text' | null>(null)
 
   // Availability + services (fetched from admin settings)
-  const [allowedDays, setAllowedDays] = useState<number[]>([1, 2, 3, 4, 5, 6])
+  // Start with NO days bookable; the real open days load from settings. This
+  // "fails closed" so a slow/failed settings fetch can't let someone book a day
+  // the salon is actually closed (e.g. Saturday).
+  const [allowedDays, setAllowedDays] = useState<number[]>([])
   const [blockedDates, setBlockedDates] = useState<string[]>([])
   const [dynamicTimeSlots, setDynamicTimeSlots] = useState<string[]>(TIME_SLOTS)
   const [openDaysLabel, setOpenDaysLabel] = useState('Monday – Saturday')
@@ -978,16 +981,17 @@ export default function BookPage() {
             <div className="space-y-4">
               {(() => {
                 // Group by service type using keyword matching
-                const grouped: Record<string, any[]> = { 'Bath & Brush': [], 'Simply Cute': [], 'Asian Fusion': [] }
+                const grouped: Record<string, any[]> = { 'Bath & Brush': [], 'Simply Cute': [], 'Asian Fusion': [], 'Other': [] }
                 dynamicServices.forEach(s => {
                   if (!s.visible && s.visible !== undefined) return // skip hidden services
                   const n = s.name.toLowerCase()
                   if (n.includes('bath') || n.includes('brush')) grouped['Bath & Brush'].push(s)
                   else if (n.includes('simply') || n.includes('cute')) grouped['Simply Cute'].push(s)
                   else if (n.includes('asian') || n.includes('fusion')) grouped['Asian Fusion'].push(s)
+                  else grouped['Other'].push(s) // catch-all so new services still show up
                 })
-                // Define order: Bath & Brush first, then Simply Cute, then Asian Fusion
-                const order = ['Bath & Brush', 'Simply Cute', 'Asian Fusion']
+                // Define order: Bath & Brush first, then Simply Cute, then Asian Fusion, then anything else
+                const order = ['Bath & Brush', 'Simply Cute', 'Asian Fusion', 'Other']
                 const serviceButton = (s: any) => (
                   <button
                     key={s.id}
@@ -1001,6 +1005,11 @@ export default function BookPage() {
                           <>
                             {s.name.split('-')[0].trim()}
                             <span className="text-sky-400 ml-1">-{s.name.split('-')[1]}</span>
+                          </>
+                        ) : s.name.includes('$') ? (
+                          <>
+                            {s.name.split('$')[0].trim()}
+                            <span className="text-sky-400 ml-1">${s.name.split('$')[1].trim()}</span>
                           </>
                         ) : (
                           s.name

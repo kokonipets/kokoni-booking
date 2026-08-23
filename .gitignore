@@ -21,3 +21,4 @@ yarn-error.log*
 
 # lock files for office docs
 .~lock.*
+tsconfig.tsbuildinfo

@@ -46,6 +46,7 @@ export async function GET() {
 
       if (!existing) {
         const tenDigit = toTenDigits(msg.from)
+        const mediaCount = parseInt(String(msg.numMedia ?? '0'), 10) || 0
         const { error: insertError } = await sb.from('sms_messages').insert({
           direction: 'inbound',
           from_number: msg.from,
@@ -53,13 +54,16 @@ export async function GET() {
           body: msg.body,
           twilio_sid: msg.sid,
           client_phone: tenDigit,
+          media_count: mediaCount,
           created_at: msg.dateSent?.toISOString() ?? new Date().toISOString(),
         })
+        // Skip-and-continue on any insert problem so one bad row never breaks
+        // the whole chat. 23505 = duplicate (expected under 15s polling).
         if (insertError) {
-          console.error('Insert error:', insertError)
-          return NextResponse.json({ error: insertError.message, code: insertError.code, details: insertError.details }, { status: 500 })
+          if (insertError.code !== '23505') console.error('Insert error:', insertError)
+        } else {
+          newCount++
         }
-        newCount++
       }
     }
 

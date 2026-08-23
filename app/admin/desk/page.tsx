@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
 import ChatSidebarLink from '@/components/ChatSidebarLink'
 import ChatIconButton from '@/components/ChatIconButton'
-import { readAuthRaw } from '@/lib/authStorage'
+import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffMember = {
@@ -14,6 +15,7 @@ type StaffMember = {
   first_name?: string | null
   last_name?: string | null
   role: string
+  username?: string | null
   is_active: boolean
   commission_percent: number
   tip_percent: number
@@ -76,7 +78,7 @@ type Appointment = {
   health_check_completed_at: string | null
   grooming_quality: any | null
   grooming_quality_completed_at: string | null
-  clients: { name: string; phone: string; email: string | null } | null
+  clients: { name: string; phone: string; email: string | null; sms_consent?: boolean | null } | null
   pets: { id?: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry?: string | null; photo_url: string | null } | null
   is_new_client?: boolean
 }
@@ -87,6 +89,8 @@ type ClientRecord = {
   email: string | null
   address?: string | null
   created_at: string
+  sms_consent?: boolean | null
+  sms_consent_at?: string | null
   pets: { id: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry: string | null; photo_url: string | null; tags?: { id: string; name: string; color: string }[] }[]
   appointments: { id: string; appointment_date: string; appointment_time: string; service: string; status: string; pet_id: string | null; assigned_groomer: string | null; assigned_bather: string | null; payment_amount: string | null; payment_method: string | null; created_at?: string | null; confirmed_at?: string | null; checked_in_at?: string | null; grooming_started_at?: string | null; grooming_finished_at?: string | null; notes?: string | null; notes_english?: string | null; notes_chinese?: string | null; notes_list?: { id: string; text: string; author: string; created_at: string; notes_english?: string | null; notes_chinese?: string | null; is_addon?: boolean }[] | null; health_check?: any | null; grooming_quality?: any | null; health_check_completed_at?: string | null; grooming_quality_completed_at?: string | null }[]
   authorized_pickups: { id: string; name: string; relationship: string | null }[]
@@ -303,7 +307,7 @@ type VaccineRecord = {
     vaccine_status: string
     vaccine_expiry: string | null
     client_phone: string
-    clients: { name: string; phone: string; email: string | null } | null
+    clients: { name: string; phone: string; email: string | null; sms_consent?: boolean | null } | null
   } | null
 }
 
@@ -328,12 +332,14 @@ const TIME_OPTIONS = [
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function DeskAdmin() {
+  const router = useRouter()
   const [isBookMode, setIsBookMode] = useState(false)
   const [authed, setAuthed] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const [loggedInName, setLoggedInName] = useState('Kokoni')
-  const [pin, setPin] = useState('')
-  const [pinError, setPinError] = useState('')
-  const [pinLoading, setPinLoading] = useState(false)
+  // null = full access (either unrestricted, or not loaded yet). A non-null
+  // array restricts the sidebar (and this admin's access) to just those tabs.
+  const [allowedTabs, setAllowedTabs] = useState<string[] | null>(null)
 
   const [tab, setTab] = useState<TabKey>('today')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -435,6 +441,26 @@ export default function DeskAdmin() {
   const [detailTab, setDetailTab] = useState<'appt' | 'customer' | 'payment' | 'future' | 'notes'>('appt')
   const [detailClient, setDetailClient] = useState<ClientRecord | null>(null)
   const [detailClientLoading, setDetailClientLoading] = useState(false)
+  const [smsConsentSaving, setSmsConsentSaving] = useState(false)
+
+  // Staff-recorded SMS opt-in (e.g. customer agreed verbally at checkout but
+  // never checked the box during booking). Only ever turns consent ON.
+  const grantSmsConsent = async (phone: string) => {
+    setSmsConsentSaving(true)
+    try {
+      const res = await fetch('/api/admin/clients', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, sms_consent: true }),
+      })
+      if (res.ok) {
+        const consentAt = new Date().toISOString()
+        setDetailClient(prev => prev ? { ...prev, sms_consent: true, sms_consent_at: consentAt } : prev)
+        setClients(prev => prev.map(c => c.phone === phone ? { ...c, sms_consent: true, sms_consent_at: consentAt } : c))
+      }
+    } catch {/**/}
+    finally { setSmsConsentSaving(false) }
+  }
   const [detailFutureAppts, setDetailFutureAppts] = useState<Appointment[]>([])
   const [detailFutureLoading, setDetailFutureLoading] = useState(false)
   const [detailNotes, setDetailNotes] = useState('')
@@ -481,6 +507,7 @@ export default function DeskAdmin() {
   const [detailBasePrice, setDetailBasePrice] = useState('')
   const [detailBaseTier, setDetailBaseTier] = useState('')  // tier label to avoid same-price collision
   const [detailAddOns, setDetailAddOns] = useState<{id: string; name: string; price: string}[]>([])
+  const [detailAddonDraft, setDetailAddonDraft] = useState({ text: '', price: '' })
   // Inline price editing for service tiers
   const [detailEditTiersMode, setDetailEditTiersMode] = useState(false)
   const [detailEditTiers, setDetailEditTiers] = useState<{label:string;price:string;duration:string}[]>([])
@@ -562,7 +589,8 @@ export default function DeskAdmin() {
   const [reportSavingId, setReportSavingId] = useState<string | null>(null)
 
   // Cashier
-  const [cashierRange, setCashierRange] = useState<'today' | 'week' | 'month'>('today')
+  const [cashierRange, setCashierRange] = useState<'today' | 'week' | 'month' | 'custom'>('today')
+  const [cashierCustomDate, setCashierCustomDate] = useState('')
   const [cashierExpandedId, setCashierExpandedId] = useState<string | null>(null)
   const [cashierMode, setCashierMode] = useState<'pay' | 'edit' | null>(null)
   const [cashierAmount, setCashierAmount] = useState('')
@@ -617,41 +645,46 @@ export default function DeskAdmin() {
       setIsBookMode(true)
       setTab('calendar')
       setAuthed(true)
-    } else if (sessionStorage.getItem('admin_authed') === 'yes') {
-      setAuthed(true)
-    }
-    try {
-      const auth = JSON.parse(readAuthRaw('admin') || '{}')
-      // The admin desk identifies as the store. Only show a friendly admin name
-      // if one is set (and it isn't just the login username); never surface a
-      // non-admin/groomer name here. Otherwise show "Kokoni".
-      if (auth?.role === 'admin') {
-        setLoggedInName(auth.name && auth.name !== auth.username ? auth.name : 'Kokoni')
-      } else {
-        setLoggedInName('Kokoni')
+      setCheckingAuth(false)
+    } else {
+      try {
+        const auth = JSON.parse(readAuthRaw('admin') || 'null')
+        if (auth?.role === 'admin') {
+          setAuthed(true)
+          setLoggedInName(auth.name || 'Kokoni')
+          // Re-check permissions against the live staff record (not the
+          // possibly-stale login-time snapshot) so a change made in Settings
+          // takes effect on next page load, not next login.
+          fetch('/api/admin/staff').then(r => r.json()).then(d => {
+            const me = (d.staff || []).find((s: { username?: string }) => s.username?.toLowerCase() === auth.username?.toLowerCase())
+            const allowed = me?.permissions?.allowed_tabs
+            setAllowedTabs(Array.isArray(allowed) ? allowed : null)
+          }).catch(() => setAllowedTabs(null))
+        } else {
+          router.push('/login')
+        }
+      } catch {
+        router.push('/login')
       }
-    } catch {}
+      setCheckingAuth(false)
+    }
     // Load active discount codes for the appointment popup
     fetch('/api/admin/coupons').then(r => r.json()).then(d => {
       setAvailableCoupons((d.coupons ?? []).filter((c: DeskCoupon) => c.active))
     }).catch(() => {})
-  }, [])
+  }, [router])
+
+  // If this admin is restricted and the current tab isn't one they're allowed
+  // to see (e.g. the default 'today' tab), jump to their first allowed tab.
+  useEffect(() => {
+    if (allowedTabs && allowedTabs.length > 0 && !allowedTabs.includes(tab)) {
+      setTab(allowedTabs[0] as TabKey)
+    }
+  }, [allowedTabs, tab])
 
   // No-op — AudioContext created on demand inside play functions
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000) }
-
-  // ── Auth ─────────────────────────────────────────────────────────────────
-  const handlePin = async () => {
-    setPinLoading(true); setPinError('')
-    try {
-      const res = await fetch('/api/admin/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ pin }) })
-      const data = await res.json()
-      if (data.success) { sessionStorage.setItem('admin_authed','yes'); setAuthed(true) }
-      else setPinError('Incorrect PIN.')
-    } catch { setPinError('Something went wrong.') }
-    setPinLoading(false)
-  }
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const fetchAppointments = useCallback(async (status: string, date?: string) => {
@@ -867,6 +900,7 @@ export default function DeskAdmin() {
       .filter((n: { is_addon?: boolean }) => n.is_addon)
       .map((n: { id: string; text: string; price?: string }) => ({ id: n.id, name: n.text, price: n.price ?? '' }))
     setDetailAddOns(savedAddOns)
+    setDetailAddonDraft({ text: '', price: '' })
     // Base price = total minus add-ons. payment_amount is post-discount, so add
     // the saved discount back to reconstruct the pre-discount base — the toggle
     // (restored above) then re-derives the same discounted total.
@@ -2355,26 +2389,17 @@ export default function DeskAdmin() {
     setActionLoading(null)
   }
 
-  // ── PIN screen ─────────────────────────────────────────────────────────────
+  // ── Auth gate ────────────────────────────────────────────────────────────
+  // Real login now happens on /login (username + password against the staff
+  // table). If we get here unauthenticated, we're just mid-redirect there.
   if (!authed) return (
     <div className="min-h-screen bg-white flex items-center justify-center p-6">
-      <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-8">
+      {!checkingAuth && (
+        <div className="flex flex-col items-center">
           <Image src="/logo.png" alt="Kokoni" width={140} height={140} className="mb-4" />
-          <h1 className="text-xl font-bold text-gray-800">Admin Dashboard</h1>
-          <p className="text-sm text-gray-400">Enter your PIN to continue</p>
+          <p className="text-sm text-gray-400">Redirecting to login…</p>
         </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 shadow-sm">
-          <input type="password" inputMode="numeric" placeholder="Enter PIN" value={pin}
-            onChange={e => setPin(e.target.value)} onKeyDown={e => e.key==='Enter' && handlePin()}
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-400 mb-3 bg-white" />
-          {pinError && <p className="text-red-500 text-sm text-center mb-3">{pinError}</p>}
-          <button onClick={handlePin} disabled={pinLoading||!pin}
-            className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
-            {pinLoading ? 'Checking...' : 'Enter'}
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   )
 
@@ -2728,7 +2753,8 @@ export default function DeskAdmin() {
                     </div>
                     {(() => {
                       const apptDate = detailAppt.appointment_date
-                      const activeStaff = staff.filter(s => s.is_active)
+                      // Admin accounts are dashboard-only logins, not assignable groomers/bathers.
+                      const activeStaff = staff.filter(s => s.is_active && s.role !== 'admin')
                       const isOff = (s: StaffMember) => s.days_off?.includes(apptDate) ?? false
 
                       const StaffPicker = ({ icon, label, value, onChange }: { icon: string; label: string; value: string; onChange: (v: string) => void }) => (
@@ -3238,7 +3264,7 @@ export default function DeskAdmin() {
                             )}
 
                             {/* Available add-on chips */}
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="flex flex-wrap gap-1.5 mb-2">
                               {otherServices
                                 .filter(s => !detailAddOns.find(a => a.id === s.id))
                                 .map(s => (
@@ -3252,6 +3278,36 @@ export default function DeskAdmin() {
                                   </button>
                                 ))
                               }
+                            </div>
+
+                            {/* Custom add-on */}
+                            <div className="flex gap-1.5">
+                              <input
+                                value={detailAddonDraft.text}
+                                onChange={e => setDetailAddonDraft(prev => ({ ...prev, text: e.target.value }))}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' && detailAddonDraft.text.trim()) {
+                                    setDetailAddOns(prev => [...prev, { id: Date.now().toString(), name: detailAddonDraft.text.trim(), price: detailAddonDraft.price }])
+                                    setDetailAddonDraft({ text: '', price: '' })
+                                  }
+                                }}
+                                placeholder="Custom add-on…"
+                                className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <input
+                                value={detailAddonDraft.price}
+                                onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setDetailAddonDraft(prev => ({ ...prev, price: v })) }}
+                                placeholder="$" type="text" inputMode="numeric"
+                                className="w-14 border border-gray-200 rounded-xl px-2 py-1.5 text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                              />
+                              <button
+                                onClick={() => {
+                                  if (!detailAddonDraft.text.trim()) return
+                                  setDetailAddOns(prev => [...prev, { id: Date.now().toString(), name: detailAddonDraft.text.trim(), price: detailAddonDraft.price }])
+                                  setDetailAddonDraft({ text: '', price: '' })
+                                }}
+                                disabled={!detailAddonDraft.text.trim()}
+                                className="px-3 py-1.5 bg-sky-500 text-white text-sm font-bold rounded-xl disabled:opacity-40">+</button>
                             </div>
                           </div>
                         )}
@@ -3493,6 +3549,26 @@ export default function DeskAdmin() {
                         <div><span className="text-xs text-gray-400 block">Address</span><p className="font-medium text-gray-700">{clientAddr || '—'}</p></div>
                         {clientSince && (
                           <div className="col-span-2"><span className="text-xs text-gray-400 block">Member Since</span><p className="font-medium text-gray-700">{new Date(clientSince).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p></div>
+                        )}
+                      </div>
+                      <div className="pt-2 mt-2 border-t border-gray-100 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs text-gray-400 block">SMS Consent</span>
+                          {detailClient?.sms_consent ? (
+                            <p className="text-sm font-semibold text-emerald-700">✓ Opted in{detailClient.sms_consent_at ? ` · ${new Date(detailClient.sms_consent_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : ''}</p>
+                          ) : (
+                            <p className="text-sm font-semibold text-amber-700">⚠ Not opted in — no texts sent</p>
+                          )}
+                        </div>
+                        {!detailClient?.sms_consent && (
+                          <button
+                            onClick={() => clientPhone && grantSmsConsent(clientPhone)}
+                            disabled={smsConsentSaving || !clientPhone}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white disabled:opacity-50 hover:bg-sky-700"
+                            title="Use only after the client has verbally confirmed they want to receive SMS notifications"
+                          >
+                            {smsConsentSaving ? 'Saving…' : 'Mark opted-in'}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -3998,7 +4074,7 @@ export default function DeskAdmin() {
 
         {/* Nav items */}
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-          {NAV.filter(({ key }) => !isBookMode || key === 'calendar').map(({ key, label, icon }) => (
+          {NAV.filter(({ key }) => (!isBookMode || key === 'calendar') && (!allowedTabs || allowedTabs.includes(key))).map(({ key, label, icon }) => (
             key === 'settings' ? (
               <a key={key} href="/admin/settings"
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left relative text-sky-600 hover:bg-sky-100 hover:text-sky-900`}
@@ -4062,7 +4138,8 @@ export default function DeskAdmin() {
           {/* Chat — two-way SMS with customers */}
           <ChatSidebarLink onClick={() => setSidebarOpen(false)} />
 
-          {/* Reviews */}
+          {/* Reviews — standalone page, gated by the 'reviews' permission key. */}
+          {(!allowedTabs || allowedTabs.includes('reviews')) && (
           <a
             href="/admin/reviews"
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
@@ -4071,8 +4148,10 @@ export default function DeskAdmin() {
             <span className="text-base leading-none w-5 text-center">⭐</span>
             <span className="flex-1">Reviews</span>
           </a>
+          )}
 
-          {/* Time Tracking */}
+          {/* Time Tracking — standalone page, gated by the 'timesheet' permission key. */}
+          {(!allowedTabs || allowedTabs.includes('timesheet')) && (
           <a
             href="/admin/timesheet"
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
@@ -4081,6 +4160,7 @@ export default function DeskAdmin() {
             <span className="text-base leading-none w-5 text-center">🕐</span>
             <span className="flex-1">Timesheet</span>
           </a>
+          )}
           <a
             href="/clock"
             target="_blank"
@@ -4113,7 +4193,7 @@ export default function DeskAdmin() {
               <div className="w-8 h-8 rounded-full bg-sky-400 flex items-center justify-center text-white text-sm font-bold">{loggedInName.charAt(0).toUpperCase()}</div>
               <span className="text-sky-800 text-sm font-medium">{loggedInName}</span>
             </div>
-            <button onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false) }}
+            <button onClick={() => { clearAuth('admin'); setAuthed(false); router.push('/login') }}
               className="text-sky-400 hover:text-sky-700 text-xs">Sign out</button>
           </div>
         </div>
@@ -4122,7 +4202,7 @@ export default function DeskAdmin() {
       {/* ── Main content ──────────────────────────────────────────────────── */}
       <div className={`${isBookMode ? '' : 'md:ml-64'} flex-1 flex flex-col min-h-screen`}>
         {/* Top bar */}
-        <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-30">
+        <div className="bg-white border-b border-gray-200 px-4 md:px-6 flex items-center justify-between sticky top-0 z-30" style={{paddingTop: 'calc(env(safe-area-inset-top) + 12px)', paddingBottom: '12px'}}>
           <div className="flex items-center gap-3">
             {/* Hamburger — mobile only, hidden in book mode */}
             {!isBookMode && (
@@ -4367,7 +4447,16 @@ export default function DeskAdmin() {
                                   </div>
                                   <TimeLine label="Started"     time={fmtTs(appt.grooming_started_at)}  colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-sky-700 bg-sky-50'} />
                                   <TimeLine label="Finished"    time={fmtTs(appt.grooming_finished_at)} colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-green-700 bg-green-50'} fallback={isInCare ? 'in progress' : 'not yet'} />
-                                  <TimeLine label="Msg sent"    time={fmtTs(appt.owner_notified_at)}    colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-emerald-700 bg-emerald-50'} suffix=" ✓" />
+                                  {appt.clients?.sms_consent === false ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-20 text-xs text-gray-400 flex-shrink-0">Msg sent</span>
+                                      <span className="text-xs font-semibold px-2 py-0.5 rounded-md text-amber-700 bg-amber-50" title="Client has not opted in to SMS (sms_consent = false) — no message was sent, regardless of owner_notified_at">
+                                        ⚠ no consent — not sent
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <TimeLine label="Msg sent"    time={fmtTs(appt.owner_notified_at)}    colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-emerald-700 bg-emerald-50'} suffix=" ✓" />
+                                  )}
                                   <TimeLine label="Checked out" time={fmtTs(appt.checked_out_at)}       colorClass="text-pink-500 bg-pink-50" suffix=" ✓" fallback={isReady ? 'waiting' : 'not yet'} />
                                 </div>
 
@@ -5531,6 +5620,29 @@ export default function DeskAdmin() {
                                             <p className="text-sm text-gray-700">{new Date(client.created_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p>
                                           </div>
                                         </div>
+                                        <div className="flex items-start gap-2 pt-2 border-t border-gray-100">
+                                          <span className="text-gray-400 mt-0.5">📱</span>
+                                          <div className="flex-1 flex items-center justify-between gap-2">
+                                            <div>
+                                              <p className="text-xs text-gray-400">SMS Consent</p>
+                                              {client.sms_consent ? (
+                                                <p className="text-sm font-semibold text-emerald-700">✓ Opted in{client.sms_consent_at ? ` · ${new Date(client.sms_consent_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : ''}</p>
+                                              ) : (
+                                                <p className="text-sm font-semibold text-amber-700">⚠ Not opted in — no texts sent</p>
+                                              )}
+                                            </div>
+                                            {!client.sms_consent && (
+                                              <button
+                                                onClick={() => grantSmsConsent(client.phone)}
+                                                disabled={smsConsentSaving}
+                                                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white disabled:opacity-50 hover:bg-sky-700 flex-shrink-0"
+                                                title="Use only after the client has verbally confirmed they want to receive SMS notifications"
+                                              >
+                                                {smsConsentSaving ? 'Saving…' : 'Mark opted-in'}
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
@@ -6281,7 +6393,7 @@ export default function DeskAdmin() {
                       {staff.filter(s => s.role === 'groomer' || s.role === 'Groomer').map(s => (
                         <option key={s.id} value={s.name}>{s.name}</option>
                       ))}
-                      {staff.filter(s => s.role !== 'groomer' && s.role !== 'Groomer').map(s => (
+                      {staff.filter(s => s.role !== 'groomer' && s.role !== 'Groomer' && s.role !== 'admin').map(s => (
                         <option key={s.id} value={s.name}>{s.name} ({s.role})</option>
                       ))}
                     </select>
@@ -6478,6 +6590,7 @@ export default function DeskAdmin() {
               if (a.status === 'cancelled') return false
               if (cashierRange === 'today') return a.appointment_date === todayStr
               if (cashierRange === 'week') return a.appointment_date >= weekAgoStr
+              if (cashierRange === 'custom') return !!cashierCustomDate && a.appointment_date === cashierCustomDate
               return a.appointment_date >= monthStart
             }).sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
 
@@ -6561,7 +6674,7 @@ export default function DeskAdmin() {
               return (
                 <div className={`border-b border-gray-50 last:border-0 ${isExpanded ? 'bg-gray-50/60' : ''}`}>
                   <div className={`flex items-center gap-3 px-4 py-2.5 group hover:bg-gray-50/80 transition-colors`}>
-                    {cashierRange !== 'today' && (
+                    {(cashierRange === 'week' || cashierRange === 'month') && (
                       <span className="text-[10px] text-gray-400 w-10 shrink-0 font-medium">
                         {new Date(appt.appointment_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </span>
@@ -6662,8 +6775,8 @@ export default function DeskAdmin() {
             return (
               <div className="max-w-3xl space-y-4">
                 {/* Range tabs */}
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-1.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     {(['today', 'week', 'month'] as const).map(r => (
                       <button key={r} onClick={() => setCashierRange(r)}
                         className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
@@ -6672,6 +6785,15 @@ export default function DeskAdmin() {
                         {r === 'today' ? 'Today' : r === 'week' ? 'This Week' : 'This Month'}
                       </button>
                     ))}
+                    <input
+                      type="date"
+                      value={cashierCustomDate}
+                      max={todayStr}
+                      onChange={e => { setCashierCustomDate(e.target.value); setCashierRange('custom') }}
+                      className={`px-3 py-1.5 rounded-full text-sm font-semibold border transition-colors focus:outline-none ${
+                        cashierRange === 'custom' ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'
+                      }`}
+                    />
                   </div>
                   <button onClick={() => fetchReports()} className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5">⟳ Refresh</button>
                 </div>
@@ -7837,7 +7959,7 @@ export default function DeskAdmin() {
                   </div>
 
                   {/* Staff filter chips */}
-                  {staff.filter(s => s.is_active).length > 0 && (
+                  {staff.filter(s => s.is_active && s.role !== 'admin').length > 0 && (
                     <div className="px-4 py-2.5 flex items-center gap-2 overflow-x-auto flex-shrink-0 border-b border-gray-100 bg-white">
                       <button
                         onClick={() => setCalendarStaffFilter('all')}
@@ -7848,7 +7970,7 @@ export default function DeskAdmin() {
                         }`}>
                         All
                       </button>
-                      {staff.filter(s => s.is_active).map(s => (
+                      {staff.filter(s => s.is_active && s.role !== 'admin').map(s => (
                         <button
                           key={s.id}
                           onClick={() => setCalendarStaffFilter(calendarStaffFilter === s.name ? 'all' : s.name)}
