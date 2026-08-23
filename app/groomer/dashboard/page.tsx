@@ -236,6 +236,7 @@ export default function GroomerDashboard() {
   const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'next_payroll' | 'last_payroll' | 'month' | 'year'>('this_payroll')
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [calendarSelected, setCalendarSelected] = useState<string | null>(null)
+  const selectedDayPanelRef = useRef<HTMLDivElement>(null)
   const [calView, setCalView] = useState<'3day' | 'week' | 'month'>('month')
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
   // When true, the popup is showing a past visit opened from history — view only, no editing.
@@ -450,6 +451,17 @@ export default function GroomerDashboard() {
       loadAppointments(userData.name || userData.staff_id, true)
     }
   }, [activeTab, loadAppointments])
+
+  // Scroll the selected day's appointment list into view — on the month view the
+  // calendar grid can fill the whole screen, so without this the day panel opens
+  // off-screen below and just looks like tapping a date "did nothing."
+  useEffect(() => {
+    if (calendarSelected) {
+      requestAnimationFrame(() => {
+        selectedDayPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+  }, [calendarSelected])
 
   // ── PWA: register service worker + subscribe to push notifications ────────
   useEffect(() => {
@@ -1631,7 +1643,7 @@ export default function GroomerDashboard() {
 
           {/* Selected day — time-slot view */}
           {calendarSelected && (
-            <div className="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div ref={selectedDayPanelRef} className="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               {/* Day header */}
               <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                 <p className="text-sm font-bold text-gray-800">
