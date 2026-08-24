@@ -1103,8 +1103,9 @@ export default function GroomerDashboard() {
     if (!apptsByDate[a.appointment_date]) apptsByDate[a.appointment_date] = []
     apptsByDate[a.appointment_date].push(a)
   })
+  Object.values(apptsByDate).forEach(list => list.sort((a, b) => a.appointment_time.localeCompare(b.appointment_time)))
   const selectedDayAppts = calendarSelected
-    ? (apptsByDate[calendarSelected] || []).sort((a, b) => a.appointment_time.localeCompare(b.appointment_time))
+    ? (apptsByDate[calendarSelected] || [])
     : []
 
   // Earnings
