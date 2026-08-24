@@ -32,6 +32,28 @@ function phoneVariants(digits: string): string[] {
   return v
 }
 
+// Supabase/PostgREST caps any unbounded select() at 1000 rows by default. Once a
+// table crosses that, a single query silently returns only the first 1000 rows —
+// no error, no warning — which showed up as clients randomly missing pets/
+// appointments that actually exist. Page through with .range() so every row is
+// always returned regardless of table size.
+const PAGE_SIZE = 1000
+async function fetchAllRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const all: T[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1)
+    if (error) return { data: all, error }
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return { data: all, error: null }
+}
+
 export async function GET(req: NextRequest) {
   const supabase = getAdminClient()
   const { searchParams } = new URL(req.url)
@@ -41,25 +63,33 @@ export async function GET(req: NextRequest) {
   //    Client rows are matched EXACTLY: the admin lookup tries every phone format
   //    in turn, so exact matching is enough and — unlike normalized matching —
   //    won't surface a duplicate/orphan client row that happens to share a number.
-  let clientQuery = supabase
-    .from('clients')
-    .select('name, phone, email, address, created_at, sms_consent, sms_consent_at')
-    .order('created_at', { ascending: false })
-  if (phoneFilter) clientQuery = clientQuery.eq('phone', phoneFilter)
-
-  const { data: clientRows, error: clientsError } = await clientQuery
+  type ClientRow = { name: string; phone: string; email: string | null; address: string | null; created_at: string | null; sms_consent: boolean; sms_consent_at: string | null }
+  const { data: clientRows, error: clientsError } = await fetchAllRows<ClientRow>((from, to) => {
+    let q = supabase
+      .from('clients')
+      .select('name, phone, email, address, created_at, sms_consent, sms_consent_at')
+      .order('created_at', { ascending: false })
+      .order('phone', { ascending: true })
+      .range(from, to)
+    if (phoneFilter) q = q.eq('phone', phoneFilter)
+    return q
+  })
   if (clientsError) return NextResponse.json({ error: clientsError.message }, { status: 500 })
 
   // Also pull any phones from appointments that may not have a clients row.
   // IMPORTANT: respect the phone filter here too — previously this query was
   // unfiltered, so every single-client lookup returned ALL clients (the synthetic
   // rows leaked in), which broke the admin "find client by phone" flow.
-  let apptPhoneQuery = supabase
-    .from('appointments')
-    .select('client_phone')
-    .not('client_phone', 'is', null)
-  if (phoneFilter) apptPhoneQuery = apptPhoneQuery.eq('client_phone', phoneFilter)
-  const { data: apptRows } = await apptPhoneQuery
+  const { data: apptRows } = await fetchAllRows<{ client_phone: string }>((from, to) => {
+    let q = supabase
+      .from('appointments')
+      .select('client_phone')
+      .not('client_phone', 'is', null)
+      .order('id', { ascending: true })
+      .range(from, to)
+    if (phoneFilter) q = q.eq('client_phone', phoneFilter)
+    return q
+  })
 
   const extraPhones = [...new Set((apptRows ?? []).map((a: { client_phone: string }) => a.client_phone))]
   const existingPhones = new Set((clientRows ?? []).map((c: { phone: string }) => c.phone))
@@ -80,29 +110,40 @@ export async function GET(req: NextRequest) {
   const childPhones = [...new Set(targetNorms.flatMap(phoneVariants))]
 
   // 2. Fetch pets
-  let petsQuery = supabase
-    .from('pets')
-    .select('id, name, breed, weight, vaccine_status, vaccine_expiry, photo_url, client_phone, pet_tags ( tags ( id, name, color ) )')
-  if (phoneFilter) petsQuery = petsQuery.in('client_phone', childPhones)
-  const { data: petsRaw, error: petsError } = await petsQuery
+  const { data: petsRaw, error: petsError } = await fetchAllRows<Record<string, unknown>>((from, to) => {
+    let q = supabase
+      .from('pets')
+      .select('id, name, breed, weight, vaccine_status, vaccine_expiry, photo_url, client_phone, pet_tags ( tags ( id, name, color ) )')
+      .order('id', { ascending: true })
+      .range(from, to)
+    if (phoneFilter) q = q.in('client_phone', childPhones)
+    return q
+  })
   if (petsError) return NextResponse.json({ error: petsError.message }, { status: 500 })
 
   // 3. Fetch authorized pickups
-  let pickupsQuery = supabase
-    .from('authorized_pickups')
-    .select('id, name, relationship, client_phone')
-  if (phoneFilter) pickupsQuery = pickupsQuery.in('client_phone', childPhones)
-  const { data: pickups, error: pickupsError } = await pickupsQuery
+  const { data: pickups, error: pickupsError } = await fetchAllRows<{ id: string; name: string; relationship: string | null; client_phone: string }>((from, to) => {
+    let q = supabase
+      .from('authorized_pickups')
+      .select('id, name, relationship, client_phone')
+      .order('id', { ascending: true })
+      .range(from, to)
+    if (phoneFilter) q = q.in('client_phone', childPhones)
+    return q
+  })
   if (pickupsError) return NextResponse.json({ error: pickupsError.message }, { status: 500 })
 
   // 4. Fetch appointments
-  let apptQuery = supabase
-    .from('appointments')
-    .select('id, appointment_date, appointment_time, service, status, client_phone, pet_id, assigned_groomer, assigned_bather, payment_amount, payment_method, created_at, confirmed_at, checked_in_at, grooming_started_at, grooming_finished_at, notes, notes_english, notes_chinese, notes_list, health_check, grooming_quality, health_check_completed_at, grooming_quality_completed_at')
-    .order('appointment_date', { ascending: false })
-  if (phoneFilter) apptQuery = apptQuery.in('client_phone', childPhones)
-
-  const { data: appointments, error: apptError } = await apptQuery
+  const { data: appointments, error: apptError } = await fetchAllRows<{ client_phone: string } & Record<string, unknown>>((from, to) => {
+    let q = supabase
+      .from('appointments')
+      .select('id, appointment_date, appointment_time, service, status, client_phone, pet_id, assigned_groomer, assigned_bather, payment_amount, payment_method, created_at, confirmed_at, checked_in_at, grooming_started_at, grooming_finished_at, notes, notes_english, notes_chinese, notes_list, health_check, grooming_quality, health_check_completed_at, grooming_quality_completed_at')
+      .order('appointment_date', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to)
+    if (phoneFilter) q = q.in('client_phone', childPhones)
+    return q
+  })
   if (apptError) return NextResponse.json({ error: apptError.message }, { status: 500 })
 
   // 5. Group child rows by NORMALIZED phone so format mismatches still link, then
