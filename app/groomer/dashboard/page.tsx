@@ -256,6 +256,9 @@ export default function GroomerDashboard() {
   // in this same popup (openApptPopup below).
   const [petHistory, setPetHistory] = useState<Appointment[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  // The appointment the popup was originally opened for — lets us jump back
+  // to "today's" visit after drilling into one or more read-only past visits.
+  const [popupHomeAppt, setPopupHomeAppt] = useState<Appointment | null>(null)
   type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
   const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([])
   const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
@@ -739,6 +742,10 @@ export default function GroomerDashboard() {
 
   const openApptPopup = async (appt: Appointment, opts?: { readOnly?: boolean }) => {
     setPopupReadOnly(!!opts?.readOnly)
+    // Only remember a "home" appointment when opening a real (non-read-only) visit.
+    // Drilling further from a past visit into an earlier one keeps pointing back
+    // at the original current-visit appointment, not the intermediate one.
+    if (!opts?.readOnly) setPopupHomeAppt(appt)
     // Reset scroll to top — the popup body div is reused (not remounted) when
     // jumping from one visit's detail straight into another via Past Visits.
     requestAnimationFrame(() => { apptPopupBodyRef.current?.scrollTo({ top: 0 }) })
@@ -866,6 +873,7 @@ export default function GroomerDashboard() {
 
   const closeApptPopup = () => {
     setSelectedAppt(null)
+    setPopupHomeAppt(null)
   }
 
   // ── Notes: auto-translate (800ms debounce) ────────────────────────────────
@@ -1995,8 +2003,14 @@ export default function GroomerDashboard() {
             </div>
 
             {popupReadOnly && (
-              <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2 flex-shrink-0">
+              <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-2 flex-shrink-0">
                 <span className="text-xs font-semibold text-amber-700">👁️ Past visit · view only</span>
+                {popupHomeAppt && popupHomeAppt.id !== selectedAppt.id && (
+                  <button onClick={() => openApptPopup(popupHomeAppt)}
+                    className="text-xs font-bold text-amber-700 hover:text-amber-900 underline underline-offset-2 flex-shrink-0">
+                    ← Back to current visit
+                  </button>
+                )}
               </div>
             )}
 
