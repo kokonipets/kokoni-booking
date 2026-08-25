@@ -39,7 +39,17 @@ type StaffMember = {
 }
 
 type PriceTier = { label: string; price: string; duration: string }
-type ServiceDef = { id: string; name: string; desc: string; price?: string; duration?: string; tiers: PriceTier[]; visible?: boolean; usesSizeCategories?: boolean }
+type ServiceDef = { id: string; name: string; desc: string; price?: string; duration?: string; tiers: PriceTier[]; visible?: boolean; usesSizeCategories?: boolean; category?: 'main' | 'addon' }
+
+// Older saved services predate the category field. Infer it so existing data
+// keeps working: base styles have "Starting from $" baked into their name
+// (or are one of the three original built-in ids); everything else is an add-on.
+function inferServiceCategory(s: { id: string; name?: string; category?: 'main' | 'addon' }): 'main' | 'addon' {
+  if (s.category === 'main' || s.category === 'addon') return s.category
+  if (s.id === 'simply_cute' || s.id === 'bath_brush' || s.id === 'asian_fusion') return 'main'
+  if (/starting from/i.test(s.name ?? '')) return 'main'
+  return 'addon'
+}
 
 const DEFAULT_TIERS: PriceTier[] = [
   { label: 'Small (under 15 lbs)', price: '45', duration: '1.5h' },
@@ -213,7 +223,7 @@ export default function SettingsPage() {
         try {
           const parsed = JSON.parse(settings.services)
           if (Array.isArray(parsed)) {
-            setServices(parsed as ServiceDef[])
+            setServices((parsed as ServiceDef[]).map(s => ({ ...s, category: inferServiceCategory(s) })))
           }
         } catch (e) {
           // Try to parse as simple text format and convert
@@ -1643,7 +1653,7 @@ export default function SettingsPage() {
                 <button
                   onClick={() => {
                     setEditingServiceId(null)
-                    setServiceFormData({ id: `svc_${Date.now()}`, name: '', desc: '', tiers: DEFAULT_TIERS.map(t => ({...t})), usesSizeCategories: true })
+                    setServiceFormData({ id: `svc_${Date.now()}`, name: '', desc: '', tiers: DEFAULT_TIERS.map(t => ({...t})), usesSizeCategories: true, category: 'main' })
                   }}
                   className="px-3 py-1 text-sm bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg"
                 >
@@ -1846,11 +1856,8 @@ export default function SettingsPage() {
               )}
 
               {/* Services List */}
-              <div className="space-y-4">
-                {services.length === 0 ? (
-                  <p className="text-sm text-gray-500">No services yet. Add one to get started!</p>
-                ) : (
-                  services.map(service => {
+              {(() => {
+                const renderServiceCard = (service: ServiceDef) => {
                     const selectedTierIdx = selectedServiceTier[service.id] ?? 0
                     const selectedTier = service.tiers[selectedTierIdx]
 
@@ -1864,6 +1871,29 @@ export default function SettingsPage() {
                               <p className="text-xs text-gray-600">{service.desc}</p>
                             </div>
                             <div className="flex gap-2 items-center">
+                              {/* Category toggle — Main vs Add-on */}
+                              <button
+                                onClick={async () => {
+                                  const newCategory = inferServiceCategory(service) === 'addon' ? 'main' : 'addon'
+                                  const updated = services.map(s =>
+                                    s.id === service.id ? { ...s, category: newCategory } : s
+                                  )
+                                  await fetch('/api/admin/settings', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ key: 'services', value: JSON.stringify(updated) })
+                                  })
+                                  setServices(updated)
+                                }}
+                                className={`text-xs font-semibold px-2 py-1 rounded border ${
+                                  inferServiceCategory(service) === 'addon'
+                                    ? 'text-purple-600 border-purple-200 bg-purple-50'
+                                    : 'text-indigo-600 border-indigo-200 bg-indigo-50'
+                                }`}
+                                title="Click to move to the other catalog"
+                              >
+                                {inferServiceCategory(service) === 'addon' ? '➕ Add-on' : '⭐ Main'}
+                              </button>
                               {/* Visible toggle */}
                               <button
                                 onClick={async () => {
@@ -2173,9 +2203,28 @@ export default function SettingsPage() {
                         )}
                       </div>
                     )
-                  })
-                )}
-              </div>
+                }
+                return (
+                  <>
+                    <div className="mb-6">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Main Services</p>
+                      <div className="space-y-4">
+                        {services.filter(s => inferServiceCategory(s) === 'main').length === 0
+                          ? <p className="text-sm text-gray-500">No main services yet.</p>
+                          : services.filter(s => inferServiceCategory(s) === 'main').map(renderServiceCard)}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Add-on Services</p>
+                      <div className="space-y-4">
+                        {services.filter(s => inferServiceCategory(s) === 'addon').length === 0
+                          ? <p className="text-sm text-gray-500">No add-on services yet.</p>
+                          : services.filter(s => inferServiceCategory(s) === 'addon').map(renderServiceCard)}
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
 
             {/* Business Info Section */}
