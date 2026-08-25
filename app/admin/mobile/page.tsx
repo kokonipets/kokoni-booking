@@ -1790,7 +1790,15 @@ export default function AdminPage() {
                     const svcDef = services.find(s => s.id === appt.service)
                     const svcName = svcDef?.name ?? serviceMap[appt.service] ?? appt.service
                     const tiers = (svcDef?.tiers ?? []).filter((t: {label:string;price:string}) => t.label)
-                    const otherServices = services.filter(s => s.id !== appt.service)
+                    const addOnPriority = ['flea shampoo', 'hand stripping']
+                    const otherServices = services.filter(s => s.id !== appt.service).slice().sort((a, b) => {
+                      const ai = addOnPriority.indexOf((a.name ?? '').trim().toLowerCase())
+                      const bi = addOnPriority.indexOf((b.name ?? '').trim().toLowerCase())
+                      if (ai !== -1 && bi !== -1) return ai - bi
+                      if (ai !== -1) return -1
+                      if (bi !== -1) return 1
+                      return 0
+                    })
                     const addOnTotal = editDraftAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
                     const baseAmt = parseFloat(editDraftBasePrice) || 0
                     const subtotalAmt = baseAmt + addOnTotal
@@ -1872,17 +1880,21 @@ export default function AdminPage() {
                               <div className="flex flex-wrap gap-1.5 mb-2">
                                 {otherServices
                                   .filter((s: {id:string}) => !editDraftAddOns.find(a => a.id === s.id))
-                                  .map((s: {id:string;name:string;tiers?:{label:string;price:string}[]}) => (
-                                    <button key={s.id}
-                                      onClick={() => {
-                                        const defaultPrice = s.tiers?.find(t => t.price)?.price ?? ''
-                                        setEditDraftAddOns(prev => [...prev, { id: s.id, name: s.name ?? serviceMap[s.id] ?? s.id, price: defaultPrice }])
-                                        setEditDraftTotalSaved(false)
-                                      }}
-                                      className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors">
-                                      + {s.name ?? serviceMap[s.id] ?? s.id}
-                                    </button>
-                                  ))}
+                                  .map((s: {id:string;name:string;tiers?:{label:string;price:string}[]}) => {
+                                    const label = s.name ?? serviceMap[s.id] ?? s.id
+                                    const defaultPrice = s.tiers?.find(t => t.price)?.price ?? ''
+                                    const priceSuffix = defaultPrice && !/\$/.test(label) ? ` · $${defaultPrice}` : ''
+                                    return (
+                                      <button key={s.id}
+                                        onClick={() => {
+                                          setEditDraftAddOns(prev => [...prev, { id: s.id, name: label, price: defaultPrice }])
+                                          setEditDraftTotalSaved(false)
+                                        }}
+                                        className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors">
+                                        + {label}{priceSuffix}
+                                      </button>
+                                    )
+                                  })}
                               </div>
                               <div className="flex gap-1.5">
                                 <input
@@ -2796,7 +2808,15 @@ export default function AdminPage() {
               const svcDef = services.find(s => s.id === appt.service)
               const svcName = svcDef?.name ?? serviceMap[appt.service] ?? appt.service
               const tiers = (svcDef?.tiers ?? []).filter((t: {label:string;price:string}) => t.label)
-              const otherServices = services.filter(s => s.id !== appt.service)
+              const addOnPriority = ['flea shampoo', 'hand stripping']
+              const otherServices = services.filter(s => s.id !== appt.service).slice().sort((a, b) => {
+                const ai = addOnPriority.indexOf((a.name ?? '').trim().toLowerCase())
+                const bi = addOnPriority.indexOf((b.name ?? '').trim().toLowerCase())
+                if (ai !== -1 && bi !== -1) return ai - bi
+                if (ai !== -1) return -1
+                if (bi !== -1) return 1
+                return 0
+              })
               const addOnTotal = popupAddOns.reduce((sum, a) => sum + (parseFloat(a.price) || 0), 0)
               const baseAmt = parseFloat(popupBasePrice) || 0
               const subtotalAmt = baseAmt + addOnTotal
@@ -2884,17 +2904,21 @@ export default function AdminPage() {
                       <div className="flex flex-wrap gap-1.5 mb-2">
                         {otherServices
                           .filter((s: {id:string}) => !popupAddOns.find(a => a.id === s.id))
-                          .map((s: {id:string;name:string;tiers?:{label:string;price:string}[]}) => (
-                            <button key={s.id}
-                              onClick={() => {
-                                const defaultPrice = s.tiers?.find(t => t.price)?.price ?? ''
-                                setPopupAddOns(prev => [...prev, { id: s.id, name: s.name ?? serviceMap[s.id] ?? s.id, price: defaultPrice }])
-                                setPopupTotalSaved(false)
-                              }}
-                              className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors">
-                              + {s.name ?? serviceMap[s.id] ?? s.id}
-                            </button>
-                          ))
+                          .map((s: {id:string;name:string;tiers?:{label:string;price:string}[]}) => {
+                            const label = s.name ?? serviceMap[s.id] ?? s.id
+                            const defaultPrice = s.tiers?.find(t => t.price)?.price ?? ''
+                            const priceSuffix = defaultPrice && !/\$/.test(label) ? ` · $${defaultPrice}` : ''
+                            return (
+                              <button key={s.id}
+                                onClick={() => {
+                                  setPopupAddOns(prev => [...prev, { id: s.id, name: label, price: defaultPrice }])
+                                  setPopupTotalSaved(false)
+                                }}
+                                className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors">
+                                + {label}{priceSuffix}
+                              </button>
+                            )
+                          })
                         }
                       </div>
                       <div className="flex gap-1.5">
@@ -3805,7 +3829,15 @@ export default function AdminPage() {
 
                       {/* Service & Pricing */}
                       {(() => {
-                        const otherServices = services.filter(s => s.id !== a.service)
+                        const addOnPriority = ['flea shampoo', 'hand stripping']
+                        const otherServices = services.filter(s => s.id !== a.service).slice().sort((sa, sb) => {
+                          const ai = addOnPriority.indexOf((sa.name ?? '').trim().toLowerCase())
+                          const bi = addOnPriority.indexOf((sb.name ?? '').trim().toLowerCase())
+                          if (ai !== -1 && bi !== -1) return ai - bi
+                          if (ai !== -1) return -1
+                          if (bi !== -1) return 1
+                          return 0
+                        })
                         const addOnTotal = calendarAddOns.reduce((sum, ao) => sum + (parseFloat(ao.price) || 0), 0)
                         const baseAmt = parseFloat(calendarBasePrice) || 0
                         const grandTotal = Math.round((baseAmt + addOnTotal) * 100) / 100
@@ -3868,17 +3900,21 @@ export default function AdminPage() {
                             <div className="flex flex-wrap gap-1.5 mb-2">
                               {otherServices
                                 .filter(s => !calendarAddOns.find(ao => ao.id === s.id))
-                                .map(s => (
-                                  <button key={s.id}
-                                    onClick={() => {
-                                      const defaultPrice = s.tiers?.find((t: {price:string}) => t.price)?.price ?? ''
-                                      setCalendarAddOns(prev => [...prev, { id: s.id, name: s.name ?? serviceMap[s.id] ?? s.id, price: defaultPrice }])
-                                      setCalendarTotalSaved(false)
-                                    }}
-                                    className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors">
-                                    + {s.name ?? serviceMap[s.id] ?? s.id}
-                                  </button>
-                                ))
+                                .map(s => {
+                                  const label = s.name ?? serviceMap[s.id] ?? s.id
+                                  const defaultPrice = s.tiers?.find((t: {price:string}) => t.price)?.price ?? ''
+                                  const priceSuffix = defaultPrice && !/\$/.test(label) ? ` · $${defaultPrice}` : ''
+                                  return (
+                                    <button key={s.id}
+                                      onClick={() => {
+                                        setCalendarAddOns(prev => [...prev, { id: s.id, name: label, price: defaultPrice }])
+                                        setCalendarTotalSaved(false)
+                                      }}
+                                      className="text-xs bg-gray-100 hover:bg-sky-100 text-gray-600 hover:text-sky-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors">
+                                      + {label}{priceSuffix}
+                                    </button>
+                                  )
+                                })
                               }
                             </div>
                             <div className="flex gap-1.5">
