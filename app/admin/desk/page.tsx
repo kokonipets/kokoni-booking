@@ -3066,7 +3066,15 @@ export default function DeskAdmin() {
                           : Math.min(selectedCoupon.discount_value, subtotalAmt))
                       : 0
                     const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
-                    const otherServices = services.filter(s => s.id !== detailAppt.service)
+                    const addOnPriority = ['flea shampoo', 'hand stripping']
+                    const otherServices = services.filter(s => s.id !== detailAppt.service).slice().sort((a, b) => {
+                      const ai = addOnPriority.indexOf((a.name ?? '').trim().toLowerCase())
+                      const bi = addOnPriority.indexOf((b.name ?? '').trim().toLowerCase())
+                      if (ai !== -1 && bi !== -1) return ai - bi
+                      if (ai !== -1) return -1
+                      if (bi !== -1) return 1
+                      return 0
+                    })
                     return (
                       <div className={`rounded-2xl p-4 border ${
                         detailAppt.payment_status === 'paid'
@@ -3283,16 +3291,20 @@ export default function DeskAdmin() {
                             <div className="flex flex-wrap gap-1.5 mb-2">
                               {otherServices
                                 .filter(s => !detailAddOns.find(a => a.id === s.id))
-                                .map(s => (
-                                  <button key={s.id}
-                                    onClick={() => {
-                                      const defaultPrice = s.tiers?.find(t => t.price)?.price ?? ''
-                                      setDetailAddOns(prev => [...prev, { id: s.id, name: s.name || serviceMap[s.id] || s.id, price: defaultPrice }])
-                                    }}
-                                    className="text-xs bg-white border-2 border-gray-200 hover:border-sky-300 hover:bg-sky-50 text-gray-600 hover:text-sky-700 px-3 py-1.5 rounded-full font-semibold transition-colors">
-                                    + {s.name || serviceMap[s.id] || s.id}
-                                  </button>
-                                ))
+                                .map(s => {
+                                  const label = s.name || serviceMap[s.id] || s.id
+                                  const defaultPrice = s.tiers?.find(t => t.price)?.price ?? ''
+                                  const priceSuffix = defaultPrice && !/\$/.test(label) ? ` · $${defaultPrice}` : ''
+                                  return (
+                                    <button key={s.id}
+                                      onClick={() => {
+                                        setDetailAddOns(prev => [...prev, { id: s.id, name: label, price: defaultPrice }])
+                                      }}
+                                      className="text-xs bg-white border-2 border-gray-200 hover:border-sky-300 hover:bg-sky-50 text-gray-600 hover:text-sky-700 px-3 py-1.5 rounded-full font-semibold transition-colors">
+                                      + {label}{priceSuffix}
+                                    </button>
+                                  )
+                                })
                               }
                             </div>
 
