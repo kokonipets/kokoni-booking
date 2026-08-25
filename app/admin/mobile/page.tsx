@@ -328,6 +328,15 @@ export default function AdminPage() {
   const [pricingSaved, setPricingSaved] = useState(false)
   const [hoursSaved, setHoursSaved] = useState(false)
 
+  // Older saved services predate the category field — infer it the same way
+  // admin/desk and the groomer dashboard do.
+  const inferServiceCategory = (s: { id: string; name?: string; category?: 'main' | 'addon' }): 'main' | 'addon' => {
+    if (s.category === 'main' || s.category === 'addon') return s.category
+    if (s.id === 'simply_cute' || s.id === 'bath_brush' || s.id === 'asian_fusion') return 'main'
+    if (/starting from/i.test(s.name ?? '')) return 'main'
+    return 'addon'
+  }
+
   // Services state — uses DEFAULT_TIERS, must come after it
   const [services, setServices] = useState([
     { id: 'simply_cute', name: 'Simply Cute', desc: 'Classic clean cut, bath, blow-dry & finishing touches', price: '', tiers: DEFAULT_TIERS.map(t => ({...t})) },
@@ -661,9 +670,10 @@ export default function AdminPage() {
         const loadedSvcs = JSON.parse(s.services)
         let pricingMap: Record<string, { label: string; price: string; duration: string }[]> = {}
         if (s.service_pricing) { try { pricingMap = JSON.parse(s.service_pricing) } catch {/**/} }
-        setServices(loadedSvcs.map((svc: { id: string; name: string; desc: string; price: string; tiers?: { label: string; price: string; duration?: string }[] }) => ({
+        setServices(loadedSvcs.map((svc: { id: string; name: string; desc: string; price: string; tiers?: { label: string; price: string; duration?: string }[]; category?: 'main'|'addon' }) => ({
           ...svc,
           tiers: (svc.tiers ?? pricingMap[svc.id] ?? DEFAULT_TIERS.map((t: PriceTier) => ({...t}))).map((t: { label: string; price: string; duration?: string }) => ({ label: t.label, price: t.price, duration: t.duration ?? '' })),
+          category: inferServiceCategory(svc),
         })))
       } catch {/**/}
     }
@@ -1479,7 +1489,7 @@ export default function AdminPage() {
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Service</label>
                 <select value={editApptDraft.service} onChange={e => setEditApptDraft(d => ({...d, service: e.target.value}))}
                   className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white">
-                  {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  {services.filter(s => inferServiceCategory(s) === 'main').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
               <div>
@@ -1791,7 +1801,7 @@ export default function AdminPage() {
                     const svcName = svcDef?.name ?? serviceMap[appt.service] ?? appt.service
                     const tiers = (svcDef?.tiers ?? []).filter((t: {label:string;price:string}) => t.label)
                     const addOnPriority = ['flea shampoo', 'hand stripping']
-                    const otherServices = services.filter(s => s.id !== appt.service).slice().sort((a, b) => {
+                    const otherServices = services.filter(s => s.id !== appt.service && inferServiceCategory(s) === 'addon').slice().sort((a, b) => {
                       const ai = addOnPriority.indexOf((a.name ?? '').trim().toLowerCase())
                       const bi = addOnPriority.indexOf((b.name ?? '').trim().toLowerCase())
                       if (ai !== -1 && bi !== -1) return ai - bi
@@ -2809,7 +2819,7 @@ export default function AdminPage() {
               const svcName = svcDef?.name ?? serviceMap[appt.service] ?? appt.service
               const tiers = (svcDef?.tiers ?? []).filter((t: {label:string;price:string}) => t.label)
               const addOnPriority = ['flea shampoo', 'hand stripping']
-              const otherServices = services.filter(s => s.id !== appt.service).slice().sort((a, b) => {
+              const otherServices = services.filter(s => s.id !== appt.service && inferServiceCategory(s) === 'addon').slice().sort((a, b) => {
                 const ai = addOnPriority.indexOf((a.name ?? '').trim().toLowerCase())
                 const bi = addOnPriority.indexOf((b.name ?? '').trim().toLowerCase())
                 if (ai !== -1 && bi !== -1) return ai - bi
@@ -3473,7 +3483,7 @@ export default function AdminPage() {
                       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Service</label>
                       <select value={addApptService} onChange={e => setAddApptService(e.target.value)}
                         className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300">
-                        {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        {services.filter(s => inferServiceCategory(s) === 'main').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                     </div>
                   </div>
@@ -3830,7 +3840,7 @@ export default function AdminPage() {
                       {/* Service & Pricing */}
                       {(() => {
                         const addOnPriority = ['flea shampoo', 'hand stripping']
-                        const otherServices = services.filter(s => s.id !== a.service).slice().sort((sa, sb) => {
+                        const otherServices = services.filter(s => s.id !== a.service && inferServiceCategory(s) === 'addon').slice().sort((sa, sb) => {
                           const ai = addOnPriority.indexOf((sa.name ?? '').trim().toLowerCase())
                           const bi = addOnPriority.indexOf((sb.name ?? '').trim().toLowerCase())
                           if (ai !== -1 && bi !== -1) return ai - bi
@@ -4516,15 +4526,21 @@ export default function AdminPage() {
                         {servicesSaved ? '✓ Saved!' : 'Save'}
                       </button>
                     </div>
-                    <div className="space-y-4">
-                      {services.map((svc, idx) => (
-                        <div key={svc.id} className="border border-gray-200 rounded-2xl overflow-hidden">
+                    {(() => {
+                      const ServiceCard = ({ svc, idx }: { svc: typeof services[number]; idx: number }) => (
+                        <div className="border border-gray-200 rounded-2xl overflow-hidden">
                           {/* Header */}
                           <div className="bg-gray-50 px-4 py-3 flex items-center gap-2">
                             <input type="text" value={svc.name}
                               onChange={e => setServices(prev => prev.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
                               placeholder="Service name"
                               className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white" />
+                            <button
+                              onClick={() => setServices(prev => prev.map((s, i) => i === idx ? { ...s, category: s.category === 'addon' ? 'main' : 'addon' } : s))}
+                              title="Move to the other catalog"
+                              className="shrink-0 text-xs font-semibold px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-100 transition-colors">
+                              {svc.category === 'addon' ? '↑' : '↓'}
+                            </button>
                             <button onClick={() => setServices(prev => prev.filter((_, i) => i !== idx))}
                               className="text-gray-300 hover:text-rose-500 text-2xl leading-none">×</button>
                           </div>
@@ -4573,12 +4589,34 @@ export default function AdminPage() {
                             </button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                    <button onClick={() => setServices(prev => [...prev, { id: `service_${Date.now()}`, name: '', desc: '', price: '', tiers: DEFAULT_TIERS.map(t => ({...t})) }])}
-                      className="w-full mt-4 border-2 border-dashed border-sky-200 hover:border-sky-400 text-sky-500 font-semibold py-2.5 rounded-xl text-sm transition-colors">
-                      + Add Service
-                    </button>
+                      )
+                      return (
+                        <>
+                          <div className="mb-6">
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Main Services</p>
+                            <div className="space-y-4">
+                              {services.map((svc, idx) => inferServiceCategory(svc) === 'main'
+                                ? <ServiceCard key={svc.id} svc={svc} idx={idx} /> : null)}
+                            </div>
+                            <button onClick={() => setServices(prev => [...prev, { id: `service_${Date.now()}`, name: '', desc: '', price: '', tiers: DEFAULT_TIERS.map(t => ({...t})), category: 'main' }])}
+                              className="w-full mt-4 border-2 border-dashed border-sky-200 hover:border-sky-400 text-sky-500 font-semibold py-2.5 rounded-xl text-sm transition-colors">
+                              + Add Main Service
+                            </button>
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Add-on Services</p>
+                            <div className="space-y-4">
+                              {services.map((svc, idx) => inferServiceCategory(svc) === 'addon'
+                                ? <ServiceCard key={svc.id} svc={svc} idx={idx} /> : null)}
+                            </div>
+                            <button onClick={() => setServices(prev => [...prev, { id: `service_${Date.now()}`, name: '', desc: '', price: '', tiers: [{ label: 'Standard', price: '', duration: '' }], category: 'addon' }])}
+                              className="w-full mt-4 border-2 border-dashed border-gray-200 hover:border-gray-400 text-gray-500 font-semibold py-2.5 rounded-xl text-sm transition-colors">
+                              + Add Add-on Service
+                            </button>
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
 
                   {/* Days Off */}

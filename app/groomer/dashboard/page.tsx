@@ -329,7 +329,14 @@ export default function GroomerDashboard() {
     finally { setUploadingPetId(null) }
   }
   // Service definitions loaded from settings (for tier/size pricing)
-  const [serviceDefs, setServiceDefs] = useState<{id:string;name:string;tiers:{label:string;price:string;duration?:string}[];visible?:boolean}[]>([])
+  const [serviceDefs, setServiceDefs] = useState<{id:string;name:string;tiers:{label:string;price:string;duration?:string}[];visible?:boolean;category?:'main'|'addon'}[]>([])
+  // Older saved services predate the category field — infer it the same way admin/desk does.
+  const inferServiceCategory = (s: { id: string; name?: string; category?: 'main' | 'addon' }): 'main' | 'addon' => {
+    if (s.category === 'main' || s.category === 'addon') return s.category
+    if (s.id === 'simply_cute' || s.id === 'bath_brush' || s.id === 'asian_fusion') return 'main'
+    if (/starting from/i.test(s.name ?? '')) return 'main'
+    return 'addon'
+  }
   // Dynamic lookup: static labels + anything added via Settings
   const serviceMap: Record<string, string> = {
     ...SERVICE_LABELS,
@@ -2023,7 +2030,7 @@ export default function GroomerDashboard() {
                 const svcName = svcDef?.name ?? serviceMap[popupServiceVal] ?? popupServiceVal
                 const tiers = (svcDef?.tiers ?? []).filter(t => t.label)
                 const addOnPriority = ['flea shampoo', 'hand stripping']
-                const otherServices = serviceDefs.filter(s => s.id !== popupServiceVal).slice().sort((a, b) => {
+                const otherServices = serviceDefs.filter(s => s.id !== popupServiceVal && inferServiceCategory(s) === 'addon').slice().sort((a, b) => {
                   const ai = addOnPriority.indexOf((a.name ?? '').trim().toLowerCase())
                   const bi = addOnPriority.indexOf((b.name ?? '').trim().toLowerCase())
                   if (ai !== -1 && bi !== -1) return ai - bi
@@ -2074,7 +2081,7 @@ export default function GroomerDashboard() {
                               className="text-xs border border-sky-300 rounded-lg px-2 py-1 bg-white focus:outline-none"
                             >
                               <option value="" disabled>Select service…</option>
-                              {serviceDefs.filter(s => s.visible !== false).map(s => (
+                              {serviceDefs.filter(s => s.visible !== false && inferServiceCategory(s) === 'main').map(s => (
                                 <option key={s.id} value={s.id}>{s.name}</option>
                               ))}
                             </select>
