@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 export type Tag = { id: string; name: string; color: string }
 
@@ -52,6 +53,8 @@ export function TagPicker({
   const [open, setOpen] = useState(false)
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!open || allTags.length > 0) return
@@ -61,6 +64,23 @@ export function TagPicker({
       .then(d => setAllTags(d.tags || []))
       .finally(() => setLoading(false))
   }, [open, allTags.length])
+
+  // Position the dropdown relative to the viewport (via a portal) so it can
+  // never be clipped by an ancestor card's `overflow-hidden`.
+  useEffect(() => {
+    if (!open) return
+    const update = () => {
+      const rect = btnRef.current?.getBoundingClientRect()
+      if (rect) setPos({ top: rect.bottom + 4, left: rect.left })
+    }
+    update()
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [open])
 
   const toggle = async (tag: Tag) => {
     const has = currentTags.some(t => t.id === tag.id)
@@ -82,14 +102,17 @@ export function TagPicker({
   return (
     <div className="relative inline-block">
       <button
+        ref={btnRef}
         onClick={() => setOpen(o => !o)}
         className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-dashed border-gray-300 text-xs font-medium text-gray-500 hover:border-sky-400 hover:text-sky-600">
         + Tag
       </button>
-      {open && (
+      {open && pos && typeof document !== 'undefined' && createPortal(
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 mt-1 z-20 bg-white rounded-xl shadow-xl border border-gray-200 p-2 min-w-[200px] max-h-72 overflow-y-auto">
+          <div className="fixed inset-0 z-[10000]" onClick={() => setOpen(false)} />
+          <div
+            style={{ position: 'fixed', top: pos.top, left: pos.left }}
+            className="z-[10001] bg-white rounded-xl shadow-xl border border-gray-200 p-2 min-w-[200px] max-h-72 overflow-y-auto">
             {loading ? (
               <p className="text-xs text-gray-400 px-2 py-1">Loading…</p>
             ) : allTags.length === 0 ? (
@@ -111,7 +134,8 @@ export function TagPicker({
               </div>
             )}
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   )
