@@ -12,6 +12,28 @@ function getAdminClient() {
   )
 }
 
+// Supabase/PostgREST caps a single .select() at 1000 rows by default. Any query
+// that doesn't already narrow itself to well under that (e.g. a single day) needs
+// to page through .range() calls instead, or rows silently go missing once the
+// table grows past 1000 — e.g. the "first visit ever" lookup below quietly using
+// only the newest/oldest 1000 appointments and misjudging who's a new client.
+const PAGE_SIZE = 1000
+async function fetchAllRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const all: T[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1)
+    if (error) return { data: all, error }
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return { data: all, error: null }
+}
+
 // `*` keeps this resilient to optional columns (e.g. discount_* fields) that may
 // not be migrated yet — Supabase returns whatever columns exist.
 const SELECT_FIELDS = `
@@ -81,12 +103,15 @@ export async function GET(req: NextRequest) {
     // Detect first-time visits
     if (!result.error && result.data?.length) {
       const phones = [...new Set(result.data.map((a: { client_phone: string }) => a.client_phone))]
-      const { data: allAppts } = await supabase
-        .from('appointments')
-        .select('client_phone, appointment_date')
-        .in('client_phone', phones)
-        .not('status', 'eq', 'cancelled')
-        .order('appointment_date', { ascending: true })
+      const { data: allAppts } = await fetchAllRows<{ client_phone: string; appointment_date: string }>((from, to) =>
+        supabase
+          .from('appointments')
+          .select('client_phone, appointment_date')
+          .in('client_phone', phones)
+          .not('status', 'eq', 'cancelled')
+          .order('appointment_date', { ascending: true })
+          .range(from, to)
+      )
       const firstDateByPhone: Record<string, string> = {}
       for (const a of (allAppts || [])) {
         if (!firstDateByPhone[a.client_phone] || a.appointment_date < firstDateByPhone[a.client_phone]) {
@@ -134,12 +159,15 @@ export async function GET(req: NextRequest) {
     if (!result.error && result.data?.length) {
       // Detect first-time visits: mark only the appointment that is the client's earliest EVER
       const phones = [...new Set(result.data.map((a: { client_phone: string }) => a.client_phone))]
-      const { data: allAppts } = await supabase
-        .from('appointments')
-        .select('client_phone, appointment_date')
-        .in('client_phone', phones)
-        .not('status', 'eq', 'cancelled')
-        .order('appointment_date', { ascending: true })
+      const { data: allAppts } = await fetchAllRows<{ client_phone: string; appointment_date: string }>((from, to) =>
+        supabase
+          .from('appointments')
+          .select('client_phone, appointment_date')
+          .in('client_phone', phones)
+          .not('status', 'eq', 'cancelled')
+          .order('appointment_date', { ascending: true })
+          .range(from, to)
+      )
 
       // Find the earliest appointment date per client across all time
       const firstDateByPhone: Record<string, string> = {}
@@ -171,11 +199,19 @@ export async function GET(req: NextRequest) {
       .order('appointment_date', { ascending: true })
       .order('appointment_time', { ascending: true })
   } else {
-    result = await supabase
-      .from('appointments')
-      .select(SELECT_FIELDS)
-      .order('appointment_date', { ascending: false })
-      .order('appointment_time', { ascending: true })
+    // Unfiltered "all appointments" (used by payroll's date-range export and the
+    // deleted-client history view) — paginate, since without this a salon with
+    // more than 1000 total appointments would silently lose everything past the
+    // first page, corrupting payroll totals for older date ranges.
+    result = await fetchAllRows(
+      (from, to) =>
+        supabase
+          .from('appointments')
+          .select(SELECT_FIELDS)
+          .order('appointment_date', { ascending: false })
+          .order('appointment_time', { ascending: true })
+          .range(from, to)
+    )
   }
 
   if (result.error) {
