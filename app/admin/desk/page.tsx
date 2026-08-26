@@ -1645,8 +1645,10 @@ export default function DeskAdmin() {
       const data = await res.json()
       const allAppts: any[] = data.appointments || []
 
-      // Filter by date range and optional groomer
+      // Filter by date range and optional groomer. Deleted/cancelled appointments and
+      // no-shows never happened as far as pay is concerned, so exclude both statuses.
       const appts = allAppts.filter((a: any) => {
+        if (a.status === 'cancelled' || a.status === 'no_show') return false
         if (a.appointment_date < payrollStartDate || a.appointment_date > payrollEndDate) return false
         if (payrollSelectedGroomer && a.assigned_groomer !== payrollSelectedGroomer) return false
         return true
