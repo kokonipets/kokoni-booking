@@ -565,8 +565,14 @@ export async function PATCH(
     if (tip_amount !== undefined) updates.tip_amount = tip_amount || null
     if (payment_method !== undefined) updates.payment_method = payment_method || null
     if (payment_status !== undefined) updates.payment_status = payment_status
-    // Mark appointment completed when cashier records payment as paid
-    if (payment_status === 'paid') updates.status = 'completed'
+    // Mark appointment completed when cashier records payment as paid — unless
+    // the amount recorded is $0, which almost always means the client never
+    // actually came in and staff just cleared the ticket. Show that as a no-show
+    // instead of "completed" so it's flagged correctly and stays out of payroll.
+    if (payment_status === 'paid') {
+      const paidAmount = parseFloat(String(payment_amount ?? '0')) || 0
+      updates.status = paidAmount > 0 ? 'completed' : 'no_show'
+    }
 
     // If addons array is provided, merge it into notes_list (replace any existing is_addon entries)
     if (Array.isArray(addons)) {
