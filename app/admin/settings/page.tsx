@@ -39,7 +39,7 @@ type StaffMember = {
 }
 
 type PriceTier = { label: string; price: string; duration: string }
-type ServiceDef = { id: string; name: string; desc: string; price?: string; duration?: string; tiers: PriceTier[]; visible?: boolean; usesSizeCategories?: boolean; category?: 'main' | 'addon' }
+type ServiceDef = { id: string; name: string; desc: string; price?: string; duration?: string; tiers: PriceTier[]; visible?: boolean; usesSizeCategories?: boolean; category?: 'main' | 'addon'; skipCapacity?: boolean }
 
 // Older saved services predate the category field. Infer it so existing data
 // keeps working: base styles have "Starting from $" baked into their name
@@ -1922,6 +1922,29 @@ export default function SettingsPage() {
                                 title={service.visible === false ? 'Hidden from booking page' : 'Visible on booking page'}
                               >
                                 {service.visible === false ? '🙈 Hidden' : '👁 Visible'}
+                              </button>
+                              {/* Skip Capacity toggle — lets walk-in quick services (Nail Trim, Top Dog, etc.)
+                                  stay bookable online even when every groomer's slot looks full */}
+                              <button
+                                onClick={async () => {
+                                  const updated = services.map(s =>
+                                    s.id === service.id ? { ...s, skipCapacity: !s.skipCapacity } : s
+                                  )
+                                  await fetch('/api/admin/settings', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ key: 'services', value: JSON.stringify(updated) })
+                                  })
+                                  setServices(updated)
+                                }}
+                                className={`text-xs font-semibold px-2 py-1 rounded border ${
+                                  service.skipCapacity
+                                    ? 'text-amber-600 border-amber-200 bg-amber-50'
+                                    : 'text-gray-400 border-gray-200 bg-gray-50'
+                                }`}
+                                title={service.skipCapacity ? 'Always bookable online, even when slots are full (walk-in quick service)' : 'Limited by groomer slot capacity like a normal grooming appointment'}
+                              >
+                                {service.skipCapacity ? '⚡ Walk-in Anytime' : '🕐 Slot Limited'}
                               </button>
                               <button
                                 onClick={(e) => {

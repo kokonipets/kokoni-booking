@@ -285,7 +285,7 @@ export default function BookPage() {
       .catch(() => {})
   }, [])
 
-  const fetchDateSlots = useCallback((date: Date | null) => {
+  const fetchDateSlots = useCallback((date: Date | null, forService?: string) => {
     if (!date) { setDateSlots(null); return }
     const yyyy = date.getFullYear()
     const mm = String(date.getMonth() + 1).padStart(2, '0')
@@ -293,7 +293,8 @@ export default function BookPage() {
     const dateStr = `${yyyy}-${mm}-${dd}`
     setDateSlotsLoading(true)
     setDateSlots(null)
-    fetch(`/api/slots?date=${dateStr}&t=${Date.now()}`)
+    const svcParam = forService ? `&service=${encodeURIComponent(forService)}` : ''
+    fetch(`/api/slots?date=${dateStr}${svcParam}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { if (Array.isArray(data.slots)) setDateSlots(data.slots) })
       .catch(() => {})
@@ -306,18 +307,18 @@ export default function BookPage() {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         fetchAvailability()
-        fetchDateSlots(selectedDateRef.current) // re-fetch slots for currently selected date
+        fetchDateSlots(selectedDateRef.current, service) // re-fetch slots for currently selected date
       }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [fetchAvailability, fetchDateSlots])
+  }, [fetchAvailability, fetchDateSlots, service])
 
-  // Fetch capacity-aware slots whenever the selected date changes
+  // Fetch capacity-aware slots whenever the selected date (or service) changes
   useEffect(() => {
     selectedDateRef.current = selectedDate
-    fetchDateSlots(selectedDate)
-  }, [selectedDate, fetchDateSlots])
+    fetchDateSlots(selectedDate, service)
+  }, [selectedDate, service, fetchDateSlots])
 
   // ─── Step: Phone ────────────────────────────────────────
   const handlePhoneLookup = async () => {

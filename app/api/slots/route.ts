@@ -44,6 +44,7 @@ function parse24h(t: string): number {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const dateStr = searchParams.get('date') // YYYY-MM-DD
+  const serviceId = searchParams.get('service') // optional — service being booked
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -65,6 +66,17 @@ export async function GET(req: NextRequest) {
   // Per-date / per-slot blocks set via the admin calendar "Block" button
   let blockedTimes: { date: string; time: string; reason: string | null }[] = []
   try { blockedTimes = settings.blocked_times_list ? JSON.parse(settings.blocked_times_list) : [] } catch { blockedTimes = [] }
+
+  // Walk-in quick services (e.g. Nail Trim, Top Dog) can be flagged in Settings to skip
+  // the per-slot groomer capacity check entirely — they're in-and-out in minutes, so they
+  // shouldn't be blocked just because the slot looks "full" of longer grooming appointments.
+  let skipCapacityForService = false
+  if (serviceId) {
+    try {
+      const allServices: { id: string; skipCapacity?: boolean }[] = settings.services ? JSON.parse(settings.services) : []
+      skipCapacityForService = !!allServices.find(s => s.id === serviceId)?.skipCapacity
+    } catch { skipCapacityForService = false }
+  }
 
   // Generate all store time slots, skipping any blocked periods
   // Guard against corrupted DB values (e.g. "11:NaN AM") by checking for NaN
@@ -168,6 +180,7 @@ export async function GET(req: NextRequest) {
 
   const availableSlots = allSlots.filter(slot => {
     if (blockedSlotsForDate.has(slot)) return false
+    if (skipCapacityForService) return true // walk-in quick service — always bookable, capacity doesn't apply
     const booked = bookedCount[slot] || 0
     return booked < capacity
   })
