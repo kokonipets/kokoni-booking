@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
   const { data: appointments, error: apptError } = await fetchAllRows<{ client_phone: string } & Record<string, unknown>>((from, to) => {
     let q = supabase
       .from('appointments')
-      .select('id, appointment_date, appointment_time, service, status, client_phone, pet_id, assigned_groomer, assigned_bather, payment_amount, payment_method, created_at, confirmed_at, checked_in_at, grooming_started_at, grooming_finished_at, notes, notes_english, notes_chinese, notes_list, health_check, grooming_quality, health_check_completed_at, grooming_quality_completed_at')
+      .select('id, appointment_date, appointment_time, service, status, client_phone, pet_id, assigned_groomer, assigned_bather, payment_amount, payment_method, tip_amount, created_at, confirmed_at, checked_in_at, grooming_started_at, grooming_finished_at, notes, notes_english, notes_chinese, notes_list, health_check, grooming_quality, health_check_completed_at, grooming_quality_completed_at')
       .order('appointment_date', { ascending: false })
       .order('id', { ascending: true })
       .range(from, to)

@@ -103,7 +103,7 @@ type ClientRecord = {
   sms_consent?: boolean | null
   sms_consent_at?: string | null
   pets: { id: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry: string | null; photo_url: string | null; tags?: { id: string; name: string; color: string }[] }[]
-  appointments: { id: string; appointment_date: string; appointment_time: string; service: string; status: string; pet_id: string | null; assigned_groomer: string | null; assigned_bather: string | null; payment_amount: string | null; payment_method: string | null; created_at?: string | null; confirmed_at?: string | null; checked_in_at?: string | null; grooming_started_at?: string | null; grooming_finished_at?: string | null; notes?: string | null; notes_english?: string | null; notes_chinese?: string | null; notes_list?: { id: string; text: string; author: string; created_at: string; notes_english?: string | null; notes_chinese?: string | null; is_addon?: boolean }[] | null; health_check?: any | null; grooming_quality?: any | null; health_check_completed_at?: string | null; grooming_quality_completed_at?: string | null }[]
+  appointments: { id: string; appointment_date: string; appointment_time: string; service: string; status: string; pet_id: string | null; assigned_groomer: string | null; assigned_bather: string | null; payment_amount: string | null; payment_method: string | null; tip_amount?: string | null; created_at?: string | null; confirmed_at?: string | null; checked_in_at?: string | null; grooming_started_at?: string | null; grooming_finished_at?: string | null; notes?: string | null; notes_english?: string | null; notes_chinese?: string | null; notes_list?: { id: string; text: string; author: string; created_at: string; notes_english?: string | null; notes_chinese?: string | null; is_addon?: boolean }[] | null; health_check?: any | null; grooming_quality?: any | null; health_check_completed_at?: string | null; grooming_quality_completed_at?: string | null }[]
   authorized_pickups: { id: string; name: string; relationship: string | null }[]
 }
 
@@ -456,6 +456,9 @@ export default function DeskAdmin() {
   const [detailClient, setDetailClient] = useState<ClientRecord | null>(null)
   const [detailClientLoading, setDetailClientLoading] = useState(false)
   const [smsConsentSaving, setSmsConsentSaving] = useState(false)
+  // Which History-tab past visit is expanded inline (view details without
+  // leaving the current appointment popup).
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
 
   // Staff-recorded SMS opt-in (e.g. customer agreed verbally at checkout but
   // never checked the box during booking). Only ever turns consent ON.
@@ -895,6 +898,7 @@ export default function DeskAdmin() {
 
   const openApptDetail = async (appt: Appointment, opts?: { keepBackStack?: boolean }) => {
     if (!opts?.keepBackStack) setDetailApptBackStack([])
+    setExpandedHistoryId(null)
     setDetailAppt(appt)
     setDetailTab('appt')
     setDetailNotes(appt.notes || '')
@@ -3773,8 +3777,8 @@ export default function DeskAdmin() {
                         {[...detailClient.appointments]
                           .sort((a, b) => new Date(b.appointment_date).getTime() - new Date(a.appointment_date).getTime())
                           .map(a => (
+                            <div key={a.id}>
                             <div
-                              key={a.id}
                               className="flex items-center gap-3 px-4 py-3 bg-white hover:bg-sky-50 transition-colors"
                             >
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${
@@ -3852,11 +3856,118 @@ export default function DeskAdmin() {
                                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[a.status] ?? 'bg-gray-100 text-gray-500'}`}>{a.status}</span>
                               </div>
                               <button
-                                onClick={() => viewHistoryAppt(a)}
+                                onClick={() => setExpandedHistoryId(prev => prev === a.id ? null : a.id)}
                                 className="px-3 py-1 text-xs font-semibold bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-lg flex-shrink-0 transition-colors"
                               >
-                                View
+                                {expandedHistoryId === a.id ? 'Hide' : 'View'}
                               </button>
+                            </div>
+                            {expandedHistoryId === a.id && (() => {
+                              const hc = (a as any).health_check
+                              const q = (a as any).grooming_quality
+                              const HC_SECTIONS = [
+                                { key: 'eyes',  emoji: '👁️', label: 'Eyes' },
+                                { key: 'ears',  emoji: '👂', label: 'Ears' },
+                                { key: 'nose',  emoji: '👃', label: 'Nose' },
+                                { key: 'mouth', emoji: '😬', label: 'Mouth / Teeth' },
+                                { key: 'paws',  emoji: '🐾', label: 'Paw Pads' },
+                                { key: 'skin',  emoji: '🧴', label: 'Skin & Coat' },
+                              ]
+                              const Q_CHECKS = [
+                                { key: 'nails_trimmed', oldKey: 'nails_trimmed', emoji: '✂️', label: 'Nails Trimmed' },
+                                { key: 'ears_cleaned',  oldKey: 'ears_cleaned',  emoji: '👂', label: 'Ears Cleaned' },
+                                { key: 'tangles_free',  oldKey: 'coat_brushed',  emoji: '🪮', label: 'Tangles Free' },
+                                { key: 'sanitary_trim', oldKey: 'bath_completed',emoji: '🧼', label: 'Sanitary Trim' },
+                                { key: 'paw_pad_trim',  oldKey: 'paw_pads_cleared', emoji: '🐾', label: 'Paw Pad Trim' },
+                                { key: 'perfume_spray', oldKey: 'styling_finished', emoji: '🌸', label: 'Perfume Spray' },
+                              ]
+                              const addOns = (a.notes_list ?? []).filter(n => n.is_addon)
+                              const groomerNotes = (a.notes_list ?? []).filter(n => !n.is_addon)
+                              return (
+                                <div className="px-4 pb-4 bg-sky-50/50 border-t border-sky-100 space-y-3">
+                                  {/* Payment */}
+                                  {(a.payment_amount || a.tip_amount) && (
+                                    <div className="grid grid-cols-3 divide-x divide-white bg-white rounded-xl border border-gray-100 mt-3 overflow-hidden">
+                                      <div className="px-3 py-2">
+                                        <p className="text-[10px] text-gray-400">Amount</p>
+                                        <p className="text-sm font-semibold text-gray-700">{a.payment_amount ? `$${a.payment_amount}` : '—'}</p>
+                                      </div>
+                                      <div className="px-3 py-2">
+                                        <p className="text-[10px] text-gray-400">Method</p>
+                                        <p className="text-sm font-semibold text-gray-700">{a.payment_method || '—'}</p>
+                                      </div>
+                                      <div className="px-3 py-2">
+                                        <p className="text-[10px] text-gray-400">Tip</p>
+                                        <p className="text-sm font-semibold text-emerald-700">{a.tip_amount ? `$${a.tip_amount}` : '—'}</p>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Health check detail */}
+                                  {hc && (
+                                    <div className="bg-white rounded-xl border border-gray-100 p-3">
+                                      <p className="text-xs font-semibold text-sky-700 mb-2">🩺 Initial Health Check</p>
+                                      <div className="grid grid-cols-2 gap-1.5">
+                                        {HC_SECTIONS.map(s => {
+                                          const val = hc[s.key]
+                                          const hasIssue = Array.isArray(val) ? val.length > 0 : val === false
+                                          const issueText = Array.isArray(val) ? val.join(', ') : ''
+                                          return (
+                                            <div key={s.key} className={`text-xs rounded-lg px-2 py-1 ${hasIssue ? 'bg-rose-50 text-rose-700' : 'bg-green-50 text-green-700'}`}>
+                                              {s.emoji} {s.label}: {hasIssue ? (issueText || '⚠️ Issue') : '✓ Normal'}
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Quality check detail */}
+                                  {q && (
+                                    <div className="bg-white rounded-xl border border-gray-100 p-3">
+                                      <p className="text-xs font-semibold text-emerald-700 mb-2">🎯 Grooming Quality Check</p>
+                                      <div className="grid grid-cols-2 gap-1.5">
+                                        {Q_CHECKS.map(c => {
+                                          const done = !!(q[c.key] || q[c.oldKey])
+                                          return (
+                                            <div key={c.key} className={`text-xs rounded-lg px-2 py-1 ${done ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-400'}`}>
+                                              {c.emoji} {c.label} {done ? '✓' : '—'}
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Add-ons */}
+                                  {addOns.length > 0 && (
+                                    <div className="bg-white rounded-xl border border-gray-100 p-3">
+                                      <p className="text-xs font-semibold text-amber-700 mb-1.5">➕ Add-ons</p>
+                                      <div className="space-y-1">
+                                        {addOns.map(n => (
+                                          <div key={n.id} className="flex items-center justify-between text-xs text-gray-600">
+                                            <span>{n.text}</span>
+                                            {n.price && <span className="font-semibold">${n.price}</span>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Groomer notes */}
+                                  {(a.notes || groomerNotes.length > 0) && (
+                                    <div className="bg-white rounded-xl border border-gray-100 p-3">
+                                      <p className="text-xs font-semibold text-gray-500 mb-1.5">📝 Notes</p>
+                                      {a.notes && <p className="text-xs text-gray-600 whitespace-pre-wrap mb-1">{a.notes}</p>}
+                                      {groomerNotes.map(n => (
+                                        <p key={n.id} className="text-xs text-gray-600">
+                                          {n.text} {n.author && <span className="text-gray-400">— {n.author}</span>}
+                                        </p>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {!hc && !q && addOns.length === 0 && !a.notes && groomerNotes.length === 0 && !a.payment_amount && (
+                                    <p className="text-xs text-gray-400 text-center py-2">No further details recorded for this visit</p>
+                                  )}
+                                </div>
+                              )
+                            })()}
                             </div>
                           ))}
                       </div>
