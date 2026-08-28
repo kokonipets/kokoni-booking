@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer } from '@/lib/supabase'
-import { notifyAdminNewRequest } from '@/lib/sms'
+import { notifyAdminNewRequest, notifyClientConfirmed } from '@/lib/sms'
 import { sendPushToAdmin } from '@/lib/push-notify'
 
 export const dynamic = 'force-dynamic'
@@ -208,6 +208,37 @@ export async function POST(req: NextRequest) {
       smsConsent: !!smsConsent, // passed through for reference; admin SMS always sends
       isWalkIn: !!isWalkIn,
     }).catch((smsErr) => console.error('SMS notify failed:', smsErr))
+
+    // 7b. Walk-ins are created already 'confirmed' — normally the client-facing
+    // "your appointment is confirmed" text fires when admin manually clicks Confirm
+    // on a pending appointment, but walk-ins skip that step entirely, so send it
+    // here instead (still respecting SMS consent, same as the manual-confirm path).
+    if (isWalkIn) {
+      try {
+        const { data: clientRow } = await supabase
+          .from('clients')
+          .select('sms_consent')
+          .eq('phone', phone)
+          .single()
+        if (clientRow?.sms_consent) {
+          let prettyDate = date
+          const dm = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(date)
+          if (dm) {
+            const [, mm, dd, yy] = dm
+            prettyDate = new Date(Number(yy), Number(mm) - 1, Number(dd), 12).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+          }
+          notifyClientConfirmed({
+            to: phone,
+            clientName: displayName.split(' ')[0],
+            petName: displayPetName,
+            date: prettyDate,
+            time,
+          }).catch((e) => console.error('Walk-in confirm SMS failed:', e))
+        }
+      } catch (e) {
+        console.error('Walk-in confirm SMS lookup failed:', e)
+      }
+    }
 
     // 8. Push notification to admin mobile devices
     sendPushToAdmin(
