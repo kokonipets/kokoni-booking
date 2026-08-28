@@ -651,9 +651,9 @@ export default function KioskPage() {
 
           <p className="text-gray-400 text-2xl">Tap a button to get started</p>
 
-          {/* Walk In — small quiet button linking to /book */}
+          {/* Walk In — small quiet button linking to /book in walk-in mode (skips the time-slot step, books for right now) */}
           <Link
-            href="/book"
+            href="/book?walkin=1"
             className="text-gray-400 border border-gray-300 bg-white/80 hover:bg-gray-50 text-xl font-semibold px-8 py-3 rounded-2xl shadow-sm flex items-center gap-2 transition-colors active:scale-95"
           >
             🚶 Walk In

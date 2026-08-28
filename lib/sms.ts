@@ -173,13 +173,16 @@ export async function notifyAdminNewRequest(data: {
   date: string
   time: string
   phone: string
+  isWalkIn?: boolean
 }) {
   const serviceLabels: Record<string, string> = {
     simply_cute: 'Simply Cute – Everyday Style',
     bath_brush: 'Bath & Brush',
     asian_fusion: 'Asian Fusion Style',
   }
-  const body = `New Booking Request!\n${data.clientName} - ${data.petName}\n${serviceLabels[data.service] ?? data.service}\n${data.date} @ ${data.time}\n${data.phone}`
+  const body = data.isWalkIn
+    ? `Walk-In Checked In!\n${data.clientName} - ${data.petName}\n${serviceLabels[data.service] ?? data.service}\nHere now\n${data.phone}`
+    : `New Booking Request!\n${data.clientName} - ${data.petName}\n${serviceLabels[data.service] ?? data.service}\n${data.date} @ ${data.time}\n${data.phone}`
   return sendSMS(process.env.ADMIN_PHONE!, body, 'notifyAdminNewRequest')
 }
 

@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     vaccineFileUrl,
     vaccineEmailOnly,
     vaccineSmsOnly,
+    isWalkIn,
   } = body
 
   // Defense-in-depth: never accept a booking on a closed day or blocked date,
@@ -142,7 +143,8 @@ export async function POST(req: NextRequest) {
         appointment_date: date,
         appointment_time: time,
         notes: notes || null,
-        status: 'pending',
+        // Walk-ins are seen right away — no pending review step, they're already standing there.
+        status: isWalkIn ? 'confirmed' : 'pending',
         tos_agreed_at: tosAgreedAt,
       })
       .select('id')
@@ -204,12 +206,15 @@ export async function POST(req: NextRequest) {
       time,
       phone,
       smsConsent: !!smsConsent, // passed through for reference; admin SMS always sends
+      isWalkIn: !!isWalkIn,
     }).catch((smsErr) => console.error('SMS notify failed:', smsErr))
 
     // 8. Push notification to admin mobile devices
     sendPushToAdmin(
-      '🦄 New Appointment Request',
-      `${displayName} — ${displayPetName} · ${service.replace(/_/g, ' ')} on ${date} at ${time}`
+      isWalkIn ? '🚶 Walk-In Checked In' : '🦄 New Appointment Request',
+      isWalkIn
+        ? `${displayName} — ${displayPetName} · ${service.replace(/_/g, ' ')} — here now`
+        : `${displayName} — ${displayPetName} · ${service.replace(/_/g, ' ')} on ${date} at ${time}`
     ).catch(() => {})
 
     return NextResponse.json({ id: appointment.id, petId: resolvedPetId })

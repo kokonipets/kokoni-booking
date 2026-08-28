@@ -196,6 +196,16 @@ export default function BookPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Walk-in mode — reached via the kiosk's "Walk In" button (/book?walkin=1).
+  // No time slot to pick: they're here now and will be seen right away, so the
+  // whole "Pick a Date & Time" step is skipped and we book them for the current moment.
+  const [isWalkIn, setIsWalkIn] = useState(false)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('walkin') === '1') {
+      setIsWalkIn(true)
+    }
+  }, [])
+
   // Phone
   const [phone, setPhone] = useState('')
   const [smsConsentChecked, setSmsConsentChecked] = useState(false)
@@ -431,6 +441,19 @@ export default function BookPage() {
   const handleServiceContinue = () => {
     if (!service) { setError('Please select a service.'); return }
     setError('')
+    if (isWalkIn) {
+      // Skip the calendar entirely — book for right now, in the salon's own timezone.
+      const laParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
+      const laGet = (t: string) => laParts.find(p => p.type === t)?.value ?? '00'
+      const y = parseInt(laGet('year')), mo = parseInt(laGet('month')), d = parseInt(laGet('day'))
+      const h24 = parseInt(laGet('hour')), min = parseInt(laGet('minute'))
+      setSelectedDate(new Date(y, mo - 1, d))
+      const period = h24 >= 12 ? 'PM' : 'AM'
+      const h12 = h24 % 12 || 12
+      setSelectedTime(`${h12}:${String(min).padStart(2, '0')} ${period}`)
+      setStep('vaccine-notes')
+      return
+    }
     setStep('datetime')
   }
 
@@ -471,6 +494,7 @@ export default function BookPage() {
         tosAgreedAt: new Date().toISOString(),
         smsConsent: smsConsentChecked,
         smsConsentAt: smsConsentChecked ? new Date().toISOString() : null,
+        isWalkIn,
       }
 
       // New client → create client + pet
@@ -979,6 +1003,13 @@ export default function BookPage() {
               For {isNewClient ? newPetName : (isAddingNewPet ? newPetName : selectedPet?.name)}
             </p>
 
+            {isWalkIn && (
+              <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-center">
+                <p className="text-sm font-semibold text-amber-800">🚶 Walk-In — No appointment time needed</p>
+                <p className="text-xs text-amber-700 mt-0.5">Pick a service and we'll see you right away.</p>
+              </div>
+            )}
+
             <div className="space-y-4">
               {(() => {
                 // Group by service type using keyword matching
@@ -1117,7 +1148,7 @@ export default function BookPage() {
         {/* ── STEP: VACCINE & NOTES ── */}
         {step === 'vaccine-notes' && (
           <div className="p-6">
-            <button onClick={() => setStep('datetime')} className="flex items-center text-sky-600 text-sm mb-4 hover:underline">
+            <button onClick={() => setStep(isWalkIn ? 'service' : 'datetime')} className="flex items-center text-sky-600 text-sm mb-4 hover:underline">
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
             <h2 className="text-xl font-bold text-sky-900 mb-1">Vaccination & Notes</h2>
@@ -1236,7 +1267,7 @@ export default function BookPage() {
               <p className="font-semibold text-sky-800">Appointment Summary</p>
               <p className="text-gray-600">🐾 {isNewClient || isAddingNewPet ? newPetName : selectedPet?.name}</p>
               <p className="text-gray-600">✂️ {dynamicServices.find(s => s.id === service)?.name}</p>
-              <p className="text-gray-600">📅 {selectedDate ? formatDate(selectedDate) : ''} @ {selectedTime}</p>
+              <p className="text-gray-600">📅 {isWalkIn ? 'Right now (walk-in)' : `${selectedDate ? formatDate(selectedDate) : ''} @ ${selectedTime}`}</p>
             </div>
 
             {/* ToS scroll box */}
@@ -1303,15 +1334,22 @@ export default function BookPage() {
             </div>
 
             {/* Title */}
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">Request Received!</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">{isWalkIn ? "You're All Set!" : 'Request Received!'}</h2>
 
-            {/* NOT confirmed callout */}
-            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-5 py-4 mb-5 mt-3">
-              <p className="text-amber-800 font-bold text-base">⚠️ Your appointment is not confirmed yet.</p>
-              <p className="text-amber-700 text-sm mt-1">
-                We&apos;ll review your request and send you a <strong>text message</strong> once it&apos;s approved.
-              </p>
-            </div>
+            {/* NOT confirmed callout (scheduled bookings only — walk-ins are seen right away, no approval step) */}
+            {isWalkIn ? (
+              <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl px-5 py-4 mb-5 mt-3">
+                <p className="text-emerald-800 font-bold text-base">🚶 You're checked in as a walk-in.</p>
+                <p className="text-emerald-700 text-sm mt-1">Please have a seat — we&apos;ll be right with you.</p>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-5 py-4 mb-5 mt-3">
+                <p className="text-amber-800 font-bold text-base">⚠️ Your appointment is not confirmed yet.</p>
+                <p className="text-amber-700 text-sm mt-1">
+                  We&apos;ll review your request and send you a <strong>text message</strong> once it&apos;s approved.
+                </p>
+              </div>
+            )}
 
             {/* Request summary */}
             <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm text-left mb-4 space-y-2">
@@ -1326,7 +1364,7 @@ export default function BookPage() {
               </div>
               <div className="flex items-center gap-2 text-gray-600">
                 <span>📅</span>
-                <span>{selectedDate ? formatDate(selectedDate) : ''} @ {selectedTime}</span>
+                <span>{isWalkIn ? 'Right now (walk-in)' : `${selectedDate ? formatDate(selectedDate) : ''} @ ${selectedTime}`}</span>
               </div>
               <div className="flex items-center gap-2 text-gray-600">
                 <span>📱</span>
