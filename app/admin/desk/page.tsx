@@ -450,6 +450,9 @@ export default function DeskAdmin() {
   // Appointment detail slide-over
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null)
   const [detailTab, setDetailTab] = useState<'appt' | 'customer' | 'payment' | 'future' | 'notes'>('appt')
+  // Stack of appointments we drilled in from (e.g. clicking "View" on a past
+  // visit in the History tab) so we can jump back to where we started.
+  const [detailApptBackStack, setDetailApptBackStack] = useState<Appointment[]>([])
   const [detailClient, setDetailClient] = useState<ClientRecord | null>(null)
   const [detailClientLoading, setDetailClientLoading] = useState(false)
   const [smsConsentSaving, setSmsConsentSaving] = useState(false)
@@ -890,7 +893,8 @@ export default function DeskAdmin() {
     } catch { showToast('⚠️ Error removing pickup') }
   }
 
-  const openApptDetail = async (appt: Appointment) => {
+  const openApptDetail = async (appt: Appointment, opts?: { keepBackStack?: boolean }) => {
+    if (!opts?.keepBackStack) setDetailApptBackStack([])
     setDetailAppt(appt)
     setDetailTab('appt')
     setDetailNotes(appt.notes || '')
@@ -965,6 +969,25 @@ export default function DeskAdmin() {
       setDetailFutureAppts((data.appointments || []).filter((a: Appointment) => a.id !== appt.id))
     } catch {/**/}
     finally { setDetailFutureLoading(false) }
+  }
+
+  // Drilling into a past visit from the History tab: remember what we were
+  // looking at so "← Back" can return to it instead of leaving a dead end.
+  const viewHistoryAppt = (appt: Appointment) => {
+    setDetailApptBackStack(prev => detailAppt ? [...prev, detailAppt] : prev)
+    openApptDetail(appt, { keepBackStack: true })
+  }
+  const goBackDetailAppt = () => {
+    setDetailApptBackStack(prev => {
+      if (prev.length === 0) return prev
+      const next = prev[prev.length - 1]
+      openApptDetail(next, { keepBackStack: true })
+      return prev.slice(0, -1)
+    })
+  }
+  const closeDetailAppt = () => {
+    setDetailAppt(null)
+    setDetailApptBackStack([])
   }
 
   const detailHandleAction = async (action: 'confirm' | 'decline' | 'start' | 'complete') => {
@@ -2702,7 +2725,7 @@ export default function DeskAdmin() {
       {detailAppt && (
         <>
           {/* Backdrop */}
-          <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { setDetailAppt(null); setEditingApptWeight(false); setChangingService(false); setShowRescheduleInputs(false) }} />
+          <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { closeDetailAppt(); setEditingApptWeight(false); setChangingService(false); setShowRescheduleInputs(false) }} />
           {/* Panel */}
           <div className="fixed right-0 top-0 bottom-0 w-full md:w-[480px] bg-white z-50 shadow-2xl flex flex-col overflow-hidden">
             {/* Header */}
@@ -2710,6 +2733,14 @@ export default function DeskAdmin() {
               detailAppt.service==='simply_cute' ? 'bg-sky-50' :
               detailAppt.service==='bath_brush'  ? 'bg-teal-50' :
               detailAppt.service==='asian_fusion'? 'bg-pink-50' : 'bg-gray-50'}`}>
+              {detailApptBackStack.length > 0 && (
+                <button
+                  onClick={goBackDetailAppt}
+                  className="flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 hover:bg-sky-200 rounded-full px-2.5 py-1 mb-2 transition-colors"
+                >
+                  ← Back to {detailApptBackStack[detailApptBackStack.length - 1].pets?.name ?? 'previous'} appointment
+                </button>
+              )}
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-3">
                   {detailAppt.pets?.photo_url
@@ -2720,7 +2751,7 @@ export default function DeskAdmin() {
                     <p className="text-xs text-gray-500">{detailAppt.pets?.breed} · {detailAppt.clients?.name}</p>
                   </div>
                 </div>
-                <button onClick={() => { setDetailAppt(null); setEditingApptWeight(false); setChangingService(false); setShowRescheduleInputs(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 text-xl">×</button>
+                <button onClick={() => { closeDetailAppt(); setEditingApptWeight(false); setChangingService(false); setShowRescheduleInputs(false) }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 text-xl">×</button>
               </div>
               <div className="flex items-center gap-2 mt-2">
                 <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
@@ -3821,7 +3852,7 @@ export default function DeskAdmin() {
                                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[a.status] ?? 'bg-gray-100 text-gray-500'}`}>{a.status}</span>
                               </div>
                               <button
-                                onClick={() => openApptDetail(a)}
+                                onClick={() => viewHistoryAppt(a)}
                                 className="px-3 py-1 text-xs font-semibold bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-lg flex-shrink-0 transition-colors"
                               >
                                 View
@@ -3848,7 +3879,7 @@ export default function DeskAdmin() {
                       ? <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">No upcoming appointments</div>
                       : <div className="space-y-2">
                           {detailFutureAppts.map(a => (
-                            <div key={a.id} className="bg-gray-50 rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-sky-50 transition-colors" onClick={() => openApptDetail(a)}>
+                            <div key={a.id} className="bg-gray-50 rounded-2xl p-3 flex items-center gap-3 cursor-pointer hover:bg-sky-50 transition-colors" onClick={() => viewHistoryAppt(a)}>
                               {a.pets?.photo_url
                                 ? <img src={a.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
                                 : <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
