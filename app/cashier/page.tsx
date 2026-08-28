@@ -1704,12 +1704,16 @@ export default function CashierPage() {
                 <h2 className="text-lg font-black text-gray-800">
                   {periodDetail === 'week' ? '📅 This Week' : '🗓️ This Month'}
                 </h2>
-                {!periodDetailLoading && (
-                  <p className="text-sm text-gray-400">
-                    {fmtMoney(periodDetailRows.reduce((s, a) => s + parseFloat(a.payment_amount || '0') + parseFloat(a.tip_amount || '0'), 0))}
-                    {' · '}{periodDetailRows.length} paid appointment{periodDetailRows.length !== 1 ? 's' : ''}
-                  </p>
-                )}
+                {!periodDetailLoading && (() => {
+                  const svc = periodDetailRows.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
+                  const tip = periodDetailRows.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
+                  return (
+                    <p className="text-sm text-gray-400">
+                      {fmtMoney(svc + tip)} <span className="text-gray-400">({fmtMoney(svc)} svc{tip > 0 && <> + {fmtMoney(tip)} tip</>})</span>
+                      {' · '}{periodDetailRows.length} paid appointment{periodDetailRows.length !== 1 ? 's' : ''}
+                    </p>
+                  )
+                })()}
               </div>
               <button onClick={() => setPeriodDetail(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
             </div>
