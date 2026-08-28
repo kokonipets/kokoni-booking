@@ -708,6 +708,10 @@ export default function CashierPage() {
   const [allAppts, setAllAppts] = useState<Appt[]>([])
   const [weekTotal, setWeekTotal] = useState<number | null>(null)
   const [monthTotal, setMonthTotal] = useState<number | null>(null)
+  const [weekService, setWeekService] = useState(0)
+  const [weekTips, setWeekTips] = useState(0)
+  const [monthService, setMonthService] = useState(0)
+  const [monthTips, setMonthTips] = useState(0)
   const [weekCount, setWeekCount] = useState(0)
   const [monthCount, setMonthCount] = useState(0)
   const [periodDetail, setPeriodDetail] = useState<'week' | 'month' | null>(null)
@@ -862,10 +866,18 @@ export default function CashierPage() {
         supabase.from('appointments').select('payment_amount, tip_amount').eq('payment_status', 'paid').gte('appointment_date', weekStr).lte('appointment_date', todayStr),
         supabase.from('appointments').select('payment_amount, tip_amount').eq('payment_status', 'paid').gte('appointment_date', monthStr).lte('appointment_date', todayStr),
       ])
-      const sum = (rows: {payment_amount:string|null;tip_amount:string|null}[]) =>
-        rows.reduce((s, r) => s + parseFloat(r.payment_amount||'0') + parseFloat(r.tip_amount||'0'), 0)
-      if (wRes.data) { setWeekTotal(sum(wRes.data)); setWeekCount(wRes.data.length) }
-      if (mRes.data) { setMonthTotal(sum(mRes.data)); setMonthCount(mRes.data.length) }
+      const sumSvc = (rows: {payment_amount:string|null;tip_amount:string|null}[]) =>
+        rows.reduce((s, r) => s + parseFloat(r.payment_amount||'0'), 0)
+      const sumTip = (rows: {payment_amount:string|null;tip_amount:string|null}[]) =>
+        rows.reduce((s, r) => s + parseFloat(r.tip_amount||'0'), 0)
+      if (wRes.data) {
+        const svc = sumSvc(wRes.data), tip = sumTip(wRes.data)
+        setWeekService(svc); setWeekTips(tip); setWeekTotal(svc + tip); setWeekCount(wRes.data.length)
+      }
+      if (mRes.data) {
+        const svc = sumSvc(mRes.data), tip = sumTip(mRes.data)
+        setMonthService(svc); setMonthTips(tip); setMonthTotal(svc + tip); setMonthCount(mRes.data.length)
+      }
     } catch { /**/ }
   }, [])
 
@@ -1248,8 +1260,13 @@ export default function CashierPage() {
                 <p className="text-3xl font-black leading-tight">
                   {weekTotal === null ? <span className="text-sky-200 text-xl">…</span> : fmtMoney(weekTotal)}
                 </p>
-                <p className="text-sky-100 text-xs mt-1.5">Mon – today</p>
-                <p className="text-sky-200 text-xs mt-0.5">{weekCount} paid appointment{weekCount !== 1 ? 's' : ''} · tap for details</p>
+                {weekTotal !== null && (
+                  <p className="text-sky-100 text-xs mt-1.5">
+                    {fmtMoney(weekService)} svc
+                    {weekTips > 0 && <span className="ml-1 text-emerald-300">+{fmtMoney(weekTips)} tip</span>}
+                  </p>
+                )}
+                <p className="text-sky-200 text-xs mt-0.5">Mon – today · {weekCount} paid · tap for details</p>
               </button>
               {/* This Month */}
               <button onClick={() => openPeriodDetail('month')}
@@ -1258,8 +1275,13 @@ export default function CashierPage() {
                 <p className="text-3xl font-black leading-tight">
                   {monthTotal === null ? <span className="text-emerald-200 text-xl">…</span> : fmtMoney(monthTotal)}
                 </p>
-                <p className="text-emerald-100 text-xs mt-1.5">{now.toLocaleDateString('en-US', { month: 'long' })}</p>
-                <p className="text-emerald-200 text-xs mt-0.5">{monthCount} paid appointment{monthCount !== 1 ? 's' : ''} · tap for details</p>
+                {monthTotal !== null && (
+                  <p className="text-emerald-100 text-xs mt-1.5">
+                    {fmtMoney(monthService)} svc
+                    {monthTips > 0 && <span className="ml-1 text-emerald-200">+{fmtMoney(monthTips)} tip</span>}
+                  </p>
+                )}
+                <p className="text-emerald-200 text-xs mt-0.5">{now.toLocaleDateString('en-US', { month: 'long' })} · {monthCount} paid · tap for details</p>
               </button>
             </div>
 
