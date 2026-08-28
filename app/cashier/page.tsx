@@ -1751,8 +1751,10 @@ export default function CashierPage() {
                                   <p className="text-gray-400 text-xs">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
                                 </div>
                                 <div className="text-right flex-shrink-0">
-                                  <p className="font-bold text-gray-700 text-sm">{fmtMoney(svc)}</p>
-                                  {tip > 0 && <p className="text-emerald-500 text-xs">+{fmtMoney(tip)} tip</p>}
+                                  <p className="font-bold text-gray-700 text-sm">{fmtMoney(svc + tip)}</p>
+                                  <p className="text-gray-400 text-[11px]">
+                                    ({fmtMoney(svc)} svc{tip > 0 && <span className="text-emerald-500"> + {fmtMoney(tip)} tip</span>})
+                                  </p>
                                 </div>
                                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{s.icon}</span>
                               </div>
