@@ -5473,7 +5473,7 @@ export default function DeskAdmin() {
               <div className="flex items-center gap-4 mb-3">
                 <div className="relative flex-1 max-w-sm">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-                  <input type="text" placeholder="Search by name or phone..."
+                  <input type="text" placeholder="Search by name, pet, or phone..."
                     value={clientSearch} onChange={e => setClientSearch(e.target.value)}
                     className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white shadow-sm" />
                 </div>
@@ -5516,7 +5516,15 @@ export default function DeskAdmin() {
               {!clientsLoading && (
                 <div className="space-y-3">
                   {clients
-                    .filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()) || c.phone.includes(clientSearch))
+                    .filter(c => {
+                      const q = clientSearch.toLowerCase().trim()
+                      if (!q) return true
+                      return (
+                        c.name.toLowerCase().includes(q) ||
+                        c.phone.includes(clientSearch) ||
+                        c.pets.some(p => p.name.toLowerCase().includes(q))
+                      )
+                    })
                     .filter(c => clientTagFilter.length === 0 || c.pets.some(p => (p.tags || []).some(t => clientTagFilter.includes(t.id))))
                     .map(client => {
                       const isOpen = expandedClient === client.phone

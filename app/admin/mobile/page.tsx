@@ -5087,7 +5087,7 @@ export default function AdminPage() {
               {/* Search */}
               <input
                 type="text"
-                placeholder="Search by name or phone..."
+                placeholder="Search by name, pet, or phone..."
                 value={customerSearch}
                 onChange={e => setCustomerSearch(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
@@ -5102,10 +5102,15 @@ export default function AdminPage() {
                 </div>
               ) : (
                 customers
-                  .filter(c =>
-                    c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-                    c.phone.includes(customerSearch)
-                  )
+                  .filter(c => {
+                    const q = customerSearch.toLowerCase().trim()
+                    if (!q) return true
+                    return (
+                      c.name.toLowerCase().includes(q) ||
+                      c.phone.includes(customerSearch) ||
+                      c.pets.some(p => p.name.toLowerCase().includes(q))
+                    )
+                  })
                   .map(client => (
                     <div key={client.phone} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                       {/* Client header */}
