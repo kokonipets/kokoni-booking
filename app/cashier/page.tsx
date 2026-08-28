@@ -710,6 +710,9 @@ export default function CashierPage() {
   const [monthTotal, setMonthTotal] = useState<number | null>(null)
   const [weekCount, setWeekCount] = useState(0)
   const [monthCount, setMonthCount] = useState(0)
+  const [periodDetail, setPeriodDetail] = useState<'week' | 'month' | null>(null)
+  const [periodDetailRows, setPeriodDetailRows] = useState<Appt[]>([])
+  const [periodDetailLoading, setPeriodDetailLoading] = useState(false)
   const [alerts, setAlerts] = useState<{ id: string; pet: string; owner: string; method: string; amount: string | null; tip: string | null; time: string }[]>([])
   const [now, setNow] = useState(new Date())
   const [checkoutAppt, setCheckoutAppt] = useState<Appt | null>(null)
@@ -864,6 +867,40 @@ export default function CashierPage() {
       if (wRes.data) { setWeekTotal(sum(wRes.data)); setWeekCount(wRes.data.length) }
       if (mRes.data) { setMonthTotal(sum(mRes.data)); setMonthCount(mRes.data.length) }
     } catch { /**/ }
+  }, [])
+
+  const getPeriodRange = (period: 'week' | 'month') => {
+    const _now = new Date()
+    if (_now.getHours() < 4) _now.setDate(_now.getDate() - 1)
+    const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
+    if (period === 'week') {
+      const dow = _now.getDay() === 0 ? 6 : _now.getDay() - 1 // Mon=0
+      const weekStart = new Date(_now); weekStart.setDate(_now.getDate() - dow)
+      const weekStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`
+      return { start: weekStr, end: todayStr }
+    }
+    const monthStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-01`
+    return { start: monthStr, end: todayStr }
+  }
+
+  const openPeriodDetail = useCallback(async (period: 'week' | 'month') => {
+    setPeriodDetail(period)
+    setPeriodDetailLoading(true)
+    try {
+      const { start, end } = getPeriodRange(period)
+      const { data } = await supabase.from('appointments')
+        .select('id, appointment_time, appointment_date, service, status, grooming_status, payment_method, payment_amount, tip_amount, payment_status, assigned_groomer, assigned_bather, pets(id, name, breed, photo_url), clients(name, phone)')
+        .eq('payment_status', 'paid')
+        .gte('appointment_date', start)
+        .lte('appointment_date', end)
+        .order('appointment_date', { ascending: false })
+        .order('appointment_time', { ascending: true })
+      setPeriodDetailRows(((data as unknown) as Appt[]) || [])
+    } catch {
+      setPeriodDetailRows([])
+    } finally {
+      setPeriodDetailLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -1205,23 +1242,25 @@ export default function CashierPage() {
                 <p className="text-violet-300 text-xs mt-0.5">{paid.length} paid · {unpaid.length} unpaid</p>
               </div>
               {/* This Week */}
-              <div className="bg-gradient-to-br from-sky-500 to-sky-600 rounded-2xl p-5 text-white shadow-lg">
+              <button onClick={() => openPeriodDetail('week')}
+                className="bg-gradient-to-br from-sky-500 to-sky-600 rounded-2xl p-5 text-white shadow-lg text-left hover:brightness-110 active:brightness-95 transition-all cursor-pointer">
                 <p className="text-sky-100 text-xs font-bold uppercase tracking-widest mb-1">This Week</p>
                 <p className="text-3xl font-black leading-tight">
                   {weekTotal === null ? <span className="text-sky-200 text-xl">…</span> : fmtMoney(weekTotal)}
                 </p>
                 <p className="text-sky-100 text-xs mt-1.5">Mon – today</p>
-                <p className="text-sky-200 text-xs mt-0.5">{weekCount} paid appointment{weekCount !== 1 ? 's' : ''}</p>
-              </div>
+                <p className="text-sky-200 text-xs mt-0.5">{weekCount} paid appointment{weekCount !== 1 ? 's' : ''} · tap for details</p>
+              </button>
               {/* This Month */}
-              <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-5 text-white shadow-lg">
+              <button onClick={() => openPeriodDetail('month')}
+                className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-5 text-white shadow-lg text-left hover:brightness-110 active:brightness-95 transition-all cursor-pointer">
                 <p className="text-emerald-100 text-xs font-bold uppercase tracking-widest mb-1">This Month</p>
                 <p className="text-3xl font-black leading-tight">
                   {monthTotal === null ? <span className="text-emerald-200 text-xl">…</span> : fmtMoney(monthTotal)}
                 </p>
                 <p className="text-emerald-100 text-xs mt-1.5">{now.toLocaleDateString('en-US', { month: 'long' })}</p>
-                <p className="text-emerald-200 text-xs mt-0.5">{monthCount} paid appointment{monthCount !== 1 ? 's' : ''}</p>
-              </div>
+                <p className="text-emerald-200 text-xs mt-0.5">{monthCount} paid appointment{monthCount !== 1 ? 's' : ''} · tap for details</p>
+              </button>
             </div>
 
             {/* ── Payment method breakdown (today) ── */}
@@ -1632,6 +1671,76 @@ export default function CashierPage() {
           }}
           serviceLabels={serviceMap}
         />
+      )}
+
+      {/* Period detail modal (This Week / This Month) */}
+      {periodDetail && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPeriodDetail(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 className="text-lg font-black text-gray-800">
+                  {periodDetail === 'week' ? '📅 This Week' : '🗓️ This Month'}
+                </h2>
+                {!periodDetailLoading && (
+                  <p className="text-sm text-gray-400">
+                    {fmtMoney(periodDetailRows.reduce((s, a) => s + parseFloat(a.payment_amount || '0') + parseFloat(a.tip_amount || '0'), 0))}
+                    {' · '}{periodDetailRows.length} paid appointment{periodDetailRows.length !== 1 ? 's' : ''}
+                  </p>
+                )}
+              </div>
+              <button onClick={() => setPeriodDetail(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {periodDetailLoading ? (
+                <div className="text-center py-16 text-gray-400 text-sm">Loading...</div>
+              ) : periodDetailRows.length === 0 ? (
+                <div className="text-center py-16 text-gray-400 text-sm">No paid appointments in this period</div>
+              ) : (
+                (() => {
+                  const byDate: Record<string, Appt[]> = {}
+                  periodDetailRows.forEach(a => { (byDate[a.appointment_date] ||= []).push(a) })
+                  const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
+                  return dates.map(d => {
+                    const rows = byDate[d]
+                    const dayTotal = rows.reduce((s, a) => s + parseFloat(a.payment_amount || '0') + parseFloat(a.tip_amount || '0'), 0)
+                    return (
+                      <div key={d}>
+                        <div className="px-6 py-2 bg-gray-50 flex items-center justify-between sticky top-0">
+                          <p className="text-xs font-bold text-gray-500">
+                            {new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </p>
+                          <p className="text-xs font-bold text-gray-500">{fmtMoney(dayTotal)}</p>
+                        </div>
+                        <div className="divide-y divide-gray-50">
+                          {rows.map(a => {
+                            const s = PM[a.payment_method ?? ''] ?? { bg: 'bg-gray-100', text: 'text-gray-500', icon: '💰', label: a.payment_method ?? '—', border: '' }
+                            const tip = parseFloat(a.tip_amount || '0')
+                            const svc = parseFloat(a.payment_amount || '0')
+                            return (
+                              <div key={a.id} className="flex items-center gap-3 px-6 py-3">
+                                {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" alt="" /> : <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-bold text-gray-700 truncate text-sm">{a.pets?.name} <span className="text-gray-400 font-normal text-xs">· {a.clients?.name}</span></p>
+                                  <p className="text-gray-400 text-xs">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <p className="font-bold text-gray-700 text-sm">{fmtMoney(svc)}</p>
+                                  {tip > 0 && <p className="text-emerald-500 text-xs">+{fmtMoney(tip)} tip</p>}
+                                </div>
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{s.icon}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })
+                })()
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
