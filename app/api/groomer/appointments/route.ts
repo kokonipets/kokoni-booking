@@ -12,6 +12,26 @@ function getAdminClient() {
   )
 }
 
+// Supabase/PostgREST caps a single .select() at 1000 rows by default — page
+// through .range() so the "first visit ever" lookup below doesn't silently
+// miss older appointments once a client's history grows past 1000 rows.
+const PAGE_SIZE = 1000
+async function fetchAllRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const all: T[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1)
+    if (error) return { data: all, error }
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return { data: all, error: null }
+}
+
 export async function GET(req: NextRequest) {
   const supabase = getAdminClient()
   const { searchParams } = new URL(req.url)
@@ -76,7 +96,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch appointments' }, { status: 500 })
     }
 
-    return NextResponse.json({ appointments: appointments || [] })
+    // Detect first-time visits: mark only the appointment that is the client's
+    // earliest EVER (mirrors app/api/admin/appointments/route.ts) so the
+    // groomer app can show the same "⭐ First Visit" badge as the admin desk.
+    let appointmentsWithFirstVisit = appointments || []
+    if (appointmentsWithFirstVisit.length) {
+      const phones = [...new Set(appointmentsWithFirstVisit.map((a: { client_phone: string }) => a.client_phone))]
+      const { data: allAppts } = await fetchAllRows<{ client_phone: string; appointment_date: string }>((from, to) =>
+        supabase
+          .from('appointments')
+          .select('client_phone, appointment_date')
+          .in('client_phone', phones)
+          .not('status', 'eq', 'cancelled')
+          .order('appointment_date', { ascending: true })
+          .range(from, to)
+      )
+      const firstDateByPhone: Record<string, string> = {}
+      for (const a of (allAppts || [])) {
+        if (!firstDateByPhone[a.client_phone] || a.appointment_date < firstDateByPhone[a.client_phone]) {
+          firstDateByPhone[a.client_phone] = a.appointment_date
+        }
+      }
+      appointmentsWithFirstVisit = appointmentsWithFirstVisit.map((a: { client_phone: string; appointment_date: string }) => ({
+        ...a,
+        is_new_client: firstDateByPhone[a.client_phone] === a.appointment_date,
+      }))
+    }
+
+    return NextResponse.json({ appointments: appointmentsWithFirstVisit })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })

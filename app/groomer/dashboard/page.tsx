@@ -31,6 +31,7 @@ type Appointment = {
   checked_in_at?: string | null
   grooming_started_at?: string | null
   grooming_finished_at?: string | null
+  is_new_client?: boolean | null
   grooming_quality?: {
     groomer_diary?: string | null
     groomer_diary_english?: string | null
@@ -1548,10 +1549,10 @@ export default function GroomerDashboard() {
                         const timeStr = formatTime(a.appointment_time).replace(':00', '').replace(' AM', 'a').replace(' PM', 'p')
                         const svcLabel = serviceMap[a.service] ?? a.service
                         const svcShort = a.service === 'bath_brush' ? 'B&B' : a.service === 'asian_fusion' ? 'AF' : a.service === 'simply_cute' ? 'SC' : svcLabel.slice(0, 3).toUpperCase()
-                        const chipColor = a.service === 'bath_brush' ? 'bg-teal-100 text-teal-700' : a.service === 'asian_fusion' ? 'bg-pink-100 text-pink-700' : a.service === 'simply_cute' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'
+                        const chipColor = a.is_new_client ? 'bg-amber-100 text-amber-700' : a.service === 'bath_brush' ? 'bg-teal-100 text-teal-700' : a.service === 'asian_fusion' ? 'bg-pink-100 text-pink-700' : a.service === 'simply_cute' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'
                         return (
                           <span key={idx} className={`w-full text-[10px] font-semibold rounded px-0.5 py-px mb-px truncate leading-tight ${chipColor}`}>
-                            {timeStr} {svcShort}
+                            {a.is_new_client && '⭐'}{timeStr} {svcShort}
                           </span>
                         )
                       })}
@@ -1592,7 +1593,7 @@ export default function GroomerDashboard() {
                       </span>
                       <div className="flex flex-wrap justify-center gap-0.5 mt-1.5">
                         {dayAppts.slice(0, 3).map((a, idx) => {
-                          const dotColor = a.service === 'bath_brush' ? 'bg-teal-400' : a.service === 'asian_fusion' ? 'bg-pink-400' : 'bg-sky-400'
+                          const dotColor = a.is_new_client ? 'bg-amber-400' : a.service === 'bath_brush' ? 'bg-teal-400' : a.service === 'asian_fusion' ? 'bg-pink-400' : 'bg-sky-400'
                           return <span key={idx} className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
                         })}
                         {dayAppts.length > 3 && <span className="text-[8px] text-gray-400 leading-none">+{dayAppts.length - 3}</span>}
@@ -1635,10 +1636,10 @@ export default function GroomerDashboard() {
                         const timeStr = formatTime(a.appointment_time).replace(':00', '').replace(' AM', 'a').replace(' PM', 'p')
                         const svcLabel = serviceMap[a.service] ?? a.service
                         const svcShort = a.service === 'bath_brush' ? 'B&B' : a.service === 'asian_fusion' ? 'AF' : a.service === 'simply_cute' ? 'SC' : svcLabel.slice(0, 3).toUpperCase()
-                        const chipColor = a.service === 'bath_brush' ? 'bg-teal-100 text-teal-700' : a.service === 'asian_fusion' ? 'bg-pink-100 text-pink-700' : a.service === 'simply_cute' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'
+                        const chipColor = a.is_new_client ? 'bg-amber-100 text-amber-700' : a.service === 'bath_brush' ? 'bg-teal-100 text-teal-700' : a.service === 'asian_fusion' ? 'bg-pink-100 text-pink-700' : a.service === 'simply_cute' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'
                         return (
                           <span key={idx} className={`w-full text-[10px] font-semibold rounded px-0.5 py-px mb-0.5 truncate leading-tight ${chipColor}`}>
-                            {timeStr} {svcShort}
+                            {a.is_new_client && '⭐'}{timeStr} {svcShort}
                           </span>
                         )
                       })}
@@ -1655,6 +1656,7 @@ export default function GroomerDashboard() {
             <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="w-2.5 h-2.5 rounded bg-sky-100 border border-sky-300 inline-block"/>SC</span>
             <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="w-2.5 h-2.5 rounded bg-teal-100 border border-teal-300 inline-block"/>B&B</span>
             <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="w-2.5 h-2.5 rounded bg-pink-100 border border-pink-300 inline-block"/>AF</span>
+            <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="text-amber-500">⭐</span>First Visit</span>
           </div>
 
           {/* Selected day — time-slot view */}
@@ -1690,6 +1692,7 @@ export default function GroomerDashboard() {
                         </div>
                         {/* Appointment card */}
                         <div className={`flex-1 min-w-0 border-l border-gray-100 my-2 mr-3 rounded-xl px-3 py-2 flex items-center gap-3 overflow-hidden ${
+                          appt.is_new_client ? 'bg-amber-50 border-2 border-amber-300' :
                           appt.service === 'simply_cute' ? 'bg-sky-50 border border-sky-200' :
                           appt.service === 'bath_brush'  ? 'bg-teal-50 border border-teal-200' :
                           appt.service === 'asian_fusion'? 'bg-pink-50 border border-pink-200' :
@@ -1728,7 +1731,12 @@ export default function GroomerDashboard() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-800 text-sm truncate">{appt.pets?.name}{appt.payment_amount ? <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[10px] font-bold leading-none">$</span> : null}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-semibold text-gray-800 text-sm truncate">{appt.pets?.name}{appt.payment_amount ? <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[10px] font-bold leading-none">$</span> : null}</p>
+                              {appt.is_new_client && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400 text-white font-bold flex-shrink-0">⭐ First Visit</span>
+                              )}
+                            </div>
                             <p className="text-xs text-gray-500 truncate">{serviceMap[appt.service] ?? appt.service}</p>
                             {appt.clients?.name && <p className="text-xs text-gray-400 truncate">{appt.clients.name}</p>}
                           </div>
@@ -3274,7 +3282,11 @@ function ApptCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               {/* Pet name bold */}
-              <p className="font-bold text-gray-900 text-sm leading-tight">{appt.pets?.name ?? 'Unknown Pet'}{appt.payment_amount ? <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[10px] font-bold leading-none">$</span> : null}</p>
+              <p className="font-bold text-gray-900 text-sm leading-tight">
+                {appt.pets?.name ?? 'Unknown Pet'}
+                {appt.payment_amount ? <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[10px] font-bold leading-none">$</span> : null}
+                {appt.is_new_client && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400 text-white font-bold align-middle">⭐ First Visit</span>}
+              </p>
               {/* Date badge (Upcoming tab only) or tap-to-view indicator */}
               {showDateBadge ? (
                 <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
