@@ -1382,7 +1382,7 @@ export default function CashierPage() {
                           <p className="font-bold text-gray-600 truncate text-sm">{a.pets?.name} <span className="text-gray-400 font-normal text-xs">· {a.clients?.name}</span></p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="font-bold text-gray-600 text-sm">{fmtMoney(svc + tip)}</p>
+                          <p className="font-bold text-gray-600 text-sm">{fmtMoney(svc)}</p>
                           {tip > 0 && <p className="text-emerald-500 text-xs">+{fmtMoney(tip)} tip</p>}
                         </div>
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{s.icon}</span>
@@ -1594,7 +1594,7 @@ export default function CashierPage() {
                           <p className="text-gray-400 text-xs">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-black text-emerald-600 text-sm">{fmtMoney(svc + tip)}</p>
+                          <p className="font-black text-emerald-600 text-sm">{fmtMoney(svc)}</p>
                           {tip > 0 && <p className="text-emerald-400 text-xs">+{fmtMoney(tip)} tip</p>}
                           <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{s.icon} {s.label}</span>
                         </div>
