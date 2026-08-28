@@ -517,15 +517,17 @@ export async function PATCH(
     if (grooming_status === 'ready') {
       const { data: appt } = await supabase
         .from('appointments')
-        .select('client_phone, clients(name, sms_consent), pets!pet_id(name)')
+        .select('client_phone, is_walk_in, clients(name, sms_consent), pets!pet_id(name)')
         .eq('id', id)
         .single()
 
       if (appt) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const a = appt as any
+        // Walk-ins are already standing in the store — a "ready for pickup" text
+        // doesn't apply to them, so skip the client SMS entirely.
         // Only send client SMS if client opted in (A2P 10DLC compliance)
-        if (a.clients?.sms_consent) {
+        if (a.clients?.sms_consent && !a.is_walk_in) {
           // Include the groomer's note to customer, if one was written.
           // Send the English version to the customer (groomer may type Chinese; it's auto-translated).
           const gq = grooming_quality as { customer_note_raw?: string; customer_note_english?: string } | undefined

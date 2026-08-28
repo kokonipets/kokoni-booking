@@ -1016,6 +1016,9 @@ export default function BookPage() {
                 const grouped: Record<string, any[]> = { 'Bath & Brush': [], 'Simply Cute': [], 'Asian Fusion': [], 'Other': [] }
                 dynamicServices.forEach(s => {
                   if (!s.visible && s.visible !== undefined) return // skip hidden services
+                  // Walk-in mode only offers services flagged "⚡ Walk-in Anytime" in Settings —
+                  // those are the quick ones that don't need a real time slot.
+                  if (isWalkIn && !s.skipCapacity) return
                   const n = s.name.toLowerCase()
                   if (n.includes('bath') || n.includes('brush')) grouped['Bath & Brush'].push(s)
                   else if (n.includes('simply') || n.includes('cute')) grouped['Simply Cute'].push(s)
@@ -1052,9 +1055,17 @@ export default function BookPage() {
                     {service === s.id && <CheckCircle2 className="w-5 h-5 text-sky-500 mt-1" />}
                   </button>
                 )
-                return order.flatMap(groupName =>
+                const buttons = order.flatMap(groupName =>
                   (grouped[groupName] || []).map(serviceButton)
                 )
+                if (isWalkIn && buttons.length === 0) {
+                  return (
+                    <p className="text-sm text-gray-400 text-center py-6">
+                      No walk-in services are set up yet. Please check in with the front desk.
+                    </p>
+                  )
+                }
+                return buttons
               })()}
             </div>
 
