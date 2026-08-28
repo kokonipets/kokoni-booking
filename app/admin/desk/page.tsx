@@ -3857,7 +3857,7 @@ export default function DeskAdmin() {
                               </div>
                               <button
                                 onClick={() => setExpandedHistoryId(prev => prev === a.id ? null : a.id)}
-                                className="px-3 py-1 text-xs font-semibold bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-lg flex-shrink-0 transition-colors"
+                                className={`px-3 py-1 text-xs font-semibold rounded-lg flex-shrink-0 transition-colors ${expandedHistoryId === a.id ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' : 'bg-sky-100 hover:bg-sky-200 text-sky-700'}`}
                               >
                                 {expandedHistoryId === a.id ? 'Hide' : 'View'}
                               </button>
