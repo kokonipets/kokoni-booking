@@ -1118,7 +1118,7 @@ export default function GroomerDashboard() {
     if (!apptsByDate[a.appointment_date]) apptsByDate[a.appointment_date] = []
     apptsByDate[a.appointment_date].push(a)
   })
-  Object.values(apptsByDate).forEach(list => list.sort((a, b) => a.appointment_time.localeCompare(b.appointment_time)))
+  Object.values(apptsByDate).forEach(list => list.sort((a, b) => parseApptMins(a.appointment_time) - parseApptMins(b.appointment_time)))
   const selectedDayAppts = calendarSelected
     ? (apptsByDate[calendarSelected] || [])
     : []
@@ -1686,7 +1686,7 @@ export default function GroomerDashboard() {
                       >
                         {/* Time column */}
                         <div className="w-16 flex-shrink-0 flex items-center justify-end pr-3 py-3">
-                          <span className="text-xs font-semibold text-gray-400">{appt.appointment_time}</span>
+                          <span className="text-xs font-semibold text-gray-400">{formatTime(appt.appointment_time)}</span>
                         </div>
                         {/* Appointment card */}
                         <div className={`flex-1 min-w-0 border-l border-gray-100 my-2 mr-3 rounded-xl px-3 py-2 flex items-center gap-3 overflow-hidden ${
