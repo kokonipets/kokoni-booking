@@ -3904,7 +3904,7 @@ export default function DeskAdmin() {
                                   )}
                                   {/* Health check detail */}
                                   {hc && (
-                                    <div className="bg-white rounded-xl border border-gray-100 p-3">
+                                    <div className="bg-white rounded-xl border border-gray-100 p-3 space-y-2">
                                       <p className="text-xs font-semibold text-sky-700 mb-2">🩺 Initial Health Check</p>
                                       <div className="grid grid-cols-2 gap-1.5">
                                         {HC_SECTIONS.map(s => {
@@ -3918,11 +3918,19 @@ export default function DeskAdmin() {
                                           )
                                         })}
                                       </div>
+                                      {/* Health concerns note (added by groomer during initial check) */}
+                                      {hc.groomer_notes_english && (
+                                        <div className="bg-rose-50 border border-rose-100 rounded-xl px-3 py-2 space-y-0.5">
+                                          <p className="text-xs font-semibold text-rose-600">🏥 Health Concerns / 健康狀況</p>
+                                          <p className="text-xs text-gray-600">{hc.groomer_notes_english}</p>
+                                          {hc.groomer_notes_chinese && <p className="text-xs text-gray-400">{hc.groomer_notes_chinese}</p>}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                   {/* Quality check detail */}
                                   {q && (
-                                    <div className="bg-white rounded-xl border border-gray-100 p-3">
+                                    <div className="bg-white rounded-xl border border-gray-100 p-3 space-y-2">
                                       <p className="text-xs font-semibold text-emerald-700 mb-2">🎯 Grooming Quality Check</p>
                                       <div className="grid grid-cols-2 gap-1.5">
                                         {Q_CHECKS.map(c => {
@@ -3934,6 +3942,24 @@ export default function DeskAdmin() {
                                           )
                                         })}
                                       </div>
+                                      {/* Groomer's diary note for this visit */}
+                                      {(q.groomer_diary || q.groomer_diary_english) && (
+                                        <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-0.5">
+                                          <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
+                                          <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary_english || q.groomer_diary}</p>
+                                          {q.groomer_diary_traditional && q.groomer_diary_traditional !== (q.groomer_diary_english || q.groomer_diary) && (
+                                            <p className="text-xs text-gray-400">{q.groomer_diary_traditional}</p>
+                                          )}
+                                        </div>
+                                      )}
+                                      {/* Groomer's note left for the customer */}
+                                      {q.customer_note_english && (
+                                        <div className="bg-white border border-emerald-100 rounded-xl px-3 py-2 space-y-0.5">
+                                          <p className="text-xs font-semibold text-emerald-600">💌 Note to Customer</p>
+                                          <p className="text-xs text-gray-600">{q.customer_note_english}</p>
+                                          {q.customer_note_traditional && <p className="text-xs text-gray-400">{q.customer_note_traditional}</p>}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                   {/* Add-ons */}
@@ -3950,10 +3976,10 @@ export default function DeskAdmin() {
                                       </div>
                                     </div>
                                   )}
-                                  {/* Groomer notes */}
+                                  {/* Staff notes (timeline notes, distinct from the groomer diary above) */}
                                   {(a.notes || groomerNotes.length > 0) && (
                                     <div className="bg-white rounded-xl border border-gray-100 p-3">
-                                      <p className="text-xs font-semibold text-gray-500 mb-1.5">📝 Notes</p>
+                                      <p className="text-xs font-semibold text-gray-500 mb-1.5">📝 Staff Notes</p>
                                       {a.notes && <p className="text-xs text-gray-600 whitespace-pre-wrap mb-1">{a.notes}</p>}
                                       {groomerNotes.map(n => (
                                         <p key={n.id} className="text-xs text-gray-600">
