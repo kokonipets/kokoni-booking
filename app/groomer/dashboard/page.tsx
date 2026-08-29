@@ -40,6 +40,9 @@ type Appointment = {
     groomer_diary_simplified?: string | null
     groomer_diary_author?: string | null
     groomer_diary_updated_at?: string | null
+    supervisor_note?: string | null
+    supervisor_note_author?: string | null
+    supervisor_note_updated_at?: string | null
     [key: string]: unknown
   } | null
 }
@@ -2766,6 +2769,22 @@ export default function GroomerDashboard() {
                   </p>
                 )}
               </div>
+
+              {/* ─── SUPERVISOR NOTE — read-only. Only admin can write/edit this, from
+                    admin/desk or admin/mobile; the groomer just sees it here. ─── */}
+              {selectedAppt.grooming_quality?.supervisor_note && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-sky-500 px-1">👔 Supervisor Note / 店長備註</p>
+                  <div className="bg-sky-50 rounded-2xl px-4 py-3 space-y-1">
+                    <p className="text-sm text-sky-700 whitespace-pre-wrap">
+                      {selectedAppt.grooming_quality.supervisor_note}
+                    </p>
+                    {selectedAppt.grooming_quality.supervisor_note_author && (
+                      <p className="text-[11px] text-sky-400">— {selectedAppt.grooming_quality.supervisor_note_author}</p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* ─── CUSTOMER REQUESTS ─── */}
               {(() => {
