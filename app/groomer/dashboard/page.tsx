@@ -1329,7 +1329,12 @@ export default function GroomerDashboard() {
           <div>
             <h2 className="text-xl font-bold text-gray-800">Today</h2>
             <p className="text-sm text-gray-400">
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              {/* Pinned to the salon's timezone so this renders identically on the
+                  server and the client — without it, whenever the server (UTC) and
+                  the browser (Pacific) are on different calendar days, React throws
+                  a hydration mismatch here that can break other interactive elements
+                  on the page (e.g. the pet-tag picker) for the rest of the session. */}
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' })}
             </p>
             <p className="text-xs font-medium mt-1">
               {todayLate.length > 0 && <><span className="text-rose-600 font-bold">Late: {todayLate.length}</span> · </>}
