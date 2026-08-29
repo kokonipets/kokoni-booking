@@ -548,6 +548,36 @@ export async function PATCH(
     return NextResponse.json({ success: true })
   }
 
+  // Update just the internal groomer diary note, independent of grooming/checkout status.
+  // Lets a groomer fix or add to their notes even after the customer has already been
+  // checked out — reusing the grooming-status action for this would re-send the
+  // "ready for pickup" SMS and incorrectly revert the appointment out of completed status.
+  if (action === 'update-groomer-diary') {
+    const { groomer_diary, groomer_diary_english, groomer_diary_traditional, groomer_diary_simplified } = body
+
+    const { data: existing } = await supabase
+      .from('appointments')
+      .select('grooming_quality')
+      .eq('id', id)
+      .single()
+
+    const grooming_quality = {
+      ...(existing?.grooming_quality ?? {}),
+      groomer_diary: groomer_diary ?? '',
+      groomer_diary_english: groomer_diary_english ?? groomer_diary ?? '',
+      groomer_diary_traditional: groomer_diary_traditional ?? '',
+      groomer_diary_simplified: groomer_diary_simplified ?? '',
+    }
+
+    const { error } = await supabase
+      .from('appointments')
+      .update({ grooming_quality })
+      .eq('id', id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true, grooming_quality })
+  }
+
   // Delete legacy note (clear old notes fields)
   if (action === 'delete-legacy-note') {
     const { error } = await supabase

@@ -74,6 +74,7 @@ export async function GET(req: NextRequest) {
         checked_in_at,
         grooming_started_at,
         grooming_finished_at,
+        checked_out_at,
         clients (
           name,
           phone,

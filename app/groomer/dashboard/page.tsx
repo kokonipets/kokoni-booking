@@ -31,6 +31,7 @@ type Appointment = {
   checked_in_at?: string | null
   grooming_started_at?: string | null
   grooming_finished_at?: string | null
+  checked_out_at?: string | null
   is_new_client?: boolean | null
   grooming_quality?: {
     groomer_diary?: string | null
@@ -278,6 +279,14 @@ export default function GroomerDashboard() {
   const noteTranslateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const noteIsComposingRef = useRef(false)
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
+  // Editing the internal groomer diary note from the appointment popup — kept available
+  // even after checkout/payment, since groomers sometimes need to add/fix a note afterward.
+  const [editingGroomerDiary, setEditingGroomerDiary] = useState(false)
+  const [popupGroomerDiaryText, setPopupGroomerDiaryText] = useState('')
+  const [popupGroomerDiaryTranslations, setPopupGroomerDiaryTranslations] = useState<{ english: string; traditional: string; simplified: string; detected: string } | null>(null)
+  const [translatingPopupGroomerDiary, setTranslatingPopupGroomerDiary] = useState(false)
+  const [savingPopupGroomerDiary, setSavingPopupGroomerDiary] = useState(false)
+  const popupGroomerDiaryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const apptPopupBodyRef = useRef<HTMLDivElement>(null)
   const [popupPetName, setPopupPetName] = useState('')
   const [editingPetInfo, setEditingPetInfo] = useState(false)
@@ -748,6 +757,16 @@ export default function GroomerDashboard() {
 
   // ── Popup editing helpers ────────────────────────────────────────────────
 
+  // Groomer notes (internal diary) stay editable for 72 hours after checkout —
+  // long enough to fix a typo or add something remembered later — then lock so
+  // old visits can't be silently rewritten weeks after the fact. No checkout
+  // timestamp yet (still in progress) always counts as editable.
+  const GROOMER_NOTE_EDIT_WINDOW_MS = 72 * 60 * 60 * 1000
+  const isGroomerNoteEditable = (checkedOutAt?: string | null) => {
+    if (!checkedOutAt) return true
+    return Date.now() - new Date(checkedOutAt).getTime() < GROOMER_NOTE_EDIT_WINDOW_MS
+  }
+
   const openApptPopup = async (appt: Appointment, opts?: { readOnly?: boolean }) => {
     setPopupReadOnly(!!opts?.readOnly)
     // Only remember a "home" appointment when opening a real (non-read-only) visit.
@@ -965,6 +984,38 @@ export default function GroomerDashboard() {
       }
     } catch {/**/}
     finally { setSavingPopupNote(false) }
+  }
+
+  // Save the internal groomer diary note — works regardless of grooming/checkout status,
+  // via a dedicated API action so it never re-triggers the "ready for pickup" SMS or
+  // reverts the checkout status the way reusing the grooming-status action would.
+  const saveGroomerDiary = async () => {
+    if (!selectedAppt) return
+    setSavingPopupGroomerDiary(true)
+    try {
+      const groomer_diary = popupGroomerDiaryText.trim()
+      const groomer_diary_english = popupGroomerDiaryTranslations?.detected !== 'english' ? (popupGroomerDiaryTranslations?.english ?? groomer_diary) : groomer_diary
+      const groomer_diary_traditional = popupGroomerDiaryTranslations?.detected !== 'traditional' ? (popupGroomerDiaryTranslations?.traditional ?? '') : groomer_diary
+      const groomer_diary_simplified = popupGroomerDiaryTranslations?.simplified ?? ''
+      const res = await fetch(`/api/admin/appointments/${selectedAppt.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update-groomer-diary', groomer_diary, groomer_diary_english, groomer_diary_traditional, groomer_diary_simplified }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const updated = { ...selectedAppt, grooming_quality: { ...(selectedAppt.grooming_quality ?? {}), groomer_diary, groomer_diary_english, groomer_diary_traditional, groomer_diary_simplified } } as typeof selectedAppt
+        setSelectedAppt(updated)
+        setAppointments(prev => prev.map(a => a.id === selectedAppt.id ? updated : a))
+        setEditingGroomerDiary(false)
+        showToast('✓ Groomer notes saved!')
+      } else {
+        showToast('❌ Save failed — please try again')
+      }
+    } catch {
+      showToast('❌ Save failed — check connection')
+    } finally {
+      setSavingPopupGroomerDiary(false)
+    }
   }
 
   const deletePopupNote = async (noteId: string) => {
@@ -2628,10 +2679,72 @@ export default function GroomerDashboard() {
                 </div>
               )}
 
-              {/* ─── GROOMER NOTES (internal diary, read-only display) ─── */}
+              {/* ─── GROOMER NOTES (internal diary) — editable even after checkout, for 72 hrs ─── */}
               <div className="space-y-2">
-                <p className="text-xs font-bold uppercase tracking-widest text-purple-500 px-1">📓 Groomer Notes</p>
-                {selectedAppt.grooming_quality?.groomer_diary ? (
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-xs font-bold uppercase tracking-widest text-purple-500">📓 Groomer Notes</p>
+                  {!editingGroomerDiary && isGroomerNoteEditable(selectedAppt.checked_out_at) && (
+                    <button
+                      onClick={() => {
+                        if (popupGroomerDiaryTimerRef.current) clearTimeout(popupGroomerDiaryTimerRef.current)
+                        setEditingGroomerDiary(true)
+                        setPopupGroomerDiaryText(selectedAppt.grooming_quality?.groomer_diary || '')
+                        setPopupGroomerDiaryTranslations(null)
+                      }}
+                      className="text-xs font-semibold text-purple-600 hover:text-purple-700 px-2.5 py-1 rounded-lg hover:bg-purple-50">✏️ Edit</button>
+                  )}
+                  {!editingGroomerDiary && !isGroomerNoteEditable(selectedAppt.checked_out_at) && (
+                    <span className="text-[11px] text-gray-300">🔒 Locked after 72 hrs</span>
+                  )}
+                </div>
+                {editingGroomerDiary ? (
+                  <div className="bg-white rounded-2xl border border-purple-200 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-bold text-gray-700">✏️ Edit Groomer Notes</p>
+                      <span className="text-xs text-gray-400 flex items-center gap-1">
+                        {translatingPopupGroomerDiary && <span className="inline-block w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />}
+                        {translatingPopupGroomerDiary ? 'Translating…' : popupGroomerDiaryTranslations ? '✨ Translated' : 'Type in any language'}
+                      </span>
+                    </div>
+                    <textarea
+                      autoFocus
+                      placeholder="Internal grooming notes (type any language)..."
+                      value={popupGroomerDiaryText}
+                      onChange={e => {
+                        const text = e.target.value
+                        setPopupGroomerDiaryText(text)
+                        if (popupGroomerDiaryTimerRef.current) clearTimeout(popupGroomerDiaryTimerRef.current)
+                        if (!text.trim()) { setPopupGroomerDiaryTranslations(null); return }
+                        popupGroomerDiaryTimerRef.current = setTimeout(async () => {
+                          setTranslatingPopupGroomerDiary(true)
+                          try {
+                            const res = await fetch('/api/translate', {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ text }),
+                            })
+                            const data = await res.json()
+                            if (data.english !== undefined || data.traditional !== undefined) {
+                              setPopupGroomerDiaryTranslations({ english: data.english || '', traditional: data.traditional || '', simplified: data.simplified || '', detected: data.detected || 'unknown' })
+                            }
+                          } catch { /* silent */ } finally { setTranslatingPopupGroomerDiary(false) }
+                        }, 800)
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none"
+                      rows={3}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setEditingGroomerDiary(false); if (popupGroomerDiaryTimerRef.current) clearTimeout(popupGroomerDiaryTimerRef.current) }}
+                        className="flex-1 py-2 text-sm font-semibold text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50">Cancel</button>
+                      <button
+                        onClick={saveGroomerDiary}
+                        disabled={savingPopupGroomerDiary || translatingPopupGroomerDiary}
+                        className="flex-1 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50">
+                        {savingPopupGroomerDiary ? 'Saving…' : '💾 Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : selectedAppt.grooming_quality?.groomer_diary ? (
                   <p className="text-sm text-purple-700 bg-purple-50 rounded-2xl px-4 py-3 whitespace-pre-wrap">
                     {selectedAppt.grooming_quality.groomer_diary}
                   </p>
