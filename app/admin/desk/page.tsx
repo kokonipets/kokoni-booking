@@ -874,16 +874,21 @@ export default function DeskAdmin() {
     if (!clientEditData) return
     setSavingClient(true)
     const newPhone = clientEditData.phone.replace(/\D/g, '')
+    // Compare digits-only to digits-only — `phone` may be stored with punctuation
+    // ("(626) 429-0038"), so comparing it directly against the bare-digit newPhone
+    // made this look like a phone change on every save, even when the number was
+    // untouched, needlessly routing through the (riskier) phone-change migration.
+    const normPhone = phone.replace(/\D/g, '')
     try {
       const res = await fetch('/api/admin/clients', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, newPhone: newPhone !== phone ? newPhone : undefined, name: `${clientEditData.firstName.trim()} ${clientEditData.lastName.trim()}`.trim(), email: clientEditData.email, address: clientEditData.address }),
+        body: JSON.stringify({ phone, newPhone: newPhone !== normPhone ? newPhone : undefined, name: `${clientEditData.firstName.trim()} ${clientEditData.lastName.trim()}`.trim(), email: clientEditData.email, address: clientEditData.address }),
       })
       const data = await res.json()
       if (data.success) {
         const fullName = `${clientEditData.firstName.trim()} ${clientEditData.lastName.trim()}`.trim()
-        const effectivePhone = newPhone !== phone ? newPhone : phone
+        const effectivePhone = newPhone !== normPhone ? newPhone : phone
         setClients(prev => prev.map(c => c.phone === phone ? { ...c, phone: effectivePhone, name: fullName, email: clientEditData!.email, address: clientEditData!.address } : c))
         setEditingClient(null)
         setClientEditData(null)

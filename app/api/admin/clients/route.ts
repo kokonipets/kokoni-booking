@@ -196,11 +196,16 @@ export async function DELETE(req: NextRequest) {
   // Snapshot everything before it's gone. The delete below is still permanent —
   // this just keeps a record of what existed, so staff can look up a client's
   // history later even after removing them from the live app.
+  // Match every stored format of the number (see phoneVariants() above) — pets/
+  // appointments/pickups aren't always saved in the same format as clients.phone,
+  // so an exact-only match here leaves orphaned rows behind under a differently
+  // formatted phone, which then resurface as a "ghost" duplicate client later.
+  const phoneVariantsForDelete = phoneVariants(normalizePhone(phone))
   const [{ data: clientRow }, { data: petsRows }, { data: apptRows }, { data: pickupRows }] = await Promise.all([
     supabase.from('clients').select('*').eq('phone', phone).maybeSingle(),
-    supabase.from('pets').select('*').eq('client_phone', phone),
-    supabase.from('appointments').select('*').eq('client_phone', phone),
-    supabase.from('authorized_pickups').select('*').eq('client_phone', phone),
+    supabase.from('pets').select('*').in('client_phone', phoneVariantsForDelete),
+    supabase.from('appointments').select('*').in('client_phone', phoneVariantsForDelete),
+    supabase.from('authorized_pickups').select('*').in('client_phone', phoneVariantsForDelete),
   ])
   await supabase.from('deleted_clients_log').insert({
     phone,
@@ -211,9 +216,9 @@ export async function DELETE(req: NextRequest) {
   })
 
   // Delete related records first
-  await supabase.from('authorized_pickups').delete().eq('client_phone', phone)
-  await supabase.from('appointments').delete().eq('client_phone', phone)
-  await supabase.from('pets').delete().eq('client_phone', phone)
+  await supabase.from('authorized_pickups').delete().in('client_phone', phoneVariantsForDelete)
+  await supabase.from('appointments').delete().in('client_phone', phoneVariantsForDelete)
+  await supabase.from('pets').delete().in('client_phone', phoneVariantsForDelete)
   const { error } = await supabase.from('clients').delete().eq('phone', phone)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -249,15 +254,27 @@ export async function PATCH(req: NextRequest) {
     updates.name = existing?.name ?? phone
   }
 
-  // If phone number is changing, migrate all linked tables then upsert new record
+  // If phone number is changing, migrate all linked tables then upsert new record.
+  // pets/appointments/authorized_pickups are frequently saved in a DIFFERENT phone
+  // format than clients.phone (see phoneVariants() above) — matching only the exact
+  // `phone` string here silently migrated 0 child rows whenever formats didn't line
+  // up, which deleted the old client row while leaving pets/appointments orphaned
+  // under the old number. GET then synthesizes those orphans back into a duplicate
+  // "client" — this is the bug where editing a phone number appeared to create a
+  // second profile. Match every stored format of the old number instead.
   if (newPhone && newPhone !== phone) {
-    await supabase.from('pets').update({ client_phone: newPhone }).eq('client_phone', phone)
-    await supabase.from('appointments').update({ client_phone: newPhone }).eq('client_phone', phone)
-    await supabase.from('authorized_pickups').update({ client_phone: newPhone }).eq('client_phone', phone)
-    // Upsert new phone record, then delete old one
+    const oldVariants = phoneVariants(normalizePhone(phone))
+    const [petsRes, apptRes, pickupRes] = await Promise.all([
+      supabase.from('pets').update({ client_phone: newPhone }).in('client_phone', oldVariants),
+      supabase.from('appointments').update({ client_phone: newPhone }).in('client_phone', oldVariants),
+      supabase.from('authorized_pickups').update({ client_phone: newPhone }).in('client_phone', oldVariants),
+    ])
+    const migrateErr = petsRes.error || apptRes.error || pickupRes.error
+    if (migrateErr) return NextResponse.json({ error: migrateErr.message }, { status: 500 })
+    // Upsert new phone record, then delete old one(s) across all stored formats
     const { error: upsertErr } = await supabase.from('clients').upsert({ phone: newPhone, ...updates }, { onConflict: 'phone' })
     if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 })
-    await supabase.from('clients').delete().eq('phone', phone)
+    await supabase.from('clients').delete().in('phone', oldVariants)
     return NextResponse.json({ success: true })
   }
 
