@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServer } from '@/lib/supabase'
+import { sendPushToAdmin } from '@/lib/push-notify'
 
 export const dynamic = 'force-dynamic'
+
+const SALON_TZ = 'America/Los_Angeles'
 
 type Action = 'clock_in' | 'clock_out' | 'break_start' | 'break_end'
 
@@ -69,6 +72,14 @@ export async function POST(req: Request) {
 
     if (pErr) return NextResponse.json({ success: false, error: pErr.message }, { status: 500 })
 
+    // Fire-and-forget push notice to admin devices — mirrors the pattern used
+    // for new appointment / walk-in alerts in app/api/appointments/route.ts.
+    const time = new Date(punch.punched_at).toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: SALON_TZ,
+    })
+    const { title, body } = clockPushCopy(punch.action as Action, staff.name, time)
+    sendPushToAdmin(title, body, { staffId: staff.id, action: punch.action }).catch(() => {})
+
     return NextResponse.json({
       success: true,
       staff: { id: staff.id, name: staff.name, role: staff.role },
@@ -116,4 +127,17 @@ function prettyAction(a: Action) {
 }
 function prettyStatus(s: Status) {
   return ({ out: 'clocked out', in: 'clocked in', on_break: 'on break' } as const)[s]
+}
+
+function clockPushCopy(action: Action, name: string, time: string): { title: string; body: string } {
+  switch (action) {
+    case 'clock_in':
+      return { title: '🕐 Clock In', body: `${name} clocked in at ${time}` }
+    case 'clock_out':
+      return { title: '🕐 Clock Out', body: `${name} clocked out at ${time}` }
+    case 'break_start':
+      return { title: '☕ Break Started', body: `${name} started a break at ${time}` }
+    case 'break_end':
+      return { title: '☕ Break Ended', body: `${name} ended their break at ${time}` }
+  }
 }
