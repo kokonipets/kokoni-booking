@@ -38,6 +38,8 @@ type Appointment = {
     groomer_diary_english?: string | null
     groomer_diary_traditional?: string | null
     groomer_diary_simplified?: string | null
+    groomer_diary_author?: string | null
+    groomer_diary_updated_at?: string | null
     [key: string]: unknown
   } | null
 }
@@ -999,11 +1001,11 @@ export default function GroomerDashboard() {
       const groomer_diary_simplified = popupGroomerDiaryTranslations?.simplified ?? ''
       const res = await fetch(`/api/admin/appointments/${selectedAppt.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update-groomer-diary', groomer_diary, groomer_diary_english, groomer_diary_traditional, groomer_diary_simplified }),
+        body: JSON.stringify({ action: 'update-groomer-diary', groomer_diary, groomer_diary_english, groomer_diary_traditional, groomer_diary_simplified, groomer_diary_author: user?.name || user?.staff_id || '' }),
       })
       const data = await res.json()
       if (data.success) {
-        const updated = { ...selectedAppt, grooming_quality: { ...(selectedAppt.grooming_quality ?? {}), groomer_diary, groomer_diary_english, groomer_diary_traditional, groomer_diary_simplified } } as typeof selectedAppt
+        const updated = { ...selectedAppt, grooming_quality: data.grooming_quality ?? { ...(selectedAppt.grooming_quality ?? {}), groomer_diary, groomer_diary_english, groomer_diary_traditional, groomer_diary_simplified } } as typeof selectedAppt
         setSelectedAppt(updated)
         setAppointments(prev => prev.map(a => a.id === selectedAppt.id ? updated : a))
         setEditingGroomerDiary(false)
@@ -2750,9 +2752,14 @@ export default function GroomerDashboard() {
                     </div>
                   </div>
                 ) : selectedAppt.grooming_quality?.groomer_diary ? (
-                  <p className="text-sm text-purple-700 bg-purple-50 rounded-2xl px-4 py-3 whitespace-pre-wrap">
-                    {selectedAppt.grooming_quality.groomer_diary}
-                  </p>
+                  <div className="bg-purple-50 rounded-2xl px-4 py-3 space-y-1">
+                    <p className="text-sm text-purple-700 whitespace-pre-wrap">
+                      {selectedAppt.grooming_quality.groomer_diary}
+                    </p>
+                    {selectedAppt.grooming_quality.groomer_diary_author && (
+                      <p className="text-[11px] text-purple-400">— {selectedAppt.grooming_quality.groomer_diary_author}</p>
+                    )}
+                  </div>
                 ) : (
                   <p className="text-sm text-gray-300 bg-gray-50 rounded-2xl px-4 py-3">
                     None saved for this visit

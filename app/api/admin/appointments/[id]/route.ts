@@ -553,7 +553,7 @@ export async function PATCH(
   // checked out — reusing the grooming-status action for this would re-send the
   // "ready for pickup" SMS and incorrectly revert the appointment out of completed status.
   if (action === 'update-groomer-diary') {
-    const { groomer_diary, groomer_diary_english, groomer_diary_traditional, groomer_diary_simplified } = body
+    const { groomer_diary, groomer_diary_english, groomer_diary_traditional, groomer_diary_simplified, groomer_diary_author } = body
 
     const { data: existing } = await supabase
       .from('appointments')
@@ -567,6 +567,10 @@ export async function PATCH(
       groomer_diary_english: groomer_diary_english ?? groomer_diary ?? '',
       groomer_diary_traditional: groomer_diary_traditional ?? '',
       groomer_diary_simplified: groomer_diary_simplified ?? '',
+      // Who last wrote/edited this note (groomer name or admin name) and when —
+      // shown in the UI so staff can see who's responsible for a given note.
+      groomer_diary_author: groomer_diary_author ?? existing?.grooming_quality?.groomer_diary_author ?? '',
+      groomer_diary_updated_at: new Date().toISOString(),
     }
 
     const { error } = await supabase

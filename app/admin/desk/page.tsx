@@ -498,6 +498,7 @@ export default function DeskAdmin() {
           groomer_diary_english: groomer_diary,
           groomer_diary_traditional: (existingQuality as any)?.groomer_diary_traditional ?? '',
           groomer_diary_simplified: (existingQuality as any)?.groomer_diary_simplified ?? '',
+          groomer_diary_author: loggedInName || '',
         }),
       })
       const data = await res.json()
@@ -535,6 +536,7 @@ export default function DeskAdmin() {
           groomer_diary_english: groomer_diary,
           groomer_diary_traditional: existingQuality?.groomer_diary_traditional ?? '',
           groomer_diary_simplified: existingQuality?.groomer_diary_simplified ?? '',
+          groomer_diary_author: loggedInName || '',
         }),
       })
       const data = await res.json()
@@ -3178,70 +3180,72 @@ export default function DeskAdmin() {
                             )
                           })}
                         </div>
-                        {(() => {
-                          const editable = isGroomerNoteEditable(detailAppt.checked_out_at)
-                          const hasNote = !!(q.groomer_diary || q.groomer_diary_english)
-                          const hasCustomerNote = !!q.customer_note_english
-                          if (!hasNote && !hasCustomerNote && !editable) return null
-                          return (
-                            <div className="space-y-2">
-                              {(hasNote || editable) && (
-                                <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-1.5">
-                                  <div className="flex items-center justify-between">
-                                    <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
-                                    {!editingApptDiary && editable && (
-                                      <button
-                                        onClick={() => { setEditingApptDiary(true); setApptDiaryDraft(q.groomer_diary_english || q.groomer_diary || '') }}
-                                        className="text-xs font-semibold text-purple-600 hover:text-purple-700 px-2 py-0.5 rounded hover:bg-purple-100"
-                                      >✏️ {hasNote ? 'Edit' : 'Add'}</button>
-                                    )}
-                                    {!editingApptDiary && !editable && hasNote && (
-                                      <span className="text-[11px] text-gray-300">🔒 Locked after 72 hrs</span>
-                                    )}
-                                  </div>
-                                  {editingApptDiary ? (
-                                    <div className="space-y-2">
-                                      <textarea
-                                        autoFocus
-                                        value={apptDiaryDraft}
-                                        onChange={e => setApptDiaryDraft(e.target.value)}
-                                        className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-white"
-                                        rows={3}
-                                      />
-                                      <div className="flex gap-2">
-                                        <button
-                                          onClick={() => setEditingApptDiary(false)}
-                                          className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
-                                        >Cancel</button>
-                                        <button
-                                          onClick={saveApptDiary}
-                                          disabled={savingApptDiary}
-                                          className="flex-1 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
-                                        >{savingApptDiary ? 'Saving…' : '💾 Save'}</button>
-                                      </div>
-                                    </div>
-                                  ) : hasNote ? (
-                                    <>
-                                      <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary_english || q.groomer_diary}</p>
-                                      {q.groomer_diary_traditional && q.groomer_diary_traditional !== (q.groomer_diary_english || q.groomer_diary) && (
-                                        <p className="text-xs text-gray-400">{q.groomer_diary_traditional}</p>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <p className="text-xs text-gray-400 italic">No note yet</p>
-                                  )}
-                                </div>
-                              )}
-                              {q.customer_note_english && (
-                                <div className="bg-white border border-emerald-100 rounded-xl px-3 py-2 space-y-0.5">
-                                  <p className="text-xs font-semibold text-emerald-600">💌 Note to Customer</p>
-                                  <p className="text-xs text-gray-600">{q.customer_note_english}</p>
-                                  {q.customer_note_traditional && <p className="text-xs text-gray-400">{q.customer_note_traditional}</p>}
-                                </div>
-                              )}
+                        {q.customer_note_english && (
+                          <div className="bg-white border border-emerald-100 rounded-xl px-3 py-2 space-y-0.5">
+                            <p className="text-xs font-semibold text-emerald-600">💌 Note to Customer</p>
+                            <p className="text-xs text-gray-600">{q.customer_note_english}</p>
+                            {q.customer_note_traditional && <p className="text-xs text-gray-400">{q.customer_note_traditional}</p>}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Groomer's diary note for this visit — editable for 72 hrs after checkout.
+                      Always shown (even if the groomer never left one, or never submitted a
+                      quality check at all) so admin can always see/add it, just blank if empty. */}
+                  {(() => {
+                    const q = (detailAppt.grooming_quality as any) || {}
+                    const editable = isGroomerNoteEditable(detailAppt.checked_out_at)
+                    const hasNote = !!(q.groomer_diary || q.groomer_diary_english)
+                    return (
+                      <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
+                          {!editingApptDiary && editable && (
+                            <button
+                              onClick={() => { setEditingApptDiary(true); setApptDiaryDraft(q.groomer_diary_english || q.groomer_diary || '') }}
+                              className="text-xs font-semibold text-purple-600 hover:text-purple-700 px-2 py-0.5 rounded hover:bg-purple-100"
+                            >✏️ {hasNote ? 'Edit' : 'Add'}</button>
+                          )}
+                          {!editingApptDiary && !editable && hasNote && (
+                            <span className="text-[11px] text-gray-300">🔒 Locked after 72 hrs</span>
+                          )}
+                        </div>
+                        {editingApptDiary ? (
+                          <div className="space-y-2">
+                            <textarea
+                              autoFocus
+                              value={apptDiaryDraft}
+                              onChange={e => setApptDiaryDraft(e.target.value)}
+                              className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-white"
+                              rows={3}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setEditingApptDiary(false)}
+                                className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
+                              >Cancel</button>
+                              <button
+                                onClick={saveApptDiary}
+                                disabled={savingApptDiary}
+                                className="flex-1 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                              >{savingApptDiary ? 'Saving…' : '💾 Save'}</button>
                             </div>
-                          )
-                        })()}
+                          </div>
+                        ) : hasNote ? (
+                          <>
+                            <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary_english || q.groomer_diary}</p>
+                            {q.groomer_diary_traditional && q.groomer_diary_traditional !== (q.groomer_diary_english || q.groomer_diary) && (
+                              <p className="text-xs text-gray-400">{q.groomer_diary_traditional}</p>
+                            )}
+                            {q.groomer_diary_author && (
+                              <p className="text-[11px] text-purple-300">— {q.groomer_diary_author}</p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-xs text-gray-400 italic">No note yet</p>
+                        )}
                       </div>
                     )
                   })()}
@@ -4113,60 +4117,6 @@ export default function DeskAdmin() {
                                           )
                                         })}
                                       </div>
-                                      {/* Groomer's diary note for this visit — editable for 72 hrs after checkout */}
-                                      {(() => {
-                                        const editable = isGroomerNoteEditable(a.checked_out_at)
-                                        const hasNote = !!(q.groomer_diary || q.groomer_diary_english)
-                                        const isEditingThis = editingHistoryDiaryId === a.id
-                                        if (!hasNote && !editable) return null
-                                        return (
-                                          <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-1.5">
-                                            <div className="flex items-center justify-between">
-                                              <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
-                                              {!isEditingThis && editable && (
-                                                <button
-                                                  onClick={() => { setEditingHistoryDiaryId(a.id); setHistoryDiaryDraft(q.groomer_diary_english || q.groomer_diary || '') }}
-                                                  className="text-xs font-semibold text-purple-600 hover:text-purple-700 px-2 py-0.5 rounded hover:bg-purple-100"
-                                                >✏️ {hasNote ? 'Edit' : 'Add'}</button>
-                                              )}
-                                              {!isEditingThis && !editable && hasNote && (
-                                                <span className="text-[11px] text-gray-300">🔒 Locked after 72 hrs</span>
-                                              )}
-                                            </div>
-                                            {isEditingThis ? (
-                                              <div className="space-y-2">
-                                                <textarea
-                                                  autoFocus
-                                                  value={historyDiaryDraft}
-                                                  onChange={e => setHistoryDiaryDraft(e.target.value)}
-                                                  className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-white"
-                                                  rows={3}
-                                                />
-                                                <div className="flex gap-2">
-                                                  <button
-                                                    onClick={() => setEditingHistoryDiaryId(null)}
-                                                    className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
-                                                  >Cancel</button>
-                                                  <button
-                                                    onClick={() => saveHistoryDiary(a.id, q)}
-                                                    disabled={savingHistoryDiary}
-                                                    className="flex-1 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
-                                                  >{savingHistoryDiary ? 'Saving…' : '💾 Save'}</button>
-                                                </div>
-                                              </div>
-                                            ) : hasNote ? (
-                                              <>
-                                                <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary_english || q.groomer_diary}</p>
-                                                {q.groomer_diary_traditional && q.groomer_diary_traditional !== (q.groomer_diary_english || q.groomer_diary) && (
-                                                  <p className="text-xs text-gray-400">{q.groomer_diary_traditional}</p>
-                                                )}
-                                              </>
-                                            ) : (
-                                              <p className="text-xs text-gray-400 italic">No note yet</p>
-                                            )}
-                                          </div>
-                                        )
-                                      })()}
                                       {/* Groomer's note left for the customer */}
                                       {q.customer_note_english && (
                                         <div className="bg-white border border-emerald-100 rounded-xl px-3 py-2 space-y-0.5">
@@ -4177,6 +4127,64 @@ export default function DeskAdmin() {
                                       )}
                                     </div>
                                   )}
+                                  {/* Groomer's diary note for this visit — editable for 72 hrs after checkout.
+                                      Always shown (even if the groomer never left one, or never submitted a
+                                      quality check at all) so admin can always see/add it, just blank if empty. */}
+                                  {(() => {
+                                    const editable = isGroomerNoteEditable(a.checked_out_at)
+                                    const hasNote = !!(q?.groomer_diary || q?.groomer_diary_english)
+                                    const isEditingThis = editingHistoryDiaryId === a.id
+                                    return (
+                                      <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                          <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
+                                          {!isEditingThis && editable && (
+                                            <button
+                                              onClick={() => { setEditingHistoryDiaryId(a.id); setHistoryDiaryDraft(q?.groomer_diary_english || q?.groomer_diary || '') }}
+                                              className="text-xs font-semibold text-purple-600 hover:text-purple-700 px-2 py-0.5 rounded hover:bg-purple-100"
+                                            >✏️ {hasNote ? 'Edit' : 'Add'}</button>
+                                          )}
+                                          {!isEditingThis && !editable && hasNote && (
+                                            <span className="text-[11px] text-gray-300">🔒 Locked after 72 hrs</span>
+                                          )}
+                                        </div>
+                                        {isEditingThis ? (
+                                          <div className="space-y-2">
+                                            <textarea
+                                              autoFocus
+                                              value={historyDiaryDraft}
+                                              onChange={e => setHistoryDiaryDraft(e.target.value)}
+                                              className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-white"
+                                              rows={3}
+                                            />
+                                            <div className="flex gap-2">
+                                              <button
+                                                onClick={() => setEditingHistoryDiaryId(null)}
+                                                className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
+                                              >Cancel</button>
+                                              <button
+                                                onClick={() => saveHistoryDiary(a.id, q)}
+                                                disabled={savingHistoryDiary}
+                                                className="flex-1 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                                              >{savingHistoryDiary ? 'Saving…' : '💾 Save'}</button>
+                                            </div>
+                                          </div>
+                                        ) : hasNote ? (
+                                          <>
+                                            <p className="text-xs text-gray-600 mt-0.5">{q?.groomer_diary_english || q?.groomer_diary}</p>
+                                            {q?.groomer_diary_traditional && q.groomer_diary_traditional !== (q?.groomer_diary_english || q?.groomer_diary) && (
+                                              <p className="text-xs text-gray-400">{q.groomer_diary_traditional}</p>
+                                            )}
+                                            {q?.groomer_diary_author && (
+                                              <p className="text-[11px] text-purple-300">— {q.groomer_diary_author}</p>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <p className="text-xs text-gray-400 italic">No note yet</p>
+                                        )}
+                                      </div>
+                                    )
+                                  })()}
                                   {/* Add-ons */}
                                   {addOns.length > 0 && (
                                     <div className="bg-white rounded-xl border border-gray-100 p-3">
