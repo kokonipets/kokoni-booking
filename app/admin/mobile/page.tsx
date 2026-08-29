@@ -4370,7 +4370,7 @@ export default function AdminPage() {
                           const supervisorDetail = (
                             <div className="bg-sky-50 border border-sky-100 rounded-xl p-3 space-y-2">
                               <div className="flex items-center justify-between">
-                                <p className="text-xs font-bold text-sky-600 uppercase tracking-wide">👔 Supervisor Note</p>
+                                <p className="text-xs font-bold text-sky-600 uppercase tracking-wide">👔 Supervisor Note / 店長備註</p>
                                 {!isEditingSupervisorHere && (
                                   <button
                                     onClick={() => { setEditingHistorySupervisorId(appt.id); setHistorySupervisorDraft(gq?.supervisor_note || '') }}
@@ -4549,7 +4549,7 @@ export default function AdminPage() {
                         return (
                           <div className="bg-sky-50 border border-sky-100 rounded-2xl p-4 space-y-1">
                             <div className="flex items-center justify-between">
-                              <p className="text-xs font-bold text-sky-600 uppercase tracking-wide">👔 Supervisor Note</p>
+                              <p className="text-xs font-bold text-sky-600 uppercase tracking-wide">👔 Supervisor Note / 店長備註</p>
                               {!editingApptSupervisor && (
                                 <button
                                   onClick={() => { setEditingApptSupervisor(true); setApptSupervisorDraft(a.grooming_quality?.supervisor_note || '') }}

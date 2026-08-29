@@ -3210,7 +3210,7 @@ export default function DeskAdmin() {
                     return (
                       <div className="bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold text-sky-600">👔 Supervisor Note</p>
+                          <p className="text-xs font-semibold text-sky-600">👔 Supervisor Note / 店長備註</p>
                           {!editingApptSupervisor && (
                             <button
                               onClick={() => { setEditingApptSupervisor(true); setApptSupervisorDraft(q.supervisor_note || '') }}
@@ -4162,7 +4162,7 @@ export default function DeskAdmin() {
                                     return (
                                       <div className="bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 space-y-1.5">
                                         <div className="flex items-center justify-between">
-                                          <p className="text-xs font-semibold text-sky-600">👔 Supervisor Note</p>
+                                          <p className="text-xs font-semibold text-sky-600">👔 Supervisor Note / 店長備註</p>
                                           {!isEditingThis && (
                                             <button
                                               onClick={() => { setEditingHistorySupervisorId(a.id); setHistorySupervisorDraft(q?.supervisor_note || '') }}
