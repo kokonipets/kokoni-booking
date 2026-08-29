@@ -4624,19 +4624,6 @@ export default function DeskAdmin() {
             <span className="flex-1">Clock Kiosk</span>
             <span className="text-sky-400 text-xs font-bold">↗</span>
           </a>
-
-          {/* Stubs for future features */}
-          {[
-            { label: 'Resources',          icon: '📚' },
-          ].map(({ label, icon }) => (
-            <button key={label}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-400 opacity-50 cursor-not-allowed text-left"
-              title="Coming soon"
-            >
-              <span className="text-base leading-none w-5 text-center">{icon}</span>
-              <span className="flex-1">{label}</span>
-            </button>
-          ))}
         </nav>
 
         {/* User footer */}
