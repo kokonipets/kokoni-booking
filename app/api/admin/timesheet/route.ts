@@ -59,10 +59,17 @@ export async function GET(req: Request) {
       // Sum session minutes that fall on this local date
       const mins = sessions.reduce((sum, sess) => sum + minutesOnDate(sess, dateStr, tz), 0)
       const breakMins = sessions.reduce((sum, sess) => sum + breakMinutesOnDate(sess, dateStr, tz), 0)
+      // Actual clock in/out timestamps for sessions that started on this local date —
+      // shown in the UI alongside the hour total. A session that crosses midnight is
+      // attributed to the day it started on.
+      const daySessions = sessions
+        .filter(sess => localDateStr(sess.start, tz) === dateStr)
+        .map(sess => ({ start: sess.start, end: sess.end }))
       return {
         date: dateStr,
         work_minutes: Math.max(0, Math.round(mins)),
         break_minutes: Math.max(0, Math.round(breakMins)),
+        sessions: daySessions,
       }
     })
     const total = dayRows.reduce((a, r) => a + r.work_minutes, 0)
@@ -149,6 +156,12 @@ function minutesOnDate(sess: Session, dateStr: string, tz: string): number {
 
 function breakMinutesOnDate(sess: Session, dateStr: string, tz: string): number {
   return sess.breaks.reduce((s, b) => s + overlapMinutes(b.start, b.end, dateStr, tz), 0)
+}
+
+/** Local calendar date (YYYY-MM-DD) of an ISO timestamp in the given tz. */
+function localDateStr(iso: string, tz: string): string {
+  const dtf = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+  return dtf.format(new Date(iso))
 }
 
 /** Returns UTC Date representing the start of `dateStr` in the given tz. */

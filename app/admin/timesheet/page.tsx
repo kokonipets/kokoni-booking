@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAdminGuard } from '@/lib/useAdminGuard'
 
-type DayRow = { date: string; work_minutes: number; break_minutes: number }
+type PunchSession = { start: string; end: string | null }
+type DayRow = { date: string; work_minutes: number; break_minutes: number; sessions: PunchSession[] }
 type StaffReport = {
   staff_id: string
   name: string
@@ -40,6 +41,11 @@ function fmtDateShort(dateStr: string) {
   const d = new Date(`${dateStr}T00:00:00Z`)
   return d.toLocaleDateString([], { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: 'UTC' })
 }
+const SALON_TZ = 'America/Los_Angeles'
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: SALON_TZ })
+    .replace(' AM', 'a').replace(' PM', 'p')
+}
 
 export default function TimesheetPage() {
   const guardReady = useAdminGuard('timesheet')
@@ -73,6 +79,10 @@ export default function TimesheetPage() {
 
   const grandTotalMinutes = report.reduce((s, r) => s + r.total_minutes, 0)
 
+  function setToday() {
+    const t = todayISO()
+    setFrom(t); setTo(t)
+  }
   function setThisWeek() {
     const mon = mondayOf(todayISO())
     setFrom(mon); setTo(addDays(mon, 6))
@@ -151,6 +161,7 @@ export default function TimesheetPage() {
             <input type="date" value={to} onChange={e => setTo(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div className="flex gap-2">
+            <button onClick={setToday} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">Today</button>
             <button onClick={setThisWeek} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">This Week</button>
             <button onClick={setLastWeek} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">Last Week</button>
             <button onClick={setThisPayPeriod} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">This Pay Period</button>
@@ -190,6 +201,13 @@ export default function TimesheetPage() {
                       <td key={d.date} className="text-center px-3 py-3 text-gray-700 tabular-nums">
                         {d.work_minutes > 0 ? (
                           <div>
+                            {d.sessions.length > 0 && (
+                              <div className="text-[10px] text-sky-600 leading-tight mb-0.5">
+                                {d.sessions.map((s, i) => (
+                                  <div key={i}>{fmtTime(s.start)}–{s.end ? fmtTime(s.end) : 'now'}</div>
+                                ))}
+                              </div>
+                            )}
                             <div>{(d.work_minutes / 60).toFixed(2)}h</div>
                             {d.break_minutes > 0 && (
                               <div className="text-[10px] text-gray-400">br {fmtHM(d.break_minutes)}</div>
