@@ -1853,15 +1853,17 @@ export default function DeskAdmin() {
   }, [payrollStartDate, payrollEndDate, payrollSelectedGroomer, staff])
 
   // Compute a bi-weekly payroll period (Sun→Sat, anchor 2026-05-24) and a default pay date
-  const computePayrollPeriod = useCallback((which: 'this' | 'last') => {
+  const computePayrollPeriod = useCallback((which: 'next' | 'this' | 'last') => {
     const now = salonNow(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
     const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const ANCHOR = new Date(2026, 4, 24), PERIOD = 14
     const days = Math.floor((now.getTime() - ANCHOR.getTime()) / 86400000)
     const periods = Math.floor(days / PERIOD)
     // "This Pay" = the most recently completed period (the one being paid now);
-    // "Last Pay" = the period before that. (Shifted back one from the in-progress period.)
-    const start = new Date(ANCHOR); start.setDate(ANCHOR.getDate() + (which === 'last' ? periods - 2 : periods - 1) * PERIOD)
+    // "Last Pay" = the period before that; "Next Pay" = the period currently in
+    // progress (hasn't ended yet, so nothing to pay out on it yet).
+    const offset = which === 'next' ? periods : which === 'last' ? periods - 2 : periods - 1
+    const start = new Date(ANCHOR); start.setDate(ANCHOR.getDate() + offset * PERIOD)
     const end = new Date(start); end.setDate(start.getDate() + PERIOD - 1)
     // Default pay date: the first Friday after the period ends (period ends Sat → next Fri).
     const pay = new Date(end); do { pay.setDate(pay.getDate() + 1) } while (pay.getDay() !== 5)
@@ -6783,6 +6785,12 @@ export default function DeskAdmin() {
                 <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                   <h2 className="text-lg font-bold text-gray-800">📅 Payroll Period</h2>
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => { const p = computePayrollPeriod('next'); setPayrollStartDate(p.start); setPayrollEndDate(p.end); setPayrollPayDate(p.pay) }}
+                      className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-semibold rounded-lg transition-colors"
+                    >
+                      Next Pay Period
+                    </button>
                     <button
                       onClick={() => { const p = computePayrollPeriod('this'); setPayrollStartDate(p.start); setPayrollEndDate(p.end); setPayrollPayDate(p.pay) }}
                       className="px-3 py-1.5 bg-sky-100 hover:bg-sky-200 text-sky-700 text-xs font-semibold rounded-lg transition-colors"
