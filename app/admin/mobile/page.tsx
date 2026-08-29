@@ -449,6 +449,68 @@ export default function AdminPage() {
   const [detailSheetTab, setDetailSheetTab] = useState<'appt'|'customer'|'history'|'future'|'notes'>('appt')
   // Tags for the pet on the currently-open calendar appointment detail sheet.
   const [calendarPetTags, setCalendarPetTags] = useState<PetTag[]>([])
+  // Logged-in admin's display name — used to stamp authorship on supervisor notes.
+  const [loggedInName, setLoggedInName] = useState('')
+  // Editing the supervisor note for the appointment open in the detail sheet's
+  // Notes tab (this visit's own note). Separate from the groomer's own diary
+  // note, which is read-only here — only the groomer can edit that, from the
+  // groomer dashboard.
+  const [editingApptSupervisor, setEditingApptSupervisor] = useState(false)
+  const [apptSupervisorDraft, setApptSupervisorDraft] = useState('')
+  const [savingApptSupervisor, setSavingApptSupervisor] = useState(false)
+  // Editing the supervisor note inline from a visit card in the History tab
+  // (id of the appointment being edited, or null).
+  const [editingHistorySupervisorId, setEditingHistorySupervisorId] = useState<string | null>(null)
+  const [historySupervisorDraft, setHistorySupervisorDraft] = useState('')
+  const [savingHistorySupervisor, setSavingHistorySupervisor] = useState(false)
+
+  const saveApptSupervisor = async (apptId: string) => {
+    setSavingApptSupervisor(true)
+    try {
+      const supervisor_note = apptSupervisorDraft.trim()
+      const res = await fetch(`/api/admin/appointments/${apptId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update-supervisor-note', supervisor_note, supervisor_note_author: loggedInName || '' }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setCalendarDetailAppt(prev => prev ? { ...prev, grooming_quality: data.grooming_quality } as typeof prev : prev)
+        setCalendarAppts(prev => prev.map(a => a.id === apptId ? { ...a, grooming_quality: data.grooming_quality } as typeof a : a))
+        setEditingApptSupervisor(false)
+      } else {
+        alert('Save failed — please try again')
+      }
+    } catch {
+      alert('Save failed — check connection')
+    } finally {
+      setSavingApptSupervisor(false)
+    }
+  }
+
+  const saveHistorySupervisor = async (apptId: string) => {
+    setSavingHistorySupervisor(true)
+    try {
+      const supervisor_note = historySupervisorDraft.trim()
+      const res = await fetch(`/api/admin/appointments/${apptId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update-supervisor-note', supervisor_note, supervisor_note_author: loggedInName || '' }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setFullClientAppts(prev => prev ? prev.map(a => a.id === apptId ? { ...a, grooming_quality: data.grooming_quality } as typeof a : a) : prev)
+        setCalendarAppts(prev => prev.map(a => a.id === apptId ? { ...a, grooming_quality: data.grooming_quality } as typeof a : a))
+        setEditingHistorySupervisorId(null)
+      } else {
+        alert('Save failed — please try again')
+      }
+    } catch {
+      alert('Save failed — check connection')
+    } finally {
+      setSavingHistorySupervisor(false)
+    }
+  }
   // Full appointment history for the client currently open in the detail sheet.
   // The "History" tab used to derive past visits only from whatever was already
   // loaded locally (today's appointments + the currently viewed calendar month),
@@ -492,6 +554,7 @@ export default function AdminPage() {
       const auth = JSON.parse(readAuthRaw('admin') || 'null')
       if (auth?.role === 'admin') {
         setAuthed(true)
+        setLoggedInName(auth.name || '')
         // Re-check permissions against the live staff record (not the
         // possibly-stale login-time snapshot).
         fetch('/api/admin/staff').then(r => r.json()).then(d => {
@@ -4284,6 +4347,9 @@ export default function AdminPage() {
                                     {gq.groomer_diary_traditional && gq.groomer_diary_traditional !== (gq.groomer_diary_english || gq.groomer_diary) && (
                                       <p className="text-xs text-gray-400">{gq.groomer_diary_traditional}</p>
                                     )}
+                                    {gq.groomer_diary_author && (
+                                      <p className="text-[11px] text-purple-300">— {gq.groomer_diary_author}</p>
+                                    )}
                                   </div>
                                 )}
                                 {gq.customer_note_english && (
@@ -4295,6 +4361,56 @@ export default function AdminPage() {
                               </div>
                             )
                           }
+
+                          // Supervisor note — admin's own note, separate from the groomer's
+                          // diary above (which is read-only here). Always shown, editable
+                          // any time, even for visits with no quality check submitted at all.
+                          const isEditingSupervisorHere = editingHistorySupervisorId === appt.id
+                          const hasSupervisorNote = !!gq?.supervisor_note
+                          const supervisorDetail = (
+                            <div className="bg-sky-50 border border-sky-100 rounded-xl p-3 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-bold text-sky-600 uppercase tracking-wide">👔 Supervisor Note</p>
+                                {!isEditingSupervisorHere && (
+                                  <button
+                                    onClick={() => { setEditingHistorySupervisorId(appt.id); setHistorySupervisorDraft(gq?.supervisor_note || '') }}
+                                    className="text-xs font-semibold text-sky-600 hover:text-sky-700 px-2 py-0.5 rounded hover:bg-sky-100"
+                                  >✏️ {hasSupervisorNote ? 'Edit' : 'Add'}</button>
+                                )}
+                              </div>
+                              {isEditingSupervisorHere ? (
+                                <div className="space-y-2">
+                                  <textarea
+                                    autoFocus
+                                    value={historySupervisorDraft}
+                                    onChange={e => setHistorySupervisorDraft(e.target.value)}
+                                    className="w-full border border-sky-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-sky-300 resize-none bg-white"
+                                    rows={3}
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => setEditingHistorySupervisorId(null)}
+                                      className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
+                                    >Cancel</button>
+                                    <button
+                                      onClick={() => saveHistorySupervisor(appt.id)}
+                                      disabled={savingHistorySupervisor}
+                                      className="flex-1 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                                    >{savingHistorySupervisor ? 'Saving…' : '💾 Save'}</button>
+                                  </div>
+                                </div>
+                              ) : hasSupervisorNote ? (
+                                <>
+                                  <p className="text-xs text-gray-600 mt-0.5">{gq.supervisor_note}</p>
+                                  {gq.supervisor_note_author && (
+                                    <p className="text-[11px] text-sky-300">— {gq.supervisor_note_author}</p>
+                                  )}
+                                </>
+                              ) : (
+                                <p className="text-xs text-gray-400 italic">No note yet</p>
+                              )}
+                            </div>
+                          )
 
                           return (
                             <div key={appt.id} className={`rounded-2xl p-4 space-y-3 ${isCurrentVisit ? 'bg-sky-50 border-2 border-sky-200' : 'bg-white border border-gray-100'}`}>
@@ -4321,6 +4437,7 @@ export default function AdminPage() {
                               )}
                               {hcDetail}
                               {gqDetail}
+                              {supervisorDetail}
                             </div>
                           )
                         }
@@ -4410,7 +4527,8 @@ export default function AdminPage() {
                         </div>
                       )}
 
-                      {/* Groomer notes from latest quality check */}
+                      {/* Groomer notes from latest quality check — read-only here. Only the
+                          groomer can write/edit this note, from the groomer dashboard. */}
                       {(a.grooming_quality?.groomer_diary || a.grooming_quality?.groomer_diary_english) && (
                         <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4 space-y-1">
                           <p className="text-xs font-bold text-purple-600 uppercase tracking-wide">📓 Groomer Notes / 美容師工作日記</p>
@@ -4418,8 +4536,61 @@ export default function AdminPage() {
                           {a.grooming_quality.groomer_diary_traditional && a.grooming_quality.groomer_diary_traditional !== (a.grooming_quality.groomer_diary_english || a.grooming_quality.groomer_diary) && (
                             <p className="text-sm text-gray-400">{a.grooming_quality.groomer_diary_traditional}</p>
                           )}
+                          {a.grooming_quality.groomer_diary_author && (
+                            <p className="text-xs text-purple-300">— {a.grooming_quality.groomer_diary_author}</p>
+                          )}
                         </div>
                       )}
+
+                      {/* Supervisor note — admin's own note, separate from the groomer's
+                          diary above. Admin can add/edit this any time. */}
+                      {(() => {
+                        const hasNote = !!a.grooming_quality?.supervisor_note
+                        return (
+                          <div className="bg-sky-50 border border-sky-100 rounded-2xl p-4 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-bold text-sky-600 uppercase tracking-wide">👔 Supervisor Note</p>
+                              {!editingApptSupervisor && (
+                                <button
+                                  onClick={() => { setEditingApptSupervisor(true); setApptSupervisorDraft(a.grooming_quality?.supervisor_note || '') }}
+                                  className="text-xs font-semibold text-sky-600 hover:text-sky-700 px-2 py-0.5 rounded hover:bg-sky-100"
+                                >✏️ {hasNote ? 'Edit' : 'Add'}</button>
+                              )}
+                            </div>
+                            {editingApptSupervisor ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  autoFocus
+                                  value={apptSupervisorDraft}
+                                  onChange={e => setApptSupervisorDraft(e.target.value)}
+                                  className="w-full border border-sky-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 resize-none bg-white"
+                                  rows={3}
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setEditingApptSupervisor(false)}
+                                    className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
+                                  >Cancel</button>
+                                  <button
+                                    onClick={() => saveApptSupervisor(a.id)}
+                                    disabled={savingApptSupervisor}
+                                    className="flex-1 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                                  >{savingApptSupervisor ? 'Saving…' : '💾 Save'}</button>
+                                </div>
+                              </div>
+                            ) : hasNote ? (
+                              <>
+                                <p className="text-sm text-gray-700">{a.grooming_quality?.supervisor_note}</p>
+                                {a.grooming_quality?.supervisor_note_author && (
+                                  <p className="text-xs text-sky-300">— {a.grooming_quality.supervisor_note_author}</p>
+                                )}
+                              </>
+                            ) : (
+                              <p className="text-sm text-gray-400 italic">No note yet</p>
+                            )}
+                          </div>
+                        )
+                      })()}
 
                       {/* Note to customer from quality check */}
                       {a.grooming_quality?.customer_note_english && (

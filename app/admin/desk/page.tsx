@@ -459,46 +459,35 @@ export default function DeskAdmin() {
   // Which History-tab past visit is expanded inline (view details without
   // leaving the current appointment popup).
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
-  // Editing the groomer diary note inline from the History tab (id of the
-  // appointment being edited, or null). Kept editable for 72 hrs after
-  // checkout — see isGroomerNoteEditable below.
-  const [editingHistoryDiaryId, setEditingHistoryDiaryId] = useState<string | null>(null)
-  const [historyDiaryDraft, setHistoryDiaryDraft] = useState('')
-  const [savingHistoryDiary, setSavingHistoryDiary] = useState(false)
+  // Editing the supervisor note inline from the History tab (id of the
+  // appointment being edited, or null). Unlike the groomer's own diary note
+  // (which only the groomer can edit, from the groomer dashboard), admin can
+  // add/edit this supervisor note at any time — no lock window, since it's
+  // admin's own note rather than an edit on the groomer's behalf.
+  const [editingHistorySupervisorId, setEditingHistorySupervisorId] = useState<string | null>(null)
+  const [historySupervisorDraft, setHistorySupervisorDraft] = useState('')
+  const [savingHistorySupervisor, setSavingHistorySupervisor] = useState(false)
   // Tags for the pet on the currently-open Calendar/appointment detail popup
   // (separate from the Pet Parents page's tag state — this popup shows a
   // single appointment's pet, fetched fresh each time it opens).
   const [detailPetTags, setDetailPetTags] = useState<PetTag[]>([])
-  // Editing the groomer diary note for the appointment currently open in the
+  // Editing the supervisor note for the appointment currently open in the
   // Calendar detail popup (this visit's own note, not a past one).
-  const [editingApptDiary, setEditingApptDiary] = useState(false)
-  const [apptDiaryDraft, setApptDiaryDraft] = useState('')
-  const [savingApptDiary, setSavingApptDiary] = useState(false)
+  const [editingApptSupervisor, setEditingApptSupervisor] = useState(false)
+  const [apptSupervisorDraft, setApptSupervisorDraft] = useState('')
+  const [savingApptSupervisor, setSavingApptSupervisor] = useState(false)
 
-  // Groomer notes (internal diary) stay editable for 72 hours after checkout —
-  // long enough to fix a typo or add something remembered later — then lock so
-  // old visits can't be silently rewritten weeks after the fact. No checkout
-  // timestamp yet always counts as editable.
-  const GROOMER_NOTE_EDIT_WINDOW_MS = 72 * 60 * 60 * 1000
-  const isGroomerNoteEditable = (checkedOutAt?: string | null) => {
-    if (!checkedOutAt) return true
-    return Date.now() - new Date(checkedOutAt).getTime() < GROOMER_NOTE_EDIT_WINDOW_MS
-  }
-
-  const saveHistoryDiary = async (apptId: string, existingQuality: Record<string, unknown> | null | undefined) => {
-    setSavingHistoryDiary(true)
+  const saveHistorySupervisor = async (apptId: string) => {
+    setSavingHistorySupervisor(true)
     try {
-      const groomer_diary = historyDiaryDraft.trim()
+      const supervisor_note = historySupervisorDraft.trim()
       const res = await fetch(`/api/admin/appointments/${apptId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'update-groomer-diary',
-          groomer_diary,
-          groomer_diary_english: groomer_diary,
-          groomer_diary_traditional: (existingQuality as any)?.groomer_diary_traditional ?? '',
-          groomer_diary_simplified: (existingQuality as any)?.groomer_diary_simplified ?? '',
-          groomer_diary_author: loggedInName || '',
+          action: 'update-supervisor-note',
+          supervisor_note,
+          supervisor_note_author: loggedInName || '',
         }),
       })
       const data = await res.json()
@@ -507,50 +496,46 @@ export default function DeskAdmin() {
           ...prev,
           appointments: prev.appointments.map(a => a.id === apptId ? { ...a, grooming_quality: data.grooming_quality } as typeof a : a),
         } : prev)
-        setEditingHistoryDiaryId(null)
+        setEditingHistorySupervisorId(null)
       } else {
         alert('Save failed — please try again')
       }
     } catch {
       alert('Save failed — check connection')
     } finally {
-      setSavingHistoryDiary(false)
+      setSavingHistorySupervisor(false)
     }
   }
 
-  // Editable groomer diary note for the appointment currently open in the
-  // Calendar detail popup (this visit, not a past one — see saveHistoryDiary
+  // Editable supervisor note for the appointment currently open in the
+  // Calendar detail popup (this visit, not a past one — see saveHistorySupervisor
   // above for the History-tab equivalent).
-  const saveApptDiary = async () => {
+  const saveApptSupervisor = async () => {
     if (!detailAppt) return
-    setSavingApptDiary(true)
+    setSavingApptSupervisor(true)
     try {
-      const groomer_diary = apptDiaryDraft.trim()
-      const existingQuality = detailAppt.grooming_quality as any
+      const supervisor_note = apptSupervisorDraft.trim()
       const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'update-groomer-diary',
-          groomer_diary,
-          groomer_diary_english: groomer_diary,
-          groomer_diary_traditional: existingQuality?.groomer_diary_traditional ?? '',
-          groomer_diary_simplified: existingQuality?.groomer_diary_simplified ?? '',
-          groomer_diary_author: loggedInName || '',
+          action: 'update-supervisor-note',
+          supervisor_note,
+          supervisor_note_author: loggedInName || '',
         }),
       })
       const data = await res.json()
       if (data.success) {
         setDetailAppt(prev => prev ? { ...prev, grooming_quality: data.grooming_quality } as typeof prev : prev)
         setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, grooming_quality: data.grooming_quality } as typeof a : a))
-        setEditingApptDiary(false)
+        setEditingApptSupervisor(false)
       } else {
         alert('Save failed — please try again')
       }
     } catch {
       alert('Save failed — check connection')
     } finally {
-      setSavingApptDiary(false)
+      setSavingApptSupervisor(false)
     }
   }
 
@@ -3191,49 +3176,16 @@ export default function DeskAdmin() {
                     )
                   })()}
 
-                  {/* Groomer's diary note for this visit — editable for 72 hrs after checkout.
-                      Always shown (even if the groomer never left one, or never submitted a
-                      quality check at all) so admin can always see/add it, just blank if empty. */}
+                  {/* Groomer's diary note for this visit — read-only here. Only the
+                      groomer can write/edit this note (from the groomer dashboard);
+                      admin/desk and admin/mobile just display it, blank if empty. */}
                   {(() => {
                     const q = (detailAppt.grooming_quality as any) || {}
-                    const editable = isGroomerNoteEditable(detailAppt.checked_out_at)
                     const hasNote = !!(q.groomer_diary || q.groomer_diary_english)
                     return (
                       <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
-                          {!editingApptDiary && editable && (
-                            <button
-                              onClick={() => { setEditingApptDiary(true); setApptDiaryDraft(q.groomer_diary_english || q.groomer_diary || '') }}
-                              className="text-xs font-semibold text-purple-600 hover:text-purple-700 px-2 py-0.5 rounded hover:bg-purple-100"
-                            >✏️ {hasNote ? 'Edit' : 'Add'}</button>
-                          )}
-                          {!editingApptDiary && !editable && hasNote && (
-                            <span className="text-[11px] text-gray-300">🔒 Locked after 72 hrs</span>
-                          )}
-                        </div>
-                        {editingApptDiary ? (
-                          <div className="space-y-2">
-                            <textarea
-                              autoFocus
-                              value={apptDiaryDraft}
-                              onChange={e => setApptDiaryDraft(e.target.value)}
-                              className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-white"
-                              rows={3}
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => setEditingApptDiary(false)}
-                                className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
-                              >Cancel</button>
-                              <button
-                                onClick={saveApptDiary}
-                                disabled={savingApptDiary}
-                                className="flex-1 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
-                              >{savingApptDiary ? 'Saving…' : '💾 Save'}</button>
-                            </div>
-                          </div>
-                        ) : hasNote ? (
+                        <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
+                        {hasNote ? (
                           <>
                             <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary_english || q.groomer_diary}</p>
                             {q.groomer_diary_traditional && q.groomer_diary_traditional !== (q.groomer_diary_english || q.groomer_diary) && (
@@ -3241,6 +3193,57 @@ export default function DeskAdmin() {
                             )}
                             {q.groomer_diary_author && (
                               <p className="text-[11px] text-purple-300">— {q.groomer_diary_author}</p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-xs text-gray-400 italic">No note yet</p>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Supervisor note for this visit — admin's own note, separate from the
+                      groomer's diary above. Admin can add/edit this any time. */}
+                  {(() => {
+                    const q = (detailAppt.grooming_quality as any) || {}
+                    const hasNote = !!q.supervisor_note
+                    return (
+                      <div className="bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-sky-600">👔 Supervisor Note</p>
+                          {!editingApptSupervisor && (
+                            <button
+                              onClick={() => { setEditingApptSupervisor(true); setApptSupervisorDraft(q.supervisor_note || '') }}
+                              className="text-xs font-semibold text-sky-600 hover:text-sky-700 px-2 py-0.5 rounded hover:bg-sky-100"
+                            >✏️ {hasNote ? 'Edit' : 'Add'}</button>
+                          )}
+                        </div>
+                        {editingApptSupervisor ? (
+                          <div className="space-y-2">
+                            <textarea
+                              autoFocus
+                              value={apptSupervisorDraft}
+                              onChange={e => setApptSupervisorDraft(e.target.value)}
+                              className="w-full border border-sky-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-sky-300 resize-none bg-white"
+                              rows={3}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setEditingApptSupervisor(false)}
+                                className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
+                              >Cancel</button>
+                              <button
+                                onClick={saveApptSupervisor}
+                                disabled={savingApptSupervisor}
+                                className="flex-1 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                              >{savingApptSupervisor ? 'Saving…' : '💾 Save'}</button>
+                            </div>
+                          </div>
+                        ) : hasNote ? (
+                          <>
+                            <p className="text-xs text-gray-600 mt-0.5">{q.supervisor_note}</p>
+                            {q.supervisor_note_author && (
+                              <p className="text-[11px] text-sky-300">— {q.supervisor_note_author}</p>
                             )}
                           </>
                         ) : (
@@ -4127,49 +4130,15 @@ export default function DeskAdmin() {
                                       )}
                                     </div>
                                   )}
-                                  {/* Groomer's diary note for this visit — editable for 72 hrs after checkout.
-                                      Always shown (even if the groomer never left one, or never submitted a
-                                      quality check at all) so admin can always see/add it, just blank if empty. */}
+                                  {/* Groomer's diary note for this visit — read-only here. Only
+                                      the groomer can write/edit this (from the groomer dashboard);
+                                      admin/desk and admin/mobile just display it, blank if empty. */}
                                   {(() => {
-                                    const editable = isGroomerNoteEditable(a.checked_out_at)
                                     const hasNote = !!(q?.groomer_diary || q?.groomer_diary_english)
-                                    const isEditingThis = editingHistoryDiaryId === a.id
                                     return (
                                       <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-1.5">
-                                        <div className="flex items-center justify-between">
-                                          <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
-                                          {!isEditingThis && editable && (
-                                            <button
-                                              onClick={() => { setEditingHistoryDiaryId(a.id); setHistoryDiaryDraft(q?.groomer_diary_english || q?.groomer_diary || '') }}
-                                              className="text-xs font-semibold text-purple-600 hover:text-purple-700 px-2 py-0.5 rounded hover:bg-purple-100"
-                                            >✏️ {hasNote ? 'Edit' : 'Add'}</button>
-                                          )}
-                                          {!isEditingThis && !editable && hasNote && (
-                                            <span className="text-[11px] text-gray-300">🔒 Locked after 72 hrs</span>
-                                          )}
-                                        </div>
-                                        {isEditingThis ? (
-                                          <div className="space-y-2">
-                                            <textarea
-                                              autoFocus
-                                              value={historyDiaryDraft}
-                                              onChange={e => setHistoryDiaryDraft(e.target.value)}
-                                              className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-white"
-                                              rows={3}
-                                            />
-                                            <div className="flex gap-2">
-                                              <button
-                                                onClick={() => setEditingHistoryDiaryId(null)}
-                                                className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
-                                              >Cancel</button>
-                                              <button
-                                                onClick={() => saveHistoryDiary(a.id, q)}
-                                                disabled={savingHistoryDiary}
-                                                className="flex-1 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
-                                              >{savingHistoryDiary ? 'Saving…' : '💾 Save'}</button>
-                                            </div>
-                                          </div>
-                                        ) : hasNote ? (
+                                        <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
+                                        {hasNote ? (
                                           <>
                                             <p className="text-xs text-gray-600 mt-0.5">{q?.groomer_diary_english || q?.groomer_diary}</p>
                                             {q?.groomer_diary_traditional && q.groomer_diary_traditional !== (q?.groomer_diary_english || q?.groomer_diary) && (
@@ -4177,6 +4146,56 @@ export default function DeskAdmin() {
                                             )}
                                             {q?.groomer_diary_author && (
                                               <p className="text-[11px] text-purple-300">— {q.groomer_diary_author}</p>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <p className="text-xs text-gray-400 italic">No note yet</p>
+                                        )}
+                                      </div>
+                                    )
+                                  })()}
+                                  {/* Supervisor note for this visit — admin's own note, separate
+                                      from the groomer's diary above. Admin can add/edit any time. */}
+                                  {(() => {
+                                    const hasNote = !!q?.supervisor_note
+                                    const isEditingThis = editingHistorySupervisorId === a.id
+                                    return (
+                                      <div className="bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                          <p className="text-xs font-semibold text-sky-600">👔 Supervisor Note</p>
+                                          {!isEditingThis && (
+                                            <button
+                                              onClick={() => { setEditingHistorySupervisorId(a.id); setHistorySupervisorDraft(q?.supervisor_note || '') }}
+                                              className="text-xs font-semibold text-sky-600 hover:text-sky-700 px-2 py-0.5 rounded hover:bg-sky-100"
+                                            >✏️ {hasNote ? 'Edit' : 'Add'}</button>
+                                          )}
+                                        </div>
+                                        {isEditingThis ? (
+                                          <div className="space-y-2">
+                                            <textarea
+                                              autoFocus
+                                              value={historySupervisorDraft}
+                                              onChange={e => setHistorySupervisorDraft(e.target.value)}
+                                              className="w-full border border-sky-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-sky-300 resize-none bg-white"
+                                              rows={3}
+                                            />
+                                            <div className="flex gap-2">
+                                              <button
+                                                onClick={() => setEditingHistorySupervisorId(null)}
+                                                className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
+                                              >Cancel</button>
+                                              <button
+                                                onClick={() => saveHistorySupervisor(a.id)}
+                                                disabled={savingHistorySupervisor}
+                                                className="flex-1 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                                              >{savingHistorySupervisor ? 'Saving…' : '💾 Save'}</button>
+                                            </div>
+                                          </div>
+                                        ) : hasNote ? (
+                                          <>
+                                            <p className="text-xs text-gray-600 mt-0.5">{q.supervisor_note}</p>
+                                            {q.supervisor_note_author && (
+                                              <p className="text-[11px] text-sky-300">— {q.supervisor_note_author}</p>
                                             )}
                                           </>
                                         ) : (

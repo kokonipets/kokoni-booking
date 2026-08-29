@@ -582,6 +582,35 @@ export async function PATCH(
     return NextResponse.json({ success: true, grooming_quality })
   }
 
+  // Update the supervisor note — a separate field from the groomer's own diary note.
+  // Only admin/desk and admin/mobile write this; the groomer's diary stays theirs to
+  // edit (via the groomer dashboard), while this gives admin their own place to leave
+  // feedback or instructions without overwriting what the groomer wrote.
+  if (action === 'update-supervisor-note') {
+    const { supervisor_note, supervisor_note_author } = body
+
+    const { data: existing } = await supabase
+      .from('appointments')
+      .select('grooming_quality')
+      .eq('id', id)
+      .single()
+
+    const grooming_quality = {
+      ...(existing?.grooming_quality ?? {}),
+      supervisor_note: supervisor_note ?? '',
+      supervisor_note_author: supervisor_note_author ?? existing?.grooming_quality?.supervisor_note_author ?? '',
+      supervisor_note_updated_at: new Date().toISOString(),
+    }
+
+    const { error } = await supabase
+      .from('appointments')
+      .update({ grooming_quality })
+      .eq('id', id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true, grooming_quality })
+  }
+
   // Delete legacy note (clear old notes fields)
   if (action === 'delete-legacy-note') {
     const { error } = await supabase
