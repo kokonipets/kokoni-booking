@@ -447,6 +447,8 @@ export default function AdminPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [calendarDetailAppt, setCalendarDetailAppt] = useState<Appointment | null>(null)
   const [detailSheetTab, setDetailSheetTab] = useState<'appt'|'customer'|'history'|'future'|'notes'>('appt')
+  // Tags for the pet on the currently-open calendar appointment detail sheet.
+  const [calendarPetTags, setCalendarPetTags] = useState<PetTag[]>([])
   // Full appointment history for the client currently open in the detail sheet.
   // The "History" tab used to derive past visits only from whatever was already
   // loaded locally (today's appointments + the currently viewed calendar month),
@@ -3601,6 +3603,13 @@ export default function AdminPage() {
                                 setCalendarBaseTier((appt as { size_tier?: string | null }).size_tier || '')
                                 setCalendarTotalSaved(!!appt.payment_amount)
                                 setCalendarDetailAppt(appt); setDetailSheetTab('appt')
+                                setCalendarPetTags([])
+                                if (appt.pets?.id) {
+                                  fetch(`/api/admin/pet-tags?pet_id=${appt.pets.id}`)
+                                    .then(r => r.json())
+                                    .then(d => setCalendarPetTags((d.tags ?? []) as PetTag[]))
+                                    .catch(() => {/**/})
+                                }
                               }}
                                 className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left active:scale-98 ${
                                   appt.service === 'simply_cute' ? 'bg-sky-50 border border-sky-200' :
@@ -4118,6 +4127,31 @@ export default function AdminPage() {
                                a.pets.vaccine_status === 'email_sent' ? '📧 Email Sent' :
                                a.pets.vaccine_status === 'expired' ? '❌ Expired' : '⏳ Pending'}
                             </span>
+                          </div>
+                        )}
+                        {/* Tags — same picker used on the Pet Parents page, just wired
+                            to this appointment's pet so it's reachable from the calendar
+                            detail sheet too, not only from Pet Parents. */}
+                        {a.pets?.id && (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {calendarPetTags.map(t => (
+                              <TagPill
+                                key={t.id}
+                                tag={t}
+                                onRemove={async () => {
+                                  await fetch('/api/admin/pet-tags', {
+                                    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ pet_id: a.pets!.id, tag_id: t.id }),
+                                  })
+                                  setCalendarPetTags(prev => prev.filter(x => x.id !== t.id))
+                                }}
+                              />
+                            ))}
+                            <TagPicker
+                              petId={a.pets.id}
+                              currentTags={calendarPetTags}
+                              onChange={setCalendarPetTags}
+                            />
                           </div>
                         )}
                       </div>

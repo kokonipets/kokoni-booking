@@ -465,6 +465,10 @@ export default function DeskAdmin() {
   const [editingHistoryDiaryId, setEditingHistoryDiaryId] = useState<string | null>(null)
   const [historyDiaryDraft, setHistoryDiaryDraft] = useState('')
   const [savingHistoryDiary, setSavingHistoryDiary] = useState(false)
+  // Tags for the pet on the currently-open Calendar/appointment detail popup
+  // (separate from the Pet Parents page's tag state — this popup shows a
+  // single appointment's pet, fetched fresh each time it opens).
+  const [detailPetTags, setDetailPetTags] = useState<PetTag[]>([])
 
   // Groomer notes (internal diary) stay editable for 72 hours after checkout —
   // long enough to fix a typo or add something remembered later — then lock so
@@ -1003,6 +1007,15 @@ export default function DeskAdmin() {
     setDetailClient(null)
     setDetailFutureAppts([])
     setShowRescheduleInputs(false)
+
+    // Fetch this pet's tags fresh each time the popup opens
+    setDetailPetTags([])
+    if (appt.pets?.id) {
+      fetch(`/api/admin/pet-tags?pet_id=${appt.pets.id}`)
+        .then(r => r.json())
+        .then(d => setDetailPetTags((d.tags ?? []) as PetTag[]))
+        .catch(() => {/**/})
+    }
 
     // Fetch full client record (address, pickups, etc.)
     setDetailClientLoading(true)
@@ -3619,6 +3632,31 @@ export default function DeskAdmin() {
                           detailAppt.pets?.vaccine_status==='email_sent' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'}`}>
                           {detailAppt.pets?.vaccine_status==='verified'?'✓ Vaccinated':detailAppt.pets?.vaccine_status==='email_sent'?'Records Pending':'No Records'}
                         </span>
+                        {/* Tags — same picker used on the Pet Parents page, just wired
+                            to this appointment's pet so it's reachable from the Calendar
+                            popup too, not only from Pet Parents. */}
+                        {detailAppt.pets?.id && (
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                            {detailPetTags.map(t => (
+                              <TagPill
+                                key={t.id}
+                                tag={t}
+                                onRemove={async () => {
+                                  await fetch('/api/admin/pet-tags', {
+                                    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ pet_id: detailAppt.pets!.id, tag_id: t.id }),
+                                  })
+                                  setDetailPetTags(prev => prev.filter(x => x.id !== t.id))
+                                }}
+                              />
+                            ))}
+                            <TagPicker
+                              petId={detailAppt.pets.id}
+                              currentTags={detailPetTags}
+                              onChange={setDetailPetTags}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
