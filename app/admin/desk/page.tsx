@@ -469,6 +469,11 @@ export default function DeskAdmin() {
   // (separate from the Pet Parents page's tag state — this popup shows a
   // single appointment's pet, fetched fresh each time it opens).
   const [detailPetTags, setDetailPetTags] = useState<PetTag[]>([])
+  // Editing the groomer diary note for the appointment currently open in the
+  // Calendar detail popup (this visit's own note, not a past one).
+  const [editingApptDiary, setEditingApptDiary] = useState(false)
+  const [apptDiaryDraft, setApptDiaryDraft] = useState('')
+  const [savingApptDiary, setSavingApptDiary] = useState(false)
 
   // Groomer notes (internal diary) stay editable for 72 hours after checkout —
   // long enough to fix a typo or add something remembered later — then lock so
@@ -509,6 +514,41 @@ export default function DeskAdmin() {
       alert('Save failed — check connection')
     } finally {
       setSavingHistoryDiary(false)
+    }
+  }
+
+  // Editable groomer diary note for the appointment currently open in the
+  // Calendar detail popup (this visit, not a past one — see saveHistoryDiary
+  // above for the History-tab equivalent).
+  const saveApptDiary = async () => {
+    if (!detailAppt) return
+    setSavingApptDiary(true)
+    try {
+      const groomer_diary = apptDiaryDraft.trim()
+      const existingQuality = detailAppt.grooming_quality as any
+      const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-groomer-diary',
+          groomer_diary,
+          groomer_diary_english: groomer_diary,
+          groomer_diary_traditional: existingQuality?.groomer_diary_traditional ?? '',
+          groomer_diary_simplified: existingQuality?.groomer_diary_simplified ?? '',
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setDetailAppt(prev => prev ? { ...prev, grooming_quality: data.grooming_quality } as typeof prev : prev)
+        setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, grooming_quality: data.grooming_quality } as typeof a : a))
+        setEditingApptDiary(false)
+      } else {
+        alert('Save failed — please try again')
+      }
+    } catch {
+      alert('Save failed — check connection')
+    } finally {
+      setSavingApptDiary(false)
     }
   }
 
@@ -1016,6 +1056,7 @@ export default function DeskAdmin() {
         .then(d => setDetailPetTags((d.tags ?? []) as PetTag[]))
         .catch(() => {/**/})
     }
+    setEditingApptDiary(false)
 
     // Fetch full client record (address, pickups, etc.)
     setDetailClientLoading(true)
@@ -3137,26 +3178,70 @@ export default function DeskAdmin() {
                             )
                           })}
                         </div>
-                        {(q.groomer_diary || q.customer_note_english) && (
-                          <div className="space-y-2">
-                            {(q.groomer_diary || q.groomer_diary_english) && (
-                              <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-0.5">
-                                <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
-                                <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary_english || q.groomer_diary}</p>
-                                {q.groomer_diary_traditional && q.groomer_diary_traditional !== (q.groomer_diary_english || q.groomer_diary) && (
-                                  <p className="text-xs text-gray-400">{q.groomer_diary_traditional}</p>
-                                )}
-                              </div>
-                            )}
-                            {q.customer_note_english && (
-                              <div className="bg-white border border-emerald-100 rounded-xl px-3 py-2 space-y-0.5">
-                                <p className="text-xs font-semibold text-emerald-600">💌 Note to Customer</p>
-                                <p className="text-xs text-gray-600">{q.customer_note_english}</p>
-                                {q.customer_note_traditional && <p className="text-xs text-gray-400">{q.customer_note_traditional}</p>}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        {(() => {
+                          const editable = isGroomerNoteEditable(detailAppt.checked_out_at)
+                          const hasNote = !!(q.groomer_diary || q.groomer_diary_english)
+                          const hasCustomerNote = !!q.customer_note_english
+                          if (!hasNote && !hasCustomerNote && !editable) return null
+                          return (
+                            <div className="space-y-2">
+                              {(hasNote || editable) && (
+                                <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs font-semibold text-purple-600">📓 Groomer Notes / 美容師工作日記</p>
+                                    {!editingApptDiary && editable && (
+                                      <button
+                                        onClick={() => { setEditingApptDiary(true); setApptDiaryDraft(q.groomer_diary_english || q.groomer_diary || '') }}
+                                        className="text-xs font-semibold text-purple-600 hover:text-purple-700 px-2 py-0.5 rounded hover:bg-purple-100"
+                                      >✏️ {hasNote ? 'Edit' : 'Add'}</button>
+                                    )}
+                                    {!editingApptDiary && !editable && hasNote && (
+                                      <span className="text-[11px] text-gray-300">🔒 Locked after 72 hrs</span>
+                                    )}
+                                  </div>
+                                  {editingApptDiary ? (
+                                    <div className="space-y-2">
+                                      <textarea
+                                        autoFocus
+                                        value={apptDiaryDraft}
+                                        onChange={e => setApptDiaryDraft(e.target.value)}
+                                        className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none bg-white"
+                                        rows={3}
+                                      />
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={() => setEditingApptDiary(false)}
+                                          className="flex-1 py-1.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
+                                        >Cancel</button>
+                                        <button
+                                          onClick={saveApptDiary}
+                                          disabled={savingApptDiary}
+                                          className="flex-1 py-1.5 bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                                        >{savingApptDiary ? 'Saving…' : '💾 Save'}</button>
+                                      </div>
+                                    </div>
+                                  ) : hasNote ? (
+                                    <>
+                                      <p className="text-xs text-gray-600 mt-0.5">{q.groomer_diary_english || q.groomer_diary}</p>
+                                      {q.groomer_diary_traditional && q.groomer_diary_traditional !== (q.groomer_diary_english || q.groomer_diary) && (
+                                        <p className="text-xs text-gray-400">{q.groomer_diary_traditional}</p>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <p className="text-xs text-gray-400 italic">No note yet</p>
+                                  )}
+                                </div>
+                              )}
+                              {q.customer_note_english && (
+                                <div className="bg-white border border-emerald-100 rounded-xl px-3 py-2 space-y-0.5">
+                                  <p className="text-xs font-semibold text-emerald-600">💌 Note to Customer</p>
+                                  <p className="text-xs text-gray-600">{q.customer_note_english}</p>
+                                  {q.customer_note_traditional && <p className="text-xs text-gray-400">{q.customer_note_traditional}</p>}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                     )
                   })()}
