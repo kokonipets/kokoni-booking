@@ -781,18 +781,27 @@ export default function KioskPage() {
               disabled={submitting}
               onClick={async () => {
                 if (mode === 'checkin') {
-                  // Check in all pets at once
+                  // Check in all pets at once — inspect every response instead of
+                  // assuming success. A guard on the backend intentionally no-ops
+                  // (still returning success:true) when an appointment's status
+                  // already drifted out of range, which used to let the kiosk show
+                  // "you're checked in!" for a pet that silently never was.
                   setSubmitting(true)
                   try {
-                    await Promise.all(appointments.map(a =>
+                    const results = await Promise.all(appointments.map(a =>
                       fetch('/api/kiosk/action', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ action: 'checkin', appointmentId: a.id }),
-                      })
+                      }).then(r => r.json())
                     ))
-                    setAppt(appointments[0])
-                    setSelectedAppts(appointments)
-                    setStep('success')
+                    const anyError = results.find(d => d.error)
+                    if (!anyError) {
+                      setAppt(appointments[0])
+                      setSelectedAppts(appointments)
+                      setStep('success')
+                    } else {
+                      setError(anyError.error || 'Something went wrong — please see the front desk')
+                    }
                   } catch { setError('Network error — please see the front desk') }
                   setSubmitting(false)
                 } else {

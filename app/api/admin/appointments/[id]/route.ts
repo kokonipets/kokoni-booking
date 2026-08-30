@@ -476,6 +476,22 @@ export async function PATCH(
       grooming_status,
       grooming_status_updated_at: now,
     }
+
+    // Backfill check-in. The Grooming Board lets staff advance an appointment
+    // straight to "Start Grooming" (and beyond) even when it never went through
+    // a formal check-in step (kiosk, or the front-desk Start button) — the board
+    // just treats a blank grooming_status as "Waiting" and shows the button
+    // anyway. Left alone that permanently leaves checked_in_at blank even though
+    // the dog is clearly here and being groomed, so anywhere this action moves
+    // the pipeline forward, make sure a check-in time exists.
+    const { data: existingAppt } = await supabase
+      .from('appointments')
+      .select('checked_in_at')
+      .eq('id', id)
+      .single()
+    if (existingAppt && !existingAppt.checked_in_at) {
+      updates.checked_in_at = now
+    }
     // Stamp grooming_started_at the first time a groomer starts working
     if (grooming_status === 'incare') {
       updates.grooming_started_at = now

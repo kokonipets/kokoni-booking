@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     // Single update: works for both pending and confirmed appointments.
     // Promotes pending → confirmed and sets grooming_status to 'waiting'.
     // Will not override appointments already past 'waiting' (in_progress, ready, done).
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from('appointments')
       .update({
         status: 'confirmed',
@@ -39,8 +39,26 @@ export async function POST(req: NextRequest) {
       .in('status', ['pending', 'confirmed'])
       // NULL grooming_status also qualifies — using OR to handle SQL NULL != x = NULL (not TRUE)
       .or('grooming_status.is.null,grooming_status.not.in.(in_progress,incare,ready,done)')
+      .select('id')
 
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+
+    // The guard above intentionally no-ops (with no error) when an appointment
+    // already moved past check-in — that's fine, it's already checked in. But if
+    // it's STILL not checked in and the guard blocked the update anyway (status
+    // drifted to something unexpected), that used to come back as a plain
+    // success:true, so the kiosk would tell the customer "you're checked in!"
+    // while checked_in_at silently stayed blank. Catch that case explicitly.
+    if (!updatedRows || updatedRows.length === 0) {
+      const { data: existing } = await supabase
+        .from('appointments')
+        .select('checked_in_at')
+        .eq('id', appointmentId)
+        .single()
+      if (!existing?.checked_in_at) {
+        return NextResponse.json({ error: 'Could not check in — please see the front desk' }, { status: 409 })
+      }
+    }
 
     // Create dog_checkin record (ignore duplicate key errors — already checked in)
     const { error: checkinError } = await supabase.from('dog_checkins').insert({
