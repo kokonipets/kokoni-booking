@@ -637,6 +637,18 @@ export async function PATCH(
     if (payment_status === 'paid') {
       const paidAmount = parseFloat(String(payment_amount ?? '0')) || 0
       updates.status = paidAmount > 0 ? 'completed' : 'no_show'
+      // Also move the appointment to "Checked Out" on the Grooming Board.
+      // Normally the kiosk's own "Done" tap does this the moment the customer
+      // pays. But when staff key the payment in later (e.g. a Venmo/Zelle
+      // customer showed proof of payment and left before front desk could
+      // confirm on the kiosk), grooming_status was never advanced — leaving a
+      // fully-paid appointment stuck in the "Ready" column forever. Recording
+      // a real (non-zero) payment means the visit is over, so check it out too.
+      if (paidAmount > 0) {
+        updates.grooming_status = 'done'
+        updates.grooming_status_updated_at = new Date().toISOString()
+        updates.checked_out_at = new Date().toISOString()
+      }
     }
 
     // If addons array is provided, merge it into notes_list (replace any existing is_addon entries)

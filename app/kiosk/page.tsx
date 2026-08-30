@@ -225,6 +225,13 @@ export default function KioskPage() {
     setCashPendingSignaled(false)
     setSelectedAppts([])
     if (cashPollRef.current) { clearInterval(cashPollRef.current); cashPollRef.current = null }
+    // Clear any stale Venmo/Zelle waiting state — otherwise, if a customer's
+    // transaction gets left mid-confirmation (idle timeout, walk-away, etc.),
+    // the NEXT customer who taps Venmo/Zelle skips straight to the "waiting
+    // for front desk" panel instead of ever seeing the QR code.
+    setVenmoZelleWaiting(false)
+    setVenmoZelleSignaled(false)
+    if (venmoZellePollRef.current) { clearInterval(venmoZellePollRef.current); venmoZellePollRef.current = null }
   }, [])
 
   // Pre-select 20% tip when entering the payment step

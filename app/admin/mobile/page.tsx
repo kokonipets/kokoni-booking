@@ -1882,6 +1882,39 @@ export default function AdminPage() {
                       ? (editDraftCoupon.discount_type === 'percent' ? Math.round(subtotalAmt * editDraftCoupon.discount_value / 100 * 100) / 100 : Math.min(editDraftCoupon.discount_value, subtotalAmt))
                       : 0
                     const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
+
+                    const saveTotal = async (method: string) => {
+                      if (grandTotal <= 0) return
+                      const amount = grandTotal.toString()
+                      setSavingEditDraftPayment(true)
+                      try {
+                        const res = await fetch(`/api/admin/appointments/${appt.id}`, {
+                          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'record-payment', payment_amount: amount, payment_method: method, payment_status: 'paid', addons: editDraftAddOns, size_tier: editDraftBaseTier || null,
+                            discount_label: editDraftCoupon ? editDraftCoupon.name : null,
+                            discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
+                            discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                            // Who absorbs this discount for commission purposes (lib/commission.ts).
+                            discount_bearer: discountAmt > 0 ? (editDraftCoupon?.discount_bearer || 'store') : null }),
+                        })
+                        if ((await res.json()).success) {
+                          setEditDraftTotalSaved(true)
+                          const addonNotes: NoteEntry[] = editDraftAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true, author: 'system', created_at: new Date().toISOString() }))
+                          setAppointments(prev => prev.map(a => {
+                            if (a.id !== appt.id) return a
+                            const nonAddonNotes = (a.notes_list ?? []).filter(n => !n.is_addon)
+                            return { ...a, payment_amount: amount, payment_method: method, payment_status: 'paid', size_tier: editDraftBaseTier || null,
+                              discount_label: editDraftCoupon ? editDraftCoupon.name : null,
+                              discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
+                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                              discount_bearer: discountAmt > 0 ? (editDraftCoupon?.discount_bearer || 'store') : null,
+                              notes_list: [...nonAddonNotes, ...addonNotes] }
+                          }))
+                          showToast('✓ Payment recorded!')
+                        }
+                      } catch {/**/}
+                      finally { setSavingEditDraftPayment(false) }
+                    }
                     return (
                       <div>
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Payment</p>
@@ -2049,45 +2082,28 @@ export default function AdminPage() {
                           )}
 
                           {/* Save Total */}
-                          <button
-                            disabled={grandTotal <= 0 || savingEditDraftPayment}
-                            onClick={async () => {
-                              if (grandTotal <= 0) return
-                              const amount = grandTotal.toString()
-                              setSavingEditDraftPayment(true)
-                              try {
-                                const res = await fetch(`/api/admin/appointments/${appt.id}`, {
-                                  method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ action: 'record-payment', payment_amount: amount, addons: editDraftAddOns, size_tier: editDraftBaseTier || null,
-                                    discount_label: editDraftCoupon ? editDraftCoupon.name : null,
-                                    discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
-                                    discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
-                                    // Who absorbs this discount for commission purposes (lib/commission.ts).
-                                    discount_bearer: discountAmt > 0 ? (editDraftCoupon?.discount_bearer || 'store') : null }),
-                                })
-                                if ((await res.json()).success) {
-                                  setEditDraftTotalSaved(true)
-                                  const addonNotes: NoteEntry[] = editDraftAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true, author: 'system', created_at: new Date().toISOString() }))
-                                  setAppointments(prev => prev.map(a => {
-                                    if (a.id !== appt.id) return a
-                                    const nonAddonNotes = (a.notes_list ?? []).filter(n => !n.is_addon)
-                                    return { ...a, payment_amount: amount, size_tier: editDraftBaseTier || null,
-                                      discount_label: editDraftCoupon ? editDraftCoupon.name : null,
-                                      discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
-                                      discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
-                                      discount_bearer: discountAmt > 0 ? (editDraftCoupon?.discount_bearer || 'store') : null,
-                                      notes_list: [...nonAddonNotes, ...addonNotes] }
-                                  }))
-                                  showToast('✓ Total saved!')
+                          <div>
+                            <p className="text-[10px] font-semibold text-gray-500 mb-1">{grandTotal > 0 ? 'How was this paid?' : 'Select a size first'}</p>
+                            <div className="grid grid-cols-4 gap-1.5">
+                              {(['cash', 'card', 'zelle', 'venmo'] as const).map(m => {
+                                const methodStyle: Record<string, string> = {
+                                  cash: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100',
+                                  card: 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100',
+                                  zelle: 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100',
+                                  venmo: 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100',
                                 }
-                              } catch {/**/}
-                              finally { setSavingEditDraftPayment(false) }
-                            }}
-                            className={`w-full py-2.5 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors ${
-                              grandTotal <= 0 ? 'bg-gray-300' : editDraftTotalSaved ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-sky-500 hover:bg-sky-600'
-                            }`}>
-                            {savingEditDraftPayment ? '⏳ Saving…' : grandTotal > 0 ? (editDraftTotalSaved ? `✓ Saved · $${grandTotal}` : `💾 Save Total · $${grandTotal}`) : 'Select a size first'}
-                          </button>
+                                const methodLabels: Record<string, string> = { cash: '💵 Cash', card: '💳 Card', zelle: '🔵 Zelle', venmo: '📱 Venmo' }
+                                return (
+                                  <button key={m}
+                                    disabled={grandTotal <= 0 || savingEditDraftPayment}
+                                    onClick={() => saveTotal(m)}
+                                    className={`text-xs py-2.5 rounded-xl font-bold border disabled:opacity-40 transition-colors ${methodStyle[m]}`}>
+                                    {savingEditDraftPayment ? '…' : methodLabels[m]}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )
@@ -2903,6 +2919,36 @@ export default function AdminPage() {
                 ? (popupCoupon.discount_type === 'percent' ? Math.round(subtotalAmt * popupCoupon.discount_value / 100 * 100) / 100 : Math.min(popupCoupon.discount_value, subtotalAmt))
                 : 0
               const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
+
+              const saveTotal = async (method: string) => {
+                if (grandTotal <= 0) return
+                const amount = grandTotal.toString()
+                setSavingPopupPayment(true)
+                try {
+                  const res = await fetch(`/api/admin/appointments/${appt.id}`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'record-payment', payment_amount: amount, payment_method: method, payment_status: 'paid', size_tier: popupBaseTier || null,
+                      addons: popupAddOns,
+                      discount_label: popupCoupon ? popupCoupon.name : null,
+                      discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
+                      discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                      discount_bearer: discountAmt > 0 ? (popupCoupon?.discount_bearer || 'store') : null }),
+                  })
+                  if ((await res.json()).success) {
+                    setPopupTotalSaved(true)
+                    const addonNotes = popupAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
+                    const nonAddonNotes = (appt.notes_list ?? []).filter(n => !n.is_addon)
+                    setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount, payment_method: method, payment_status: 'paid', size_tier: popupBaseTier || null,
+                      discount_label: popupCoupon ? popupCoupon.name : null,
+                      discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
+                      discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                      discount_bearer: discountAmt > 0 ? (popupCoupon?.discount_bearer || 'store') : null,
+                      notes_list: [...nonAddonNotes, ...addonNotes] } : a))
+                    showToast('✓ Payment recorded!')
+                  }
+                } catch {/**/}
+                finally { setSavingPopupPayment(false) }
+              }
               return (
                 <div className="rounded-2xl p-4 border border-sky-200 bg-sky-50 mb-3">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">💰 Set Price</p>
@@ -3078,42 +3124,28 @@ export default function AdminPage() {
 
                   {/* Save Total + Close */}
                   <div className="flex gap-2">
-                    <button
-                      disabled={grandTotal <= 0 || savingPopupPayment}
-                      onClick={async () => {
-                        if (grandTotal <= 0) return
-                        const amount = grandTotal.toString()
-                        setSavingPopupPayment(true)
-                        try {
-                          const res = await fetch(`/api/admin/appointments/${appt.id}`, {
-                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'record-payment', payment_amount: amount, size_tier: popupBaseTier || null,
-                              addons: popupAddOns,
-                              discount_label: popupCoupon ? popupCoupon.name : null,
-                              discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
-                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
-                              discount_bearer: discountAmt > 0 ? (popupCoupon?.discount_bearer || 'store') : null }),
-                          })
-                          if ((await res.json()).success) {
-                            setPopupTotalSaved(true)
-                            const addonNotes = popupAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
-                            const nonAddonNotes = (appt.notes_list ?? []).filter(n => !n.is_addon)
-                            setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount, size_tier: popupBaseTier || null,
-                              discount_label: popupCoupon ? popupCoupon.name : null,
-                              discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
-                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
-                              discount_bearer: discountAmt > 0 ? (popupCoupon?.discount_bearer || 'store') : null,
-                              notes_list: [...nonAddonNotes, ...addonNotes] } : a))
-                            showToast('✓ Total saved!')
+                    <div className="flex-1">
+                      <p className="text-[10px] font-semibold text-gray-500 mb-1">{grandTotal > 0 ? 'How was this paid?' : 'Select a size first'}</p>
+                      <div className="grid grid-cols-4 gap-1">
+                        {(['cash', 'card', 'zelle', 'venmo'] as const).map(m => {
+                          const methodStyle: Record<string, string> = {
+                            cash: 'bg-green-50 text-green-700 border-green-200',
+                            card: 'bg-sky-50 text-sky-700 border-sky-200',
+                            zelle: 'bg-purple-50 text-purple-600 border-purple-200',
+                            venmo: 'bg-blue-50 text-blue-600 border-blue-200',
                           }
-                        } catch {/**/}
-                        finally { setSavingPopupPayment(false) }
-                      }}
-                      className={`flex-1 py-2.5 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors ${
-                        grandTotal <= 0 ? 'bg-gray-300' : popupTotalSaved ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-sky-500 hover:bg-sky-600'
-                      }`}>
-                      {savingPopupPayment ? '⏳ Saving…' : grandTotal > 0 ? (popupTotalSaved ? `✓ Saved · $${grandTotal}` : `💾 Save Total · $${grandTotal}`) : 'Select a size first'}
-                    </button>
+                          const methodLabels: Record<string, string> = { cash: '💵', card: '💳', zelle: '🔵', venmo: '📱' }
+                          return (
+                            <button key={m}
+                              disabled={grandTotal <= 0 || savingPopupPayment}
+                              onClick={() => saveTotal(m)}
+                              className={`text-[10px] py-2 rounded-lg font-bold border disabled:opacity-40 transition-colors ${methodStyle[m]}`}>
+                              {savingPopupPayment ? '…' : methodLabels[m]}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
                     <button
                       onClick={() => { setEditingPriceId(null); setPopupBasePrice(''); setPopupBaseTier(''); setPopupAddOns([]); setPopupCouponId(null); setPopupTotalSaved(false) }}
                       className="px-3 py-2.5 bg-white text-gray-500 text-sm rounded-xl border border-gray-200 hover:bg-gray-50">✕</button>
@@ -3928,6 +3960,34 @@ export default function AdminPage() {
                         const addOnTotal = calendarAddOns.reduce((sum, ao) => sum + (parseFloat(ao.price) || 0), 0)
                         const baseAmt = parseFloat(calendarBasePrice) || 0
                         const grandTotal = Math.round((baseAmt + addOnTotal) * 100) / 100
+
+                        const saveTotal = async (method: string) => {
+                          if (grandTotal <= 0) return
+                          const amount = grandTotal.toString()
+                          setSavingCalendarPayment(true)
+                          try {
+                            const res = await fetch(`/api/admin/appointments/${a.id}`, {
+                              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                action: 'record-payment', payment_amount: amount,
+                                payment_status: 'paid', payment_method: method,
+                                tip_amount: a.tip_amount || '0', size_tier: calendarBaseTier || null, addons: calendarAddOns,
+                              }),
+                            })
+                            const data = await res.json()
+                            if (data.success) {
+                              const addonNotes = calendarAddOns.map(ao => ({ id: ao.id, text: ao.name, price: ao.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
+                              const nonAddonNotes = (a.notes_list ?? []).filter((n: {is_addon?:boolean}) => !n.is_addon)
+                              const updated = { ...a, payment_amount: amount, payment_method: method, payment_status: 'paid', size_tier: calendarBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] }
+                              setCalendarDetailAppt(updated as typeof a)
+                              setAppointments(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x))
+                              setCalendarAppts(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x))
+                              setCalendarTotalSaved(true)
+                              showToast('✓ Payment recorded!')
+                            }
+                          } catch {/**/}
+                          finally { setSavingCalendarPayment(false) }
+                        }
                         return (
                       <div className="bg-white border border-gray-100 rounded-2xl p-4">
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Service & Price</p>
@@ -4060,40 +4120,28 @@ export default function AdminPage() {
                         )}
 
                         {/* Save Total */}
-                        <button
-                          disabled={grandTotal <= 0 || savingCalendarPayment}
-                          onClick={async () => {
-                            if (grandTotal <= 0) return
-                            const amount = grandTotal.toString()
-                            setSavingCalendarPayment(true)
-                            try {
-                              const res = await fetch(`/api/admin/appointments/${a.id}`, {
-                                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  action: 'record-payment', payment_amount: amount,
-                                  payment_status: a.payment_status || 'unpaid', payment_method: a.payment_method || 'cash',
-                                  tip_amount: a.tip_amount || '0', size_tier: calendarBaseTier || null, addons: calendarAddOns,
-                                }),
-                              })
-                              const data = await res.json()
-                              if (data.success) {
-                                const addonNotes = calendarAddOns.map(ao => ({ id: ao.id, text: ao.name, price: ao.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
-                                const nonAddonNotes = (a.notes_list ?? []).filter((n: {is_addon?:boolean}) => !n.is_addon)
-                                const updated = { ...a, payment_amount: amount, size_tier: calendarBaseTier || null, notes_list: [...nonAddonNotes, ...addonNotes] }
-                                setCalendarDetailAppt(updated as typeof a)
-                                setAppointments(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x))
-                                setCalendarAppts(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x))
-                                setCalendarTotalSaved(true)
-                                showToast('✓ Total saved!')
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 mb-1.5">{grandTotal > 0 ? 'How was this paid?' : 'Select a size first'}</p>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {(['cash', 'card', 'zelle', 'venmo'] as const).map(m => {
+                              const methodStyle: Record<string, string> = {
+                                cash: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100',
+                                card: 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100',
+                                zelle: 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100',
+                                venmo: 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100',
                               }
-                            } catch {/**/}
-                            finally { setSavingCalendarPayment(false) }
-                          }}
-                          className={`w-full py-2.5 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors ${
-                            grandTotal <= 0 ? 'bg-gray-300' : calendarTotalSaved ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-violet-500 hover:bg-violet-600'
-                          }`}>
-                          {savingCalendarPayment ? '⏳ Saving…' : grandTotal > 0 ? (calendarTotalSaved ? `✓ Saved · $${grandTotal.toFixed(2)}` : `💾 Save Total · $${grandTotal.toFixed(2)}`) : 'Select a size first'}
-                        </button>
+                              const methodLabels: Record<string, string> = { cash: '💵 Cash', card: '💳 Card', zelle: '🔵 Zelle', venmo: '📱 Venmo' }
+                              return (
+                                <button key={m}
+                                  disabled={grandTotal <= 0 || savingCalendarPayment}
+                                  onClick={() => saveTotal(m)}
+                                  className={`text-xs py-2.5 rounded-xl font-bold border disabled:opacity-40 transition-colors ${methodStyle[m]}`}>
+                                  {savingCalendarPayment ? '…' : methodLabels[m]}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
 
                         {a.tip_amount && parseFloat(String(a.tip_amount)) > 0 && (
                           <p className="text-xs text-gray-400 mt-2">Tip: ${a.tip_amount} · Method: {a.payment_method || '—'}</p>
