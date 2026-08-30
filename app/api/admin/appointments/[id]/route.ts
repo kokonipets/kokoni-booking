@@ -624,7 +624,7 @@ export async function PATCH(
 
   // Record payment
   if (action === 'record-payment') {
-    const { payment_amount, tip_amount, payment_method, payment_status, addons, discount_label, discount_percent, discount_amount, size_tier } = body
+    const { payment_amount, tip_amount, payment_method, payment_status, addons, discount_label, discount_percent, discount_amount, discount_bearer, size_tier } = body
     const updates: Record<string, unknown> = {}
     if (payment_amount !== undefined) updates.payment_amount = payment_amount || null
     if (tip_amount !== undefined) updates.tip_amount = tip_amount || null
@@ -674,6 +674,11 @@ export async function PATCH(
         discount_label: discount_label || null,
         discount_percent: discount_percent || null,
         discount_amount: discount_amount || null,
+        // Who absorbs this discount for commission purposes (see lib/commission.ts).
+        // Snapshotted from the coupon at checkout time; 'store' when a discount
+        // was applied without picking a saved coupon (matches the old default
+        // behavior of adding the discount back for commission).
+        discount_bearer: discount_amount ? (discount_bearer || 'store') : null,
       }
       const { error: discountErr } = await supabase
         .from('appointments')

@@ -402,7 +402,7 @@ export default function AdminPage() {
   const [calendarTotalSaved, setCalendarTotalSaved] = useState(false)
   const [savingCalendarPayment, setSavingCalendarPayment] = useState(false)
   // Discount codes (shared with desk/groomer)
-  type MobileCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
+  type MobileCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean; discount_bearer?: 'store' | 'groomer' | 'split' }
   const [availableCoupons, setAvailableCoupons] = useState<MobileCoupon[]>([])
   const [mobileIsFirstTime, setMobileIsFirstTime] = useState(false)
   // EditPanel notes states
@@ -2061,7 +2061,9 @@ export default function AdminPage() {
                                   body: JSON.stringify({ action: 'record-payment', payment_amount: amount, addons: editDraftAddOns, size_tier: editDraftBaseTier || null,
                                     discount_label: editDraftCoupon ? editDraftCoupon.name : null,
                                     discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
-                                    discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null }),
+                                    discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                                    // Who absorbs this discount for commission purposes (lib/commission.ts).
+                                    discount_bearer: discountAmt > 0 ? (editDraftCoupon?.discount_bearer || 'store') : null }),
                                 })
                                 if ((await res.json()).success) {
                                   setEditDraftTotalSaved(true)
@@ -2073,6 +2075,7 @@ export default function AdminPage() {
                                       discount_label: editDraftCoupon ? editDraftCoupon.name : null,
                                       discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
                                       discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                                      discount_bearer: discountAmt > 0 ? (editDraftCoupon?.discount_bearer || 'store') : null,
                                       notes_list: [...nonAddonNotes, ...addonNotes] }
                                   }))
                                   showToast('✓ Total saved!')
@@ -3088,7 +3091,8 @@ export default function AdminPage() {
                               addons: popupAddOns,
                               discount_label: popupCoupon ? popupCoupon.name : null,
                               discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
-                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null }),
+                              discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                              discount_bearer: discountAmt > 0 ? (popupCoupon?.discount_bearer || 'store') : null }),
                           })
                           if ((await res.json()).success) {
                             setPopupTotalSaved(true)
@@ -3098,6 +3102,7 @@ export default function AdminPage() {
                               discount_label: popupCoupon ? popupCoupon.name : null,
                               discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
                               discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                              discount_bearer: discountAmt > 0 ? (popupCoupon?.discount_bearer || 'store') : null,
                               notes_list: [...nonAddonNotes, ...addonNotes] } : a))
                             showToast('✓ Total saved!')
                           }

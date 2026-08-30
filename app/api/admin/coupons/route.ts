@@ -27,13 +27,16 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const supabase = getAdminClient()
   const body = await req.json()
-  const { name, code, discount_type, discount_value, first_visit_only } = body
+  const { name, code, discount_type, discount_value, first_visit_only, discount_bearer } = body
 
   if (!name || !discount_type || discount_value == null) {
     return NextResponse.json({ error: 'name, discount_type, and discount_value are required' }, { status: 400 })
   }
   if (!['percent', 'fixed'].includes(discount_type)) {
     return NextResponse.json({ error: 'discount_type must be "percent" or "fixed"' }, { status: 400 })
+  }
+  if (discount_bearer !== undefined && !['store', 'groomer', 'split'].includes(discount_bearer)) {
+    return NextResponse.json({ error: 'discount_bearer must be "store", "groomer", or "split"' }, { status: 400 })
   }
 
   const { data, error } = await supabase
@@ -45,6 +48,8 @@ export async function POST(req: NextRequest) {
       discount_value: parseFloat(discount_value),
       active: true,
       first_visit_only: !!first_visit_only,
+      // Who absorbs this discount for commission purposes — see lib/commission.ts.
+      discount_bearer: discount_bearer || 'store',
     })
     .select()
     .single()
@@ -57,9 +62,12 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const supabase = getAdminClient()
   const body = await req.json()
-  const { id, name, code, discount_type, discount_value, active, first_visit_only } = body
+  const { id, name, code, discount_type, discount_value, active, first_visit_only, discount_bearer } = body
 
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  if (discount_bearer !== undefined && !['store', 'groomer', 'split'].includes(discount_bearer)) {
+    return NextResponse.json({ error: 'discount_bearer must be "store", "groomer", or "split"' }, { status: 400 })
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updates: Record<string, any> = {}
@@ -69,6 +77,7 @@ export async function PATCH(req: NextRequest) {
   if (discount_value !== undefined) updates.discount_value = parseFloat(discount_value)
   if (active !== undefined) updates.active = active
   if (first_visit_only !== undefined) updates.first_visit_only = !!first_visit_only
+  if (discount_bearer !== undefined) updates.discount_bearer = discount_bearer
 
   const { error } = await supabase.from('coupons').update(updates).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

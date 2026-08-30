@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, type Tag as PetTag } from '@/lib/tags'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
+import { commissionableAmount } from '@/lib/commission'
 
 type Appointment = {
   id: string
@@ -266,7 +267,7 @@ export default function GroomerDashboard() {
   // The appointment the popup was originally opened for — lets us jump back
   // to "today's" visit after drilling into one or more read-only past visits.
   const [popupHomeAppt, setPopupHomeAppt] = useState<Appointment | null>(null)
-  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
+  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean; discount_bearer?: 'store' | 'groomer' | 'split' }
   const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([])
   const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
@@ -1231,13 +1232,21 @@ export default function GroomerDashboard() {
     return true
   })
   const cashPendingCount = paidAppts.filter(a => a.payment_status === 'cash_pending').length
-  // Commission is on the full price before discount, so add the discount back.
+  // Commission base depends on each appointment's discount_bearer (see
+  // lib/commission.ts): store-absorbed discounts add back to the base,
+  // groomer-absorbed ones don't, split splits the difference.
   const grossRevenue = paidAppts.reduce((s, a) => s + parseFloat(a.payment_amount || '0') + parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), 0)
   const totalDiscount = paidAppts.reduce((s, a) => s + parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), 0)
   const netCollected = grossRevenue - totalDiscount
   const totalRevenue = grossRevenue
   const totalTips = paidAppts.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
-  const commission = grossRevenue * commissionPct / 100
+  const commissionableTotal = paidAppts.reduce((s, a) => {
+    const paymentAmount = parseFloat(a.payment_amount || '0')
+    const discountAmount = parseFloat((a as { discount_amount?: string | null }).discount_amount || '0')
+    const bearer = (a as { discount_bearer?: string | null }).discount_bearer
+    return s + commissionableAmount(paymentAmount, discountAmount, bearer)
+  }, 0)
+  const commission = commissionableTotal * commissionPct / 100
   const tipInPaycheck = totalTips * tipPct / 100
   const rangeLabelMap = {
     today: 'Today',
@@ -1879,7 +1888,7 @@ export default function GroomerDashboard() {
             <div className="bg-violet-50 rounded-2xl p-4 border border-violet-100">
               <p className="text-xl font-bold text-violet-700">${commission.toFixed(2)}</p>
               <p className="text-xs text-violet-600 font-medium mt-1">Commission</p>
-              <p className="text-xs text-violet-400 mt-0.5">{commissionPct}% before discount</p>
+              <p className="text-xs text-violet-400 mt-0.5">{commissionPct}% commission rate</p>
             </div>
           </div>
 
@@ -1901,10 +1910,10 @@ export default function GroomerDashboard() {
               <span className="font-semibold text-gray-700">${netCollected.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm border-t border-gray-100 pt-1.5">
-              <span className="text-violet-600 font-semibold">Your commission ({commissionPct}% × ${grossRevenue.toFixed(2)})</span>
+              <span className="text-violet-600 font-semibold">Your commission ({commissionPct}% × ${commissionableTotal.toFixed(2)})</span>
               <span className="font-bold text-violet-700">${commission.toFixed(2)}</span>
             </div>
-            {totalDiscount > 0 && <p className="text-[11px] text-gray-400 pt-1">Your commission is {commissionPct}% of the full price before any discount.</p>}
+            {totalDiscount > 0 && <p className="text-[11px] text-gray-400 pt-1">Your commission base reflects each coupon&apos;s discount settings — store-covered discounts don&apos;t reduce your commission, groomer-covered ones do.</p>}
           </div>
 
           {/* Tips — groomer gets tipPct%, store keeps the rest */}
@@ -2443,6 +2452,8 @@ export default function GroomerDashboard() {
                               discount_label: selectedCoupon ? selectedCoupon.name : (popupDiscount && discountAmt > 0 ? 'First-time customer 20% off' : null),
                               discount_percent: selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : (popupDiscount && discountAmt > 0 ? '20' : null),
                               discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                              // Who absorbs this discount for commission purposes (lib/commission.ts).
+                              discount_bearer: discountAmt > 0 ? (selectedCoupon?.discount_bearer || 'store') : null,
                               size_tier: popupBaseTier || null,
                             }),
                           })
@@ -2453,7 +2464,8 @@ export default function GroomerDashboard() {
                             const dLabel = selectedCoupon ? selectedCoupon.name : (popupDiscount && discountAmt > 0 ? 'First-time customer 20% off' : null)
                             const dPct = selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : (popupDiscount && discountAmt > 0 ? '20' : null)
                             const dAmt = discountAmt > 0 ? discountAmt.toFixed(2) : null
-                            const updated = { ...selectedAppt, payment_amount: amount, size_tier: popupBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof selectedAppt
+                            const dBearer = discountAmt > 0 ? (selectedCoupon?.discount_bearer || 'store') : null
+                            const updated = { ...selectedAppt, payment_amount: amount, size_tier: popupBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, discount_bearer: dBearer, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof selectedAppt
                             setAppointments(prev => prev.map(a => a.id === selectedAppt.id ? updated : a))
                             setPopupTotalSaved(true)
                             showToast('✓ Total saved!')

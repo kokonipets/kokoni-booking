@@ -7,6 +7,7 @@ import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
 import ChatSidebarLink from '@/components/ChatSidebarLink'
 import ChatIconButton from '@/components/ChatIconButton'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
+import { commissionableAmount } from '@/lib/commission'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffMember = {
@@ -592,7 +593,7 @@ export default function DeskAdmin() {
   const [savingPayment, setSavingPayment] = useState(false)
   const [totalSaved, setTotalSaved] = useState(false)
   // Discount codes (shared with groomer): pick from the coupon list, first-visit-only gated
-  type DeskCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean }
+  type DeskCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean; discount_bearer?: 'store' | 'groomer' | 'split' }
   const [availableCoupons, setAvailableCoupons] = useState<DeskCoupon[]>([])
   const [detailCouponId, setDetailCouponId] = useState<string | null>(null)
   // null = unknown (detection not yet run / failed), true = has a prior PAID visit
@@ -1782,8 +1783,13 @@ export default function DeskAdmin() {
         if (!byDate[d]) byDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
         byDate[d].appts += 1
         if (a.payment_status === 'paid') {
-          // Commission is on the full pre-discount price: add the discount back.
-          const rev = parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0')
+          // revenue shown to staff is always the full pre-discount price; the
+          // commission base depends on this appointment's discount_bearer
+          // (see lib/commission.ts) and can differ from that revenue figure.
+          const paymentAmount = parseFloat(a.payment_amount || '0')
+          const discountAmount = parseFloat(a.discount_amount || '0')
+          const rev = paymentAmount + discountAmount
+          const commBase = commissionableAmount(paymentAmount, discountAmount, a.discount_bearer)
           const tip = parseFloat(a.tip_amount || '0')
           byDate[d].revenue += rev
           byDate[d].tips += tip
@@ -1791,7 +1797,7 @@ export default function DeskAdmin() {
           const apptMember = a.assigned_groomer ? staff.find(s => s.name === a.assigned_groomer) : null
           const cRate = apptMember ? apptMember.commission_percent / 100 : 0
           const tRate = apptMember ? apptMember.tip_percent / 100 : 0
-          byDate[d].commission += rev * cRate
+          byDate[d].commission += commBase * cRate
           byDate[d].tipShare += tip * tRate
         }
       })
@@ -1808,6 +1814,7 @@ export default function DeskAdmin() {
         const memberAppts = appts.filter((a: any) => a.assigned_groomer === member.name)
         const paidAppts = memberAppts.filter((a: any) => a.payment_status === 'paid')
         const revenue = paidAppts.reduce((s: number, a: any) => s + parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0'), 0)
+        const commissionBase = paidAppts.reduce((s: number, a: any) => s + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat(a.discount_amount || '0'), a.discount_bearer), 0)
         const tips = memberAppts.reduce((s: number, a: any) => s + parseFloat(a.tip_amount || '0'), 0)
         const commRate = member.commission_percent / 100
         const tipRate = member.tip_percent / 100
@@ -1816,7 +1823,7 @@ export default function DeskAdmin() {
           appts: memberAppts.length,
           revenue,
           tips,
-          commission: revenue * commRate,
+          commission: commissionBase * commRate,
           tipShare: tips * tipRate,
           commRate: member.commission_percent,
           tipRate: member.tip_percent,
@@ -1834,12 +1841,16 @@ export default function DeskAdmin() {
           if (!mByDate[d]) mByDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
           mByDate[d].appts += 1
           if (a.payment_status === 'paid') {
-            // Commission is on the full pre-discount price: add the discount back.
-            const rev = parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0')
+            // revenue shown is always pre-discount; commission base depends
+            // on this appointment's discount_bearer (lib/commission.ts).
+            const paymentAmount = parseFloat(a.payment_amount || '0')
+            const discountAmount = parseFloat(a.discount_amount || '0')
+            const rev = paymentAmount + discountAmount
+            const commBase = commissionableAmount(paymentAmount, discountAmount, a.discount_bearer)
             const tip = parseFloat(a.tip_amount || '0')
             mByDate[d].revenue += rev
             mByDate[d].tips += tip
-            mByDate[d].commission += rev * cRate
+            mByDate[d].commission += commBase * cRate
             mByDate[d].tipShare += tip * tRate
           }
         })
@@ -3630,6 +3641,8 @@ export default function DeskAdmin() {
                                   discount_label: selectedCoupon ? selectedCoupon.name : null,
                                   discount_percent: selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : null,
                                   discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
+                                  // Who absorbs this discount for commission purposes (lib/commission.ts).
+                                  discount_bearer: discountAmt > 0 ? (selectedCoupon?.discount_bearer || 'store') : null,
                                   size_tier: detailBaseTier || null,
                                 }),
                               })
@@ -3640,8 +3653,9 @@ export default function DeskAdmin() {
                                 const dLabel = selectedCoupon ? selectedCoupon.name : null
                                 const dPct = selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : null
                                 const dAmt = discountAmt > 0 ? discountAmt.toFixed(2) : null
-                                setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, status: effectiveStatus === 'paid' ? 'completed' : prev.status, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof prev : prev)
-                                setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt } as typeof a : a))
+                                const dBearer = discountAmt > 0 ? (selectedCoupon?.discount_bearer || 'store') : null
+                                setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, status: effectiveStatus === 'paid' ? 'completed' : prev.status, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, discount_bearer: dBearer, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof prev : prev)
+                                setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, discount_bearer: dBearer } as typeof a : a))
                                 setTotalSaved(true)
                                 showToast('✓ Total saved!')
                               }
@@ -7691,13 +7705,14 @@ export default function DeskAdmin() {
               .sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
             const perfPaid = perfAppts.filter(a => a.payment_status === 'paid')
             const perfRevenue = perfPaid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
+            const perfCommissionBase = perfPaid.reduce((s, a) => s + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer), 0)
             const perfTips = perfPaid.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
             const perfStaff = staff.find(s => {
               const fullName = s.first_name ? `${s.first_name} ${s.last_name || ''}`.trim() : s.name
               return fullName === activePerfGroomer || s.name === activePerfGroomer
             })
             const perfCommPct = perfStaff?.commission_percent ?? 0
-            const perfCommission = perfRevenue * perfCommPct / 100
+            const perfCommission = perfCommissionBase * perfCommPct / 100
             const perfRangeLabel: Record<string, string> = { today: 'Today', week: 'This Week', this_payroll: 'This Pay', last_payroll: 'Last Pay', month: 'This Month', last_month: 'Last Month' }
 
             const inRange = (date: string) => {
@@ -7739,7 +7754,8 @@ export default function DeskAdmin() {
               })
               const commissionPct = staffMatch?.commission_percent ?? 0
               const tipPct = staffMatch?.tip_percent ?? 0
-              const commission = revenue * commissionPct / 100
+              const commissionBase = g.appts.reduce((sum, a) => sum + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer), 0)
+              const commission = commissionBase * commissionPct / 100
               const tipEarned = tips * tipPct / 100
               return { name: g.name, count: g.appts.length, revenue, tips, commissionPct, tipPct, commission, tipEarned }
             }).sort((a, b) => b.revenue - a.revenue)

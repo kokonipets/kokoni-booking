@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { tagClasses, type Tag } from '@/lib/tags'
 import { readAuthRaw, saveAuth } from '@/lib/authStorage'
+import { DISCOUNT_BEARER_OPTIONS, type DiscountBearer } from '@/lib/commission'
 
 type StaffMember = {
   id: string
@@ -143,9 +144,9 @@ export default function SettingsPage() {
   const [slotInterval, setSlotInterval] = useState<15 | 30 | 45>(30)
 
   // ── Coupons state ─────────────────────────────────────────────────────────
-  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean; created_at: string }
+  type Coupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean; discount_bearer?: DiscountBearer; created_at: string }
   const [coupons, setCoupons] = useState<Coupon[]>([])
-  const [couponForm, setCouponForm] = useState<{ name: string; code: string; discount_type: 'percent' | 'fixed'; discount_value: string; first_visit_only: boolean }>({ name: '', code: '', discount_type: 'percent', discount_value: '', first_visit_only: false })
+  const [couponForm, setCouponForm] = useState<{ name: string; code: string; discount_type: 'percent' | 'fixed'; discount_value: string; first_visit_only: boolean; discount_bearer: DiscountBearer }>({ name: '', code: '', discount_type: 'percent', discount_value: '', first_visit_only: false, discount_bearer: 'store' })
   const [editingCouponId, setEditingCouponId] = useState<string | null>(null)
   const [savingCoupon, setSavingCoupon] = useState(false)
   const [couponMsg, setCouponMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -2521,6 +2522,24 @@ export default function SettingsPage() {
                 <span className="text-sm text-gray-700">🎉 First visit only <span className="text-gray-400">— blocks this code for returning customers</span></span>
               </label>
 
+              <div className="mb-1">
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Who absorbs this discount? *</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {DISCOUNT_BEARER_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setCouponForm(p => ({ ...p, discount_bearer: opt.value }))}
+                      title={opt.hint}
+                      className={`text-xs font-semibold py-2 px-2 rounded-xl border transition-colors ${couponForm.discount_bearer === opt.value ? 'bg-sky-500 border-sky-500 text-white' : 'bg-white border-sky-200 text-gray-600 hover:bg-sky-50'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">{DISCOUNT_BEARER_OPTIONS.find(o => o.value === couponForm.discount_bearer)?.hint}</p>
+              </div>
+
               <div className="flex gap-2">
                 <button
                   disabled={savingCoupon || !couponForm.name || !couponForm.discount_value}
@@ -2537,7 +2556,7 @@ export default function SettingsPage() {
                       const data = await res.json()
                       if (data.error) throw new Error(data.error)
                       setCouponMsg({ type: 'success', text: editingCouponId ? '✓ Coupon updated!' : '✓ Coupon created!' })
-                      setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '', first_visit_only: false })
+                      setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '', first_visit_only: false, discount_bearer: 'store' })
                       setEditingCouponId(null)
                       await loadCoupons()
                     } catch (e: unknown) {
@@ -2552,7 +2571,7 @@ export default function SettingsPage() {
                 </button>
                 {editingCouponId && (
                   <button
-                    onClick={() => { setEditingCouponId(null); setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '', first_visit_only: false }) }}
+                    onClick={() => { setEditingCouponId(null); setCouponForm({ name: '', code: '', discount_type: 'percent', discount_value: '', first_visit_only: false, discount_bearer: 'store' }) }}
                     className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-semibold rounded-xl transition-colors"
                   >
                     Cancel
@@ -2594,6 +2613,8 @@ export default function SettingsPage() {
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5">
                           {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}
+                          {' · '}
+                          {DISCOUNT_BEARER_OPTIONS.find(o => o.value === (c.discount_bearer || 'store'))?.label}
                         </p>
                       </div>
 
@@ -2602,7 +2623,7 @@ export default function SettingsPage() {
                         <button
                           onClick={() => {
                             setEditingCouponId(c.id)
-                            setCouponForm({ name: c.name, code: c.code ?? '', discount_type: c.discount_type, discount_value: c.discount_value.toString(), first_visit_only: !!c.first_visit_only })
+                            setCouponForm({ name: c.name, code: c.code ?? '', discount_type: c.discount_type, discount_value: c.discount_value.toString(), first_visit_only: !!c.first_visit_only, discount_bearer: c.discount_bearer || 'store' })
                             setCouponMsg(null)
                             window.scrollTo({ top: 0, behavior: 'smooth' })
                           }}

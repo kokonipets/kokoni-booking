@@ -129,6 +129,9 @@ function CheckoutModal({
           discount_label: discount ? 'First-time customer 20% off' : null,
           discount_percent: discount ? '20' : null,
           discount_amount: discount ? discountAmt.toFixed(2) : null,
+          // Manual first-time-customer toggle: store absorbs it, same as the
+          // "First-time customer" coupon default — see lib/commission.ts.
+          discount_bearer: discount ? 'store' : null,
         }),
       })
       const d = await res.json()
@@ -388,6 +391,7 @@ function GroupCheckoutModal({
             discount_label: discount ? 'First-time customer 20% off' : null,
             discount_percent: discount ? '20' : null,
             discount_amount: discount ? dDiscount.toFixed(2) : null,
+            discount_bearer: discount ? 'store' : null,
           }),
         }).then(r => r.json()).then(d => ({ ok: !!d.success, i }))
       }))
