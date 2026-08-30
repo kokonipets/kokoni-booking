@@ -336,6 +336,7 @@ function GroupCheckoutModal({
     () => Object.fromEntries(appts.map(a => [a.id, a.payment_amount || '']))
   )
   const [tip, setTip] = useState('')
+  const [cashReceived, setCashReceived] = useState('')
   const [discount, setDiscount] = useState(false)
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
@@ -501,10 +502,51 @@ function GroupCheckoutModal({
             )}
           </div>
 
+          {/* Cash received — for cash, do the tip math instead of making staff do it by
+              hand: enter what the client actually handed over, and the amount above the
+              combined service total becomes the tip, split across each pet below. */}
+          {method === 'cash' && (
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+                Cash received (fills in the tip below automatically)
+              </p>
+              <div className="flex items-center rounded-2xl border-2 border-green-200 bg-green-50 overflow-hidden">
+                <span className="text-sm font-bold px-4 py-2.5 border-r-2 border-green-200 text-green-600">Cash $</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={cashReceived}
+                  onChange={e => {
+                    const val = e.target.value
+                    setCashReceived(val)
+                    const given = parseFloat(val)
+                    if (!isNaN(given) && given >= 0) {
+                      const computedTip = Math.max(0, Math.round((given - serviceSubtotal) * 100) / 100)
+                      setTip(computedTip > 0 ? computedTip.toFixed(2) : '')
+                    }
+                  }}
+                  placeholder={serviceSubtotal ? serviceSubtotal.toFixed(2) : '0.00'}
+                  className="flex-1 text-lg font-black py-2.5 px-4 bg-transparent focus:outline-none text-green-600 placeholder:text-gray-300"
+                />
+                {cashReceived && (
+                  <button onClick={() => { setCashReceived(''); setTip('') }} className="px-3 text-gray-300 hover:text-gray-500 text-lg">✕</button>
+                )}
+              </div>
+              {cashReceived && !isNaN(parseFloat(cashReceived)) && (
+                <p className="text-xs text-green-600 font-semibold mt-1.5 px-1">
+                  {parseFloat(cashReceived) > serviceSubtotal
+                    ? `→ $${(parseFloat(cashReceived) - serviceSubtotal).toFixed(2)} tip, split across ${appts.length} pets below`
+                    : parseFloat(cashReceived) < serviceSubtotal
+                    ? `→ $${(serviceSubtotal - parseFloat(cashReceived)).toFixed(2)} short of the service total`
+                    : '→ exact amount, no tip'}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Tip (on combined subtotal) */}
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-              Tip {method === 'card' ? '(select % or enter)' : '(enter manually)'} · split across pets
+              Tip {method === 'card' ? '(select % or enter)' : method === 'cash' ? '(auto-filled from cash received, or enter manually)' : '(enter manually)'} · split across pets
             </p>
             {method === 'card' && (
               <div className="grid grid-cols-4 gap-2 mb-2">
@@ -721,6 +763,12 @@ export default function CashierPage() {
   const [periodDetail, setPeriodDetail] = useState<'week' | 'month' | null>(null)
   const [periodDetailRows, setPeriodDetailRows] = useState<Appt[]>([])
   const [periodDetailLoading, setPeriodDetailLoading] = useState(false)
+  // Which period the Today/This Week/This Month cards + the payment-method
+  // boxes below them are showing — tapping a card used to jump straight to a
+  // full itemized list; now it switches the summary boxes to that period
+  // instead, and the itemized list becomes an optional "view list" beneath them.
+  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('today')
+  const [periodRevenue, setPeriodRevenue] = useState<Record<string, { amount: number; tips: number; count: number }> | null>(null)
   const [alerts, setAlerts] = useState<{ id: string; pet: string; owner: string; method: string; amount: string | null; tip: string | null; time: string }[]>([])
   const [now, setNow] = useState(new Date())
   const [checkoutAppt, setCheckoutAppt] = useState<Appt | null>(null)
@@ -780,6 +828,9 @@ export default function CashierPage() {
     acc[m] = { amount: (acc[m]?.amount ?? 0) + amt, tips: (acc[m]?.tips ?? 0) + tip, count: (acc[m]?.count ?? 0) + 1 }
     return acc
   }, {} as Record<string, { amount: number; tips: number; count: number }>)
+  // The payment-method boxes read from whichever period is selected — today's
+  // live breakdown, or the fetched This Week / This Month aggregate.
+  const activeRevenue = selectedPeriod === 'today' ? revenue : (periodRevenue ?? {})
 
   const fetchData = useCallback(async () => {
     try {
@@ -916,6 +967,33 @@ export default function CashierPage() {
       setPeriodDetailRows([])
     } finally {
       setPeriodDetailLoading(false)
+    }
+  }, [])
+
+  // Switch the Today/This Week/This Month cards' active period — updates the
+  // CARD/CASH/VENMO/ZELLE boxes below to that period's totals. Doesn't open
+  // the itemized list (see "View full list" under the boxes for that).
+  const selectPeriod = useCallback(async (period: 'today' | 'week' | 'month') => {
+    setSelectedPeriod(period)
+    if (period === 'today') { setPeriodRevenue(null); return }
+    try {
+      const { start, end } = getPeriodRange(period)
+      const { data } = await supabase.from('appointments')
+        .select('payment_method, payment_amount, tip_amount')
+        .eq('payment_status', 'paid')
+        .gte('appointment_date', start)
+        .lte('appointment_date', end)
+      const rows = (data as { payment_method: string | null; payment_amount: string | null; tip_amount: string | null }[]) || []
+      const agg = rows.reduce((acc, a) => {
+        const m = a.payment_method ?? 'unknown'
+        const amt = parseFloat(a.payment_amount ?? '0') || 0
+        const tip = parseFloat(a.tip_amount ?? '0') || 0
+        acc[m] = { amount: (acc[m]?.amount ?? 0) + amt, tips: (acc[m]?.tips ?? 0) + tip, count: (acc[m]?.count ?? 0) + 1 }
+        return acc
+      }, {} as Record<string, { amount: number; tips: number; count: number }>)
+      setPeriodRevenue(agg)
+    } catch {
+      setPeriodRevenue(null)
     }
   }, [])
 
@@ -1248,7 +1326,8 @@ export default function CashierPage() {
             {/* ── Period totals: Today / This Week / This Month ── */}
             <div className="grid grid-cols-3 gap-4">
               {/* Today */}
-              <div className="bg-gradient-to-br from-violet-600 to-violet-700 rounded-2xl p-5 text-white shadow-lg">
+              <button onClick={() => selectPeriod('today')}
+                className={`bg-gradient-to-br from-violet-600 to-violet-700 rounded-2xl p-5 text-white shadow-lg text-left transition-all cursor-pointer ${selectedPeriod === 'today' ? 'ring-4 ring-violet-300' : 'hover:brightness-110 active:brightness-95'}`}>
                 <p className="text-violet-200 text-xs font-bold uppercase tracking-widest mb-1">Today</p>
                 <p className="text-3xl font-black leading-tight">{fmtMoney(totalService + totalTips)}</p>
                 <p className="text-violet-200 text-xs mt-1.5">
@@ -1256,10 +1335,10 @@ export default function CashierPage() {
                   {totalTips > 0 && <span className="ml-1 text-emerald-300">+{fmtMoney(totalTips)} tip</span>}
                 </p>
                 <p className="text-violet-300 text-xs mt-0.5">{paid.length} paid · {unpaid.length} unpaid</p>
-              </div>
+              </button>
               {/* This Week */}
-              <button onClick={() => openPeriodDetail('week')}
-                className="bg-gradient-to-br from-sky-500 to-sky-600 rounded-2xl p-5 text-white shadow-lg text-left hover:brightness-110 active:brightness-95 transition-all cursor-pointer">
+              <button onClick={() => selectPeriod('week')}
+                className={`bg-gradient-to-br from-sky-500 to-sky-600 rounded-2xl p-5 text-white shadow-lg text-left transition-all cursor-pointer ${selectedPeriod === 'week' ? 'ring-4 ring-sky-300' : 'hover:brightness-110 active:brightness-95'}`}>
                 <p className="text-sky-100 text-xs font-bold uppercase tracking-widest mb-1">This Week</p>
                 <p className="text-3xl font-black leading-tight">
                   {weekTotal === null ? <span className="text-sky-200 text-xl">…</span> : fmtMoney(weekTotal)}
@@ -1270,11 +1349,11 @@ export default function CashierPage() {
                     {weekTips > 0 && <span className="ml-1 text-emerald-300">+{fmtMoney(weekTips)} tip</span>}
                   </p>
                 )}
-                <p className="text-sky-200 text-xs mt-0.5">Mon – today · {weekCount} paid · tap for details</p>
+                <p className="text-sky-200 text-xs mt-0.5">Mon – today · {weekCount} paid</p>
               </button>
               {/* This Month */}
-              <button onClick={() => openPeriodDetail('month')}
-                className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-5 text-white shadow-lg text-left hover:brightness-110 active:brightness-95 transition-all cursor-pointer">
+              <button onClick={() => selectPeriod('month')}
+                className={`bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-5 text-white shadow-lg text-left transition-all cursor-pointer ${selectedPeriod === 'month' ? 'ring-4 ring-emerald-300' : 'hover:brightness-110 active:brightness-95'}`}>
                 <p className="text-emerald-100 text-xs font-bold uppercase tracking-widest mb-1">This Month</p>
                 <p className="text-3xl font-black leading-tight">
                   {monthTotal === null ? <span className="text-emerald-200 text-xl">…</span> : fmtMoney(monthTotal)}
@@ -1285,22 +1364,29 @@ export default function CashierPage() {
                     {monthTips > 0 && <span className="ml-1 text-emerald-200">+{fmtMoney(monthTips)} tip</span>}
                   </p>
                 )}
-                <p className="text-emerald-200 text-xs mt-0.5">{now.toLocaleDateString('en-US', { month: 'long' })} · {monthCount} paid · tap for details</p>
+                <p className="text-emerald-200 text-xs mt-0.5">{now.toLocaleDateString('en-US', { month: 'long' })} · {monthCount} paid</p>
               </button>
             </div>
 
-            {/* ── Payment method breakdown (today) ── */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {(['card', 'cash', 'venmo', 'zelle'] as const).map(m => (
-                <div key={m} className={`rounded-2xl p-4 border-2 ${PM[m].bg} ${PM[m].border}`}>
-                  <p className={`text-sm font-bold uppercase tracking-wide ${PM[m].text}`}>{PM[m].icon} {PM[m].label}</p>
-                  <p className={`text-2xl font-black mt-1 ${PM[m].text}`}>{fmtMoney((revenue[m]?.amount ?? 0) + (revenue[m]?.tips ?? 0))}</p>
-                  <p className={`text-xs mt-0.5 ${PM[m].text} opacity-70`}>
-                    {revenue[m]?.count ?? 0} payment{(revenue[m]?.count ?? 0) !== 1 ? 's' : ''}
-                    {(revenue[m]?.tips ?? 0) > 0 && ` · +${fmtMoney(revenue[m]?.tips)} tip`}
-                  </p>
-                </div>
-              ))}
+            {/* ── Payment method breakdown (follows the selected card above) ── */}
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {(['card', 'cash', 'venmo', 'zelle'] as const).map(m => (
+                  <div key={m} className={`rounded-2xl p-4 border-2 ${PM[m].bg} ${PM[m].border}`}>
+                    <p className={`text-sm font-bold uppercase tracking-wide ${PM[m].text}`}>{PM[m].icon} {PM[m].label}</p>
+                    <p className={`text-2xl font-black mt-1 ${PM[m].text}`}>{fmtMoney((activeRevenue[m]?.amount ?? 0) + (activeRevenue[m]?.tips ?? 0))}</p>
+                    <p className={`text-xs mt-0.5 ${PM[m].text} opacity-70`}>
+                      {activeRevenue[m]?.count ?? 0} payment{(activeRevenue[m]?.count ?? 0) !== 1 ? 's' : ''}
+                      {(activeRevenue[m]?.tips ?? 0) > 0 && ` · +${fmtMoney(activeRevenue[m]?.tips)} tip`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {selectedPeriod !== 'today' && (
+                <button onClick={() => openPeriodDetail(selectedPeriod)} className="text-xs font-semibold text-gray-400 hover:text-gray-600 underline">
+                  View full {selectedPeriod === 'week' ? 'week' : 'month'} list →
+                </button>
+              )}
             </div>
 
             {/* New payment alerts */}
