@@ -671,7 +671,7 @@ export default function DeskAdmin() {
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
 
   // Reports
-  const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('month')
+  const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'next_payroll' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('month')
   const [reportsShowDetails, setReportsShowDetails] = useState(false)
   const [incomeChartRange, setIncomeChartRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll'>('week')
   const [revenueChartGroomer, setRevenueChartGroomer] = useState<string>('') // '' = whole store
@@ -7628,6 +7628,13 @@ export default function DeskAdmin() {
             const thisPayrollEndStr = fmtLocalDate(thisPayrollEnd)
             const lastPayrollStartStr = fmtLocalDate(lastPayrollStart)
             const lastPayrollEndStr = fmtLocalDate(lastPayrollEnd)
+            // "Next Pay" = the period currently in progress (hasn't ended yet,
+            // so nothing's been paid out on it) — lets staff preview what's
+            // already booked for the upcoming pay period.
+            const nextPayrollStart = new Date(thisPayrollStart); nextPayrollStart.setDate(thisPayrollStart.getDate() + PERIOD_DAYS)
+            const nextPayrollEnd = new Date(nextPayrollStart); nextPayrollEnd.setDate(nextPayrollStart.getDate() + PERIOD_DAYS - 1)
+            const nextPayrollStartStr = fmtLocalDate(nextPayrollStart)
+            const nextPayrollEndStr = fmtLocalDate(nextPayrollEnd)
 
             // ── Income by groomer chart data (own range selector) ──────────
             const chartInRange = (date: string) => {
@@ -7721,6 +7728,7 @@ export default function DeskAdmin() {
             const inRange = (date: string) => {
               if (reportsRange === 'today') return date === todayStr
               if (reportsRange === 'week') return date >= weekAgoStr
+              if (reportsRange === 'next_payroll') return date >= nextPayrollStartStr && date <= nextPayrollEndStr
               if (reportsRange === 'this_payroll') return date >= thisPayrollStartStr && date <= thisPayrollEndStr
               if (reportsRange === 'last_payroll') return date >= lastPayrollStartStr && date <= lastPayrollEndStr
               if (reportsRange === 'month') return date >= monthStart
@@ -7769,6 +7777,7 @@ export default function DeskAdmin() {
 
             const rangeLabelMap: Record<string, string> = {
               today: 'Today', week: 'This Week',
+              next_payroll: `Next Pay (${nextPayrollStartStr} → ${nextPayrollEndStr})`,
               this_payroll: `This Pay (${thisPayrollStartStr} → ${thisPayrollEndStr})`,
               last_payroll: `Last Pay (${lastPayrollStartStr} → ${lastPayrollEndStr})`,
               month: 'This Month', last_month: 'Last Month', all: 'All Time',
@@ -7862,13 +7871,13 @@ export default function DeskAdmin() {
                 {/* Date range selector */}
                 <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {(['today', 'this_payroll', 'last_payroll', 'month', 'custom'] as const).map(r => (
+                    {(['today', 'next_payroll', 'this_payroll', 'last_payroll', 'month', 'custom'] as const).map(r => (
                       <button
                         key={r}
                         onClick={() => setReportsRange(r)}
                         className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${reportsRange === r ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}`}
                       >
-                        {r === 'today' ? 'Today' : r === 'this_payroll' ? '💵 This Pay' : r === 'last_payroll' ? '💵 Last Pay' : r === 'month' ? 'This Month' : '📅 Custom'}
+                        {r === 'today' ? 'Today' : r === 'next_payroll' ? '💵 Next Pay' : r === 'this_payroll' ? '💵 This Pay' : r === 'last_payroll' ? '💵 Last Pay' : r === 'month' ? 'This Month' : '📅 Custom'}
                       </button>
                     ))}
                     <div className="ml-auto flex items-center gap-2">
@@ -8248,7 +8257,7 @@ export default function DeskAdmin() {
                           clientFirstAppt[a.client_phone] = a.appointment_date
                         }
                       })
-                      const rangeStart = reportsRange === 'week' ? weekAgoStr : reportsRange === 'this_payroll' ? thisPayrollStartStr : reportsRange === 'last_payroll' ? lastPayrollStartStr : reportsRange === 'month' ? monthStart : '2000-01-01'
+                      const rangeStart = reportsRange === 'week' ? weekAgoStr : reportsRange === 'next_payroll' ? nextPayrollStartStr : reportsRange === 'this_payroll' ? thisPayrollStartStr : reportsRange === 'last_payroll' ? lastPayrollStartStr : reportsRange === 'month' ? monthStart : '2000-01-01'
                       const newClients = allRangeAppts.filter(a => clientFirstAppt[a.client_phone] >= rangeStart)
                       const newClientCount = new Set(newClients.map(a => a.client_phone)).size
 
