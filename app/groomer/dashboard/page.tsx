@@ -2483,8 +2483,18 @@ export default function GroomerDashboard() {
                     <button
                       disabled={grandTotal <= 0 || savingPopupPayment}
                       onClick={() => savePrice()}
-                      className="w-full py-3 rounded-xl font-bold text-sm border bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100 disabled:opacity-40 transition-colors">
-                      {savingPopupPayment ? 'Saving…' : grandTotal > 0 ? `💾 Save Price · $${grandTotal.toFixed(2)}` : 'Select a size first'}
+                      className={`w-full py-3 rounded-xl font-bold text-sm border transition-colors disabled:opacity-40 ${
+                        popupTotalSaved && grandTotal > 0
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                          : 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100'
+                      }`}>
+                      {savingPopupPayment
+                        ? 'Saving…'
+                        : grandTotal <= 0
+                          ? 'Select a size first'
+                          : popupTotalSaved
+                            ? `✓ Saved · $${grandTotal.toFixed(2)} — tap to update`
+                            : `💾 Save Price · $${grandTotal.toFixed(2)}`}
                     </button>
                     )}
                   </div>
