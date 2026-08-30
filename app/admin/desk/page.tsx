@@ -362,6 +362,7 @@ export default function DeskAdmin() {
   const [pendingCount, setPendingCount] = useState<number>(0)
   const prevPendingCountRef = useRef<number | null>(null)
   const confirmedGroomerIdsRef = useRef<Set<string>>(new Set())
+  const prevPunchesRef = useRef<Map<string, string> | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
 
   // Clients
@@ -2392,6 +2393,48 @@ export default function DeskAdmin() {
     } catch (e) { console.warn('Chime sound error:', e) }
   }, [getCtx])
 
+  // 🕐 Clock in — bright ascending two-note "welcome" tone
+  const playClockIn = useCallback(async () => {
+    try {
+      const ctx = await getCtx()
+      const notes = [659.25, 880] // E5 → A5
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.13)
+        gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + i * 0.13 + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.13 + 0.45)
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start(ctx.currentTime + i * 0.13)
+        osc.stop(ctx.currentTime + i * 0.13 + 0.5)
+      })
+    } catch (e) { console.warn('Clock-in sound error:', e) }
+  }, [getCtx])
+
+  // 🕐 Clock out — softer descending two-note "goodbye" tone
+  const playClockOut = useCallback(async () => {
+    try {
+      const ctx = await getCtx()
+      const notes = [659.25, 440] // E5 → A4
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.13)
+        gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + i * 0.13 + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.13 + 0.45)
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start(ctx.currentTime + i * 0.13)
+        osc.stop(ctx.currentTime + i * 0.13 + 0.5)
+      })
+    } catch (e) { console.warn('Clock-out sound error:', e) }
+  }, [getCtx])
+
   const fetchPendingCount = useCallback(async () => {
     try {
       // Check new client requests (pending)
@@ -2415,6 +2458,29 @@ export default function DeskAdmin() {
       confirmedGroomerIdsRef.current = nowConfirmed
     } catch { /* silent */ }
   }, [playBark, playChime])
+
+  // Poll staff clock-in/out status — plays a sound the moment a NEW punch
+  // shows up (comparing each staff member's latest punch time against what
+  // we saw last poll), so the front desk hears it without watching a screen.
+  const fetchClockEvents = useCallback(async () => {
+    try {
+      const res = await fetch('/api/clock/status')
+      const data = await res.json()
+      const rows: { id: string; last_action: string | null; last_punched_at: string | null }[] = data.staff || []
+      const prev = prevPunchesRef.current
+      if (prev) {
+        for (const r of rows) {
+          if (!r.last_punched_at) continue
+          if (prev.get(r.id) === r.last_punched_at) continue
+          if (r.last_action === 'clock_in') playClockIn()
+          else if (r.last_action === 'clock_out') playClockOut()
+        }
+      }
+      prevPunchesRef.current = new Map(
+        rows.filter(r => r.last_punched_at).map(r => [r.id, r.last_punched_at as string])
+      )
+    } catch { /* silent */ }
+  }, [playClockIn, playClockOut])
 
   useEffect(() => {
     if (!authed) return
@@ -2487,6 +2553,13 @@ export default function DeskAdmin() {
     const interval = setInterval(fetchPendingCount, 30_000)
     return () => clearInterval(interval)
   }, [authed, fetchPendingCount])
+
+  useEffect(() => {
+    if (!authed) return
+    fetchClockEvents()
+    const interval = setInterval(fetchClockEvents, 30_000)
+    return () => clearInterval(interval)
+  }, [authed, fetchClockEvents])
 
   // Load vaccine count on auth so badge shows immediately
   useEffect(() => {
@@ -5444,6 +5517,14 @@ export default function DeskAdmin() {
                   <button onClick={() => playChime()} title="Test chime sound"
                     className="text-xs bg-white border border-gray-200 hover:bg-violet-50 hover:border-violet-300 text-gray-500 hover:text-violet-700 px-3 py-1.5 rounded-lg font-medium transition-colors">
                     🔔 Test
+                  </button>
+                  <button onClick={() => playClockIn()} title="Test clock-in sound"
+                    className="text-xs bg-white border border-gray-200 hover:bg-emerald-50 hover:border-emerald-300 text-gray-500 hover:text-emerald-700 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                    🕐 In
+                  </button>
+                  <button onClick={() => playClockOut()} title="Test clock-out sound"
+                    className="text-xs bg-white border border-gray-200 hover:bg-orange-50 hover:border-orange-300 text-gray-500 hover:text-orange-700 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                    🕐 Out
                   </button>
                   <button onClick={() => fetchAppointments('requests')} disabled={loading}
                     className="text-xs bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 px-3 py-1.5 rounded-lg font-medium disabled:opacity-50 transition-colors">
