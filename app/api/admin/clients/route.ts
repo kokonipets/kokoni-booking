@@ -264,6 +264,16 @@ export async function PATCH(req: NextRequest) {
   // second profile. Match every stored format of the old number instead.
   if (newPhone && newPhone !== phone) {
     const oldVariants = phoneVariants(normalizePhone(phone))
+    // Create/point the client row at the new phone FIRST, before migrating any
+    // child rows. pets.client_phone still has a foreign key to clients.phone on
+    // this project (an older constraint some other deployments have since
+    // dropped) — updating pets/appointments to newPhone before a clients row
+    // exists at newPhone violates that FK and the whole save fails with a 500
+    // ("Save failed" in the UI, with no useful detail shown to staff). Doing the
+    // upsert first means the FK (where it exists) is already satisfied by the
+    // time child rows get pointed at the new number.
+    const { error: upsertErr } = await supabase.from('clients').upsert({ phone: newPhone, ...updates }, { onConflict: 'phone' })
+    if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 })
     const [petsRes, apptRes, pickupRes] = await Promise.all([
       supabase.from('pets').update({ client_phone: newPhone }).in('client_phone', oldVariants),
       supabase.from('appointments').update({ client_phone: newPhone }).in('client_phone', oldVariants),
@@ -271,9 +281,8 @@ export async function PATCH(req: NextRequest) {
     ])
     const migrateErr = petsRes.error || apptRes.error || pickupRes.error
     if (migrateErr) return NextResponse.json({ error: migrateErr.message }, { status: 500 })
-    // Upsert new phone record, then delete old one(s) across all stored formats
-    const { error: upsertErr } = await supabase.from('clients').upsert({ phone: newPhone, ...updates }, { onConflict: 'phone' })
-    if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 })
+    // Delete old client row(s) across all stored formats last, once the new one
+    // is fully in place.
     await supabase.from('clients').delete().in('phone', oldVariants)
     return NextResponse.json({ success: true })
   }
