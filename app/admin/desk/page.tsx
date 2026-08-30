@@ -7074,7 +7074,10 @@ export default function DeskAdmin() {
               return a.appointment_date >= monthStart
             }).sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
 
-            const unpaid = cashierAppts.filter(a => a.payment_status !== 'paid')
+            // Only count an appointment as "unpaid" once the client has actually
+            // checked in — otherwise every appointment still scheduled later today
+            // (or this week/month) shows up as "unpaid" before it's even happened.
+            const unpaid = cashierAppts.filter(a => a.payment_status !== 'paid' && !!a.checked_in_at)
             const paid = cashierAppts.filter(a => a.payment_status === 'paid')
             const totalPaid = paid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
             const totalTips = paid.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
