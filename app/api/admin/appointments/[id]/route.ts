@@ -651,7 +651,30 @@ export async function PATCH(
     // actually came in and staff just cleared the ticket. Show that as a no-show
     // instead of "completed" so it's flagged correctly and stays out of payroll.
     if (payment_status === 'paid') {
-      const paidAmount = parseFloat(String(payment_amount ?? '0')) || 0
+      // Some callers confirm an already-pending payment without resending the
+      // amount — e.g. confirmCashPayment/confirmVenmoZellePayment in
+      // app/front-desk/checkin/page.tsx and the cash/Venmo/Zelle popups in
+      // app/cashier/page.tsx only send payment_status + payment_method,
+      // trusting the payment_amount that was already stored on the
+      // appointment (set when the client chose cash/Venmo/Zelle at booking,
+      // putting it into cash_pending/venmo_pending/zelle_pending). Treating a
+      // missing payment_amount as $0 here mislabeled those real, paid visits
+      // as a no-show below — which then silently dropped them out of
+      // Payroll (generatePayrollReport filters out status === 'no_show'
+      // before it ever looks at payment_status), even though Cashier and
+      // Reports still showed them correctly since those only check
+      // payment_status. Fall back to the appointment's existing amount so a
+      // real payment isn't mistaken for an empty ticket.
+      let effectivePaymentAmount = payment_amount
+      if (effectivePaymentAmount === undefined) {
+        const { data: existingForAmount } = await supabase
+          .from('appointments')
+          .select('payment_amount')
+          .eq('id', id)
+          .single()
+        effectivePaymentAmount = existingForAmount?.payment_amount ?? '0'
+      }
+      const paidAmount = parseFloat(String(effectivePaymentAmount ?? '0')) || 0
       updates.status = paidAmount > 0 ? 'completed' : 'no_show'
       // Also move the appointment to "Checked Out" on the Grooming Board.
       // Normally the kiosk's own "Done" tap does this the moment the customer
