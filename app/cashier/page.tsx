@@ -331,7 +331,9 @@ function GroupCheckoutModal({
   onSuccess: (updates: { id: string; updated: Partial<Appt> }[]) => void
   serviceLabels?: Record<string, string>
 }) {
-  const [method, setMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>('card')
+  const [method, setMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(
+    (appts[0]?.payment_method as 'card' | 'cash' | 'venmo' | 'zelle') || 'card'
+  )
   const [amounts, setAmounts] = useState<Record<string, string>>(
     () => Object.fromEntries(appts.map(a => [a.id, a.payment_amount || '']))
   )
@@ -798,18 +800,25 @@ export default function CashierPage() {
     && a.payment_status !== 'paid' && a.payment_status !== 'cash_pending'
     && a.payment_status !== 'venmo_pending' && a.payment_status !== 'zelle_pending'
   )
-  // Group unpaid dogs by client (normalized phone) so a family can pay together.
-  const unpaidGroups: Appt[][] = (() => {
+  // Group a list of appointments by client (normalized phone) so a family can be
+  // handled together instead of as separate one-off tickets.
+  function groupByPhone(list: Appt[]): Appt[][] {
     const byPhone = new Map<string, Appt[]>()
     const order: string[] = []
-    for (const a of unpaid) {
+    for (const a of list) {
       const key = normalizePhone(a.clients?.phone) || `id:${a.id}`
       if (!byPhone.has(key)) { byPhone.set(key, []); order.push(key) }
       byPhone.get(key)!.push(a)
     }
     return order.map(k => byPhone.get(k)!)
-  })()
+  }
+  const unpaidGroups: Appt[][] = groupByPhone(unpaid)
   const cashPending = todayAppts.filter(a => a.payment_status === 'cash_pending')
+  // Same grouping applied to cash-pending tickets — previously these always
+  // rendered as separate "Collect" cards even when two pets from the same
+  // family both chose cash at the kiosk, forcing the front desk to confirm each
+  // one separately instead of collecting one lump sum together.
+  const cashPendingGroups: Appt[][] = groupByPhone(cashPending)
   const vzPending = todayAppts.filter(a => a.payment_status === 'venmo_pending' || a.payment_status === 'zelle_pending')
   const paid = todayAppts.filter(a => a.payment_status === 'paid')
   const checkins = todayAppts.filter(a => ['confirmed', 'in_progress'].includes(a.status) && a.grooming_status !== 'ready' && a.grooming_status !== 'done')
@@ -1652,20 +1661,35 @@ export default function CashierPage() {
             {cashPending.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-bold text-green-700 uppercase tracking-widest">💵 Cash Customers Waiting at Front Desk</p>
-                {cashPending.map(a => (
-                  <div key={a.id} className="bg-green-50 rounded-2xl border-2 border-green-200 shadow-sm overflow-hidden">
-                    <div className="flex items-center gap-4 p-4">
-                      {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-16 h-16 rounded-2xl object-cover flex-shrink-0" alt="" /> : <div className="w-16 h-16 rounded-2xl bg-green-200 flex items-center justify-center text-3xl flex-shrink-0">🐶</div>}
-                      <div className="flex-1">
-                        <p className="text-xl font-black text-gray-800">{a.pets?.name} <span className="text-gray-400 font-normal text-base">· {a.clients?.name}</span></p>
-                        <p className="text-gray-500 text-sm">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
-                        {a.payment_amount && <p className="text-green-700 text-sm font-bold">{fmtMoney(a.payment_amount)} due — paying cash</p>}
+                {cashPendingGroups.map(group => (
+                  <div key={group[0].id} className={group.length > 1 ? 'bg-green-50/50 border-2 border-green-200 rounded-2xl p-3 space-y-2' : ''}>
+                    {group.length > 1 && (
+                      <div className="flex items-center justify-between px-1">
+                        <p className="font-black text-green-700">🐾 {group[0].clients?.name} · {group.length} pets</p>
+                        <button onClick={() => setGroupCheckout(group)}
+                          className="bg-green-600 hover:bg-green-700 text-white font-black px-5 py-2.5 rounded-2xl text-base shadow transition-colors active:scale-95">
+                          💵 Collect Cash for all {group.length} together
+                        </button>
                       </div>
-                      <button onClick={() => setCheckoutAppt(a)}
-                        className="bg-green-500 hover:bg-green-600 text-white font-black px-6 py-3 rounded-2xl text-base shadow transition-colors active:scale-95">
-                        💵 Collect Cash
-                      </button>
-                    </div>
+                    )}
+                    {group.map(a => (
+                      <div key={a.id} className="bg-green-50 rounded-2xl border-2 border-green-200 shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-4 p-4">
+                          {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-16 h-16 rounded-2xl object-cover flex-shrink-0" alt="" /> : <div className="w-16 h-16 rounded-2xl bg-green-200 flex items-center justify-center text-3xl flex-shrink-0">🐶</div>}
+                          <div className="flex-1">
+                            <p className="text-xl font-black text-gray-800">{a.pets?.name} <span className="text-gray-400 font-normal text-base">· {a.clients?.name}</span></p>
+                            <p className="text-gray-500 text-sm">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
+                            {a.payment_amount && <p className="text-green-700 text-sm font-bold">{fmtMoney(a.payment_amount)} due — paying cash</p>}
+                          </div>
+                          {group.length === 1 && (
+                            <button onClick={() => setCheckoutAppt(a)}
+                              className="bg-green-500 hover:bg-green-600 text-white font-black px-6 py-3 rounded-2xl text-base shadow transition-colors active:scale-95">
+                              💵 Collect Cash
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
