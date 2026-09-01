@@ -289,6 +289,7 @@ const NAV = [
   { key: 'today',      label: 'Today',                   icon: '✅' },
   { key: 'grooming',   label: 'Grooming Board',          icon: '✂️' },
   { key: 'clients',    label: 'Pet Parents',             icon: '🐾' },
+  { key: 'not_opted_in', label: 'Not Opted In',          icon: '🔕' },
   { key: 'vaccines',   label: 'Vaccine Records',         icon: '💉' },
   { key: 'payroll',    label: 'Payroll',                 icon: '💵' },
   { key: 'intake',     label: 'New Client Intake',       icon: '📝' },
@@ -370,6 +371,7 @@ export default function DeskAdmin() {
   const [clientsLoading, setClientsLoading] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
   const [clientTagFilter, setClientTagFilter] = useState<string[]>([])
+  const [notOptedInSearch, setNotOptedInSearch] = useState('')
   const [expandedClient, setExpandedClient] = useState<string | null>(null)
   const [expandedPetHistoryIds, setExpandedPetHistoryIds] = useState<Set<string>>(new Set())
   // Intake inline-editing state
@@ -2486,7 +2488,7 @@ export default function DeskAdmin() {
   useEffect(() => {
     if (!authed) return
     if (tab === 'calendar') { fetchCalendar(); fetchSettings() }
-    else if (tab === 'clients') fetchClients()
+    else if (tab === 'clients' || tab === 'not_opted_in') fetchClients()
     else if (tab === 'vaccines') fetchVaccineRecords()
     else if (tab === 'payroll') fetchPayroll()
     else if (tab === 'settings') fetchSettings()
@@ -6647,6 +6649,84 @@ export default function DeskAdmin() {
               )}
             </div>
           )}
+
+          {/* NOT OPTED IN (SMS) */}
+          {tab === 'not_opted_in' && (() => {
+            const notOptedIn = clients.filter(c => !c.sms_consent)
+            const q = notOptedInSearch.toLowerCase().trim()
+            const filtered = q
+              ? notOptedIn.filter(c =>
+                  c.name.toLowerCase().includes(q) ||
+                  c.phone.includes(notOptedInSearch) ||
+                  c.pets.some(p => p.name.toLowerCase().includes(q))
+                )
+              : notOptedIn
+            return (
+              <div>
+                <div className="mb-4">
+                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">🔕 Not Opted In to SMS</h2>
+                  <p className="text-sm text-gray-400 mt-0.5">These clients won&apos;t receive appointment confirmation, reminder, or ready-for-pickup texts until they opt in.</p>
+                </div>
+
+                <div className="flex items-center gap-4 mb-5">
+                  <div className="relative flex-1 max-w-sm">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                    <input type="text" placeholder="Search by name, pet, or phone..."
+                      value={notOptedInSearch} onChange={e => setNotOptedInSearch(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white shadow-sm" />
+                  </div>
+                  <span className="text-sm text-gray-400 font-medium">{filtered.length} of {notOptedIn.length} not opted in</span>
+                </div>
+
+                {clientsLoading && <p className="text-gray-400 text-sm">Loading...</p>}
+
+                {!clientsLoading && filtered.length === 0 && (
+                  <p className="text-gray-400 text-sm">
+                    {notOptedIn.length === 0 ? 'Everyone is opted in. 🎉' : 'No matches.'}
+                  </p>
+                )}
+
+                {!clientsLoading && filtered.length > 0 && (
+                  <div className="space-y-2">
+                    {filtered
+                      .slice()
+                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                      .map(client => (
+                        <div key={client.phone} className="bg-white rounded-2xl border border-gray-200 border-l-4 border-l-amber-400 shadow-sm px-5 py-4 flex items-center gap-4 flex-wrap">
+                          <div className="flex-1 min-w-[160px]">
+                            <p className="font-bold text-gray-800 text-base leading-tight">{client.name || <span className="text-gray-400 italic">No name</span>}</p>
+                            <p className="text-sm text-gray-400 mt-0.5">
+                              <span>{client.phone}</span>
+                              {client.email && <span className="ml-3 text-gray-400">{client.email}</span>}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap" title={client.pets.map(p => p.name).join(', ')}>
+                            {client.pets.slice(0, 3).map(p => (
+                              <span key={p.id} className="text-sm text-gray-700 font-medium">🐶 {p.name}</span>
+                            ))}
+                            {client.pets.length > 3 && (
+                              <span className="text-xs text-gray-400">+{client.pets.length - 3}</span>
+                            )}
+                          </div>
+                          <div className="text-center flex-shrink-0 text-sm text-gray-400">
+                            <p className="font-semibold text-gray-700 text-base">{client.appointments.length}</p>
+                            <p className="text-xs">appts</p>
+                          </div>
+                          <button
+                            onClick={() => grantSmsConsent(client.phone)}
+                            disabled={smsConsentSaving}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white disabled:opacity-50 hover:bg-sky-700 flex-shrink-0"
+                            title="Use only after the client has verbally confirmed they want to receive SMS notifications"
+                          >
+                            {smsConsentSaving ? 'Saving…' : 'Mark opted-in'}
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* ── VACCINE RECORDS ───────────────────────────────────────── */}
           {tab === 'vaccines' && (
