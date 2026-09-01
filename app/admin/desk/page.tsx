@@ -7154,7 +7154,7 @@ export default function DeskAdmin() {
               if (cashierRange === 'week') return a.appointment_date >= weekAgoStr
               if (cashierRange === 'custom') return !!cashierCustomDate && a.appointment_date === cashierCustomDate
               return a.appointment_date >= monthStart
-            }).sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
+            }).sort((a, b) => parseApptTime(a.appointment_date, a.appointment_time).getTime() - parseApptTime(b.appointment_date, b.appointment_time).getTime())
 
             // Only count an appointment as "unpaid" once the client has actually
             // checked in — otherwise every appointment still scheduled later today
@@ -7870,7 +7870,7 @@ export default function DeskAdmin() {
             }
             const perfAppts = reportsAppts
               .filter(a => a.status !== 'cancelled' && a.assigned_groomer === activePerfGroomer && perfInRange(a.appointment_date))
-              .sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
+              .sort((a, b) => parseApptTime(a.appointment_date, a.appointment_time).getTime() - parseApptTime(b.appointment_date, b.appointment_time).getTime())
             const perfPaid = perfAppts.filter(a => a.payment_status === 'paid')
             const perfRevenue = perfPaid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
             const perfCommissionBase = perfPaid.reduce((s, a) => s + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer), 0)
@@ -7950,7 +7950,7 @@ export default function DeskAdmin() {
               // Sheet 1: Transaction detail (all appts in range)
               const detailRows = allRangeAppts
                 .slice()
-                .sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
+                .sort((a, b) => parseApptTime(a.appointment_date, a.appointment_time).getTime() - parseApptTime(b.appointment_date, b.appointment_time).getTime())
                 .map(a => {
                   const [h, m] = (a.appointment_time || '').split(':')
                   const hour = parseInt(h || '0')
@@ -8565,7 +8565,7 @@ export default function DeskAdmin() {
                           {dayBlockedCount>0 && (
                             <div className="text-xs text-rose-400 font-medium mb-0.5">🚫 {dayBlockedCount} blocked</div>
                           )}
-                          {[...dayAppts].sort((a,b)=>a.appointment_time.localeCompare(b.appointment_time)).slice(0,2).map((a,idx)=>(
+                          {[...dayAppts].sort((a,b)=>parseApptTime(dateStr,a.appointment_time).getTime()-parseApptTime(dateStr,b.appointment_time).getTime()).slice(0,2).map((a,idx)=>(
                             <div key={idx} className={`text-xs rounded px-1 py-0.5 mb-0.5 truncate font-medium flex items-center gap-0.5 ${
                               a.service==='simply_cute' ? 'bg-sky-100 text-sky-700' :
                               a.service==='bath_brush'  ? 'bg-teal-100 text-teal-700' :
