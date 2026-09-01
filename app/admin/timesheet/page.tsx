@@ -17,7 +17,12 @@ type StaffReport = {
   days: DayRow[]
 }
 
-function todayISO() { return new Date().toISOString().slice(0, 10) }
+const SALON_TZ = 'America/Los_Angeles'
+// Salon-local calendar date, not UTC — using toISOString() here made "today"
+// roll over to the next day as early as 5pm Pacific (UTC is already ahead),
+// so the Timesheet's default "Today" view showed a day that hadn't started
+// yet locally and everyone appeared to have 0.00h worked.
+function todayISO() { return new Date().toLocaleDateString('en-CA', { timeZone: SALON_TZ }) }
 function addDays(dateStr: string, n: number) {
   const d = new Date(`${dateStr}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + n)
@@ -41,7 +46,6 @@ function fmtDateShort(dateStr: string) {
   const d = new Date(`${dateStr}T00:00:00Z`)
   return d.toLocaleDateString([], { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: 'UTC' })
 }
-const SALON_TZ = 'America/Los_Angeles'
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: SALON_TZ })
     .replace(' AM', 'a').replace(' PM', 'p')
