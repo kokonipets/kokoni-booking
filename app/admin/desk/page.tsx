@@ -414,6 +414,7 @@ export default function DeskAdmin() {
   const [reviewSettingsEdit, setReviewSettingsEdit] = useState<any>(null)
   const [reviewSettingsSaving, setReviewSettingsSaving] = useState(false)
   const [reviewSettingsMode, setReviewSettingsMode] = useState<'view' | 'edit'>('view')
+  const [reviewEnabledToggling, setReviewEnabledToggling] = useState(false)
 
   // Calendar
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -7458,10 +7459,62 @@ export default function DeskAdmin() {
               {reviewSettingsMode === 'view' ? (
                 <>
                   {/* View Mode - Status & Info */}
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                    <p className="font-medium text-green-900">✅ System Active</p>
-                    <p className="text-sm text-green-800 mt-1">SMS Review System is fully configured and ready to use.</p>
-                  </div>
+                  {reviewSettings && (
+                    <div className={`rounded-lg p-4 mb-6 flex items-center justify-between gap-4 border ${
+                      reviewSettings.review_request_enabled
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div>
+                        <p className={`font-medium ${reviewSettings.review_request_enabled ? 'text-green-900' : 'text-gray-700'}`}>
+                          {reviewSettings.review_request_enabled ? '✅ System Active' : '⏸️ System Paused'}
+                        </p>
+                        <p className={`text-sm mt-1 ${reviewSettings.review_request_enabled ? 'text-green-800' : 'text-gray-500'}`}>
+                          {reviewSettings.review_request_enabled
+                            ? 'Automated review requests are being sent daily.'
+                            : 'Automated review requests are turned off — no SMS will go out.'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const nextEnabled = !reviewSettings.review_request_enabled
+                          setReviewEnabledToggling(true)
+                          try {
+                            const res = await fetch('/api/admin/reviews/settings', {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ review_request_enabled: nextEnabled })
+                            })
+                            if (!res.ok) {
+                              const error = await res.json()
+                              throw new Error(error.error || 'Failed to update settings')
+                            }
+                            const updated = await res.json()
+                            setReviewSettings(updated)
+                            setReviewSettingsEdit(updated)
+                            setToast(nextEnabled ? 'Review requests turned on' : 'Review requests turned off')
+                          } catch (error) {
+                            console.error('Settings save error:', error)
+                            setToast(`Failed to update: ${error instanceof Error ? error.message : 'Unknown error'}`)
+                          }
+                          setReviewEnabledToggling(false)
+                        }}
+                        disabled={reviewEnabledToggling}
+                        role="switch"
+                        aria-checked={!!reviewSettings.review_request_enabled}
+                        aria-label="Toggle automated review requests"
+                        className={`shrink-0 relative inline-flex h-7 w-12 items-center rounded-full transition-colors disabled:opacity-50 ${
+                          reviewSettings.review_request_enabled ? 'bg-green-600' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                            reviewSettings.review_request_enabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  )}
 
                   {/* Current Settings Display */}
                   {reviewSettings && (
@@ -7533,6 +7586,30 @@ export default function DeskAdmin() {
                   {/* Edit Mode */}
                   {reviewSettingsEdit && (
                     <div className="space-y-6">
+                      {/* Enable/Disable */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6 flex items-center justify-between gap-4">
+                        <div>
+                          <label className="block font-bold text-gray-800">🔌 Automated Review Requests</label>
+                          <p className="text-xs text-gray-500 mt-1">When off, the daily cron won&apos;t send any review request SMS.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setReviewSettingsEdit({ ...reviewSettingsEdit, review_request_enabled: !reviewSettingsEdit.review_request_enabled })}
+                          role="switch"
+                          aria-checked={!!reviewSettingsEdit.review_request_enabled}
+                          aria-label="Toggle automated review requests"
+                          className={`shrink-0 relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                            reviewSettingsEdit.review_request_enabled ? 'bg-green-600' : 'bg-gray-300'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                              reviewSettingsEdit.review_request_enabled ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
                       {/* Review Request Template */}
                       <div className="bg-white rounded-lg border border-gray-200 p-6">
                         <label className="block font-bold text-gray-800 mb-2">📱 Review Request Message</label>
