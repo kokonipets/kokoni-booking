@@ -1047,8 +1047,26 @@ export default function CashierPage() {
           } catch {}
         }
         newlyCash.forEach(a => seenCashIds.current.add(a.id))
-        setCashPopup(newlyCash[0])
-        setCashReceived('')
+        // If this owner has other pets still needing a payment decision (unpaid
+        // or also cash-pending), pop the combined "pay together" flow instead of
+        // a single-pet popup — otherwise whichever pet's cash flag lands first
+        // auto-pops alone and hides the group option underneath it.
+        const firstCash = newlyCash[0]
+        const firstCashKey = normalizePhone(firstCash.clients?.phone) || `id:${firstCash.id}`
+        const cashSiblings = list.filter(a =>
+          (normalizePhone(a.clients?.phone) || `id:${a.id}`) === firstCashKey
+          && a.status !== 'cancelled' && a.status !== 'no_show'
+          && (a.payment_status === 'cash_pending' || (
+            a.payment_status !== 'paid' && a.payment_status !== 'venmo_pending' && a.payment_status !== 'zelle_pending'
+            && (a.status === 'completed' || a.grooming_status === 'ready' || a.grooming_status === 'done')
+          ))
+        )
+        if (cashSiblings.length > 1) {
+          setGroupCheckout(cashSiblings)
+        } else {
+          setCashPopup(firstCash)
+          setCashReceived('')
+        }
       }
       list.filter(a => a.payment_status === 'paid').forEach(a => seenCashIds.current.delete(a.id))
 
@@ -1066,7 +1084,20 @@ export default function CashierPage() {
           } catch {}
         }
         newlyVZ.forEach(a => seenVZIds.current.add(a.id))
-        setVzPopup(newlyVZ[0])
+        // Same idea as cash — if another pet from the same family is also
+        // venmo/zelle-pending, pop the combined verify flow instead of a
+        // single-pet popup.
+        const firstVZ = newlyVZ[0]
+        const firstVZKey = normalizePhone(firstVZ.clients?.phone) || `id:${firstVZ.id}`
+        const vzSiblings = list.filter(a =>
+          (normalizePhone(a.clients?.phone) || `id:${a.id}`) === firstVZKey
+          && (a.payment_status === 'venmo_pending' || a.payment_status === 'zelle_pending')
+        )
+        if (vzSiblings.length > 1) {
+          setGroupVzPopup(vzSiblings)
+        } else {
+          setVzPopup(firstVZ)
+        }
       }
       list.filter(a => a.payment_status === 'paid').forEach(a => seenVZIds.current.delete(a.id))
       isFirst.current = false
