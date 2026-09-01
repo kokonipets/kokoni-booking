@@ -372,6 +372,7 @@ export default function DeskAdmin() {
   const [clientSearch, setClientSearch] = useState('')
   const [clientTagFilter, setClientTagFilter] = useState<string[]>([])
   const [notOptedInSearch, setNotOptedInSearch] = useState('')
+  const notOptedInCount = clients.filter(c => !c.sms_consent).length
   const [expandedClient, setExpandedClient] = useState<string | null>(null)
   const [expandedPetHistoryIds, setExpandedPetHistoryIds] = useState<Set<string>>(new Set())
   // Intake inline-editing state
@@ -2573,6 +2574,13 @@ export default function DeskAdmin() {
       .catch(() => {})
   }, [authed])
 
+  // Load clients on auth so the "Not Opted In" badge shows immediately,
+  // without requiring a visit to the Pet Parents or Not Opted In tab first.
+  useEffect(() => {
+    if (!authed) return
+    fetchClients()
+  }, [authed, fetchClients])
+
   // Load staff + service prices on auth so detail panel works from any tab
   useEffect(() => {
     if (!authed) return
@@ -4631,6 +4639,11 @@ export default function DeskAdmin() {
               {key === 'vaccines' && vaccineCount > 0 && (
                 <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
                   {vaccineCount}
+                </span>
+              )}
+              {key === 'not_opted_in' && notOptedInCount > 0 && (
+                <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                  {notOptedInCount}
                 </span>
               )}
               {key === 'intake' && pendingCount > 0 && (
