@@ -965,13 +965,16 @@ export default function CashierPage() {
     }
     return order.map(k => byPhone.get(k)!)
   }
-  const unpaidGroups: Appt[][] = groupByPhone(unpaid)
   const cashPending = todayAppts.filter(a => a.payment_status === 'cash_pending')
-  // Same grouping applied to cash-pending tickets — previously these always
-  // rendered as separate "Collect" cards even when two pets from the same
-  // family both chose cash at the kiosk, forcing the front desk to confirm each
-  // one separately instead of collecting one lump sum together.
-  const cashPendingGroups: Appt[][] = groupByPhone(cashPending)
+  // Group unpaid + cash-pending appointments for the same owner together, not
+  // separately — a family can have one pet already flagged cash_pending at the
+  // kiosk while a sibling pet is still plain unpaid, and they still need to
+  // show up as ONE combined ticket instead of two you can't merge. Groups where
+  // every appointment is already cash_pending get the fast "Collect Cash" flow
+  // below; anything else (pure-unpaid, or a mix) needs the full checkout flow.
+  const payableGroups: Appt[][] = groupByPhone([...unpaid, ...cashPending])
+  const cashPendingGroups: Appt[][] = payableGroups.filter(g => g.every(a => a.payment_status === 'cash_pending'))
+  const unpaidGroups: Appt[][] = payableGroups.filter(g => !g.every(a => a.payment_status === 'cash_pending'))
   const vzPending = todayAppts.filter(a => a.payment_status === 'venmo_pending' || a.payment_status === 'zelle_pending')
   // Same grouping for Venmo/Zelle verification — a family may send one
   // combined transfer for multiple pets and shouldn't have to verify each
@@ -1592,7 +1595,7 @@ export default function CashierPage() {
               {unpaid.length === 0 && cashPending.length === 0 && vzPending.length === 0
                 ? <p className="text-gray-400 text-center py-8">No one waiting to pay right now!</p>
                 : <div className="divide-y divide-gray-50">
-                  {cashPending.map(a => (
+                  {cashPendingGroups.flat().map(a => (
                     <div key={a.id} className="flex items-center gap-3 px-5 py-3 bg-green-50 hover:bg-green-100/40 transition-colors">
                       {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className="w-12 h-12 rounded-xl bg-green-200 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
                       <div className="flex-1 min-w-0">
@@ -1905,6 +1908,9 @@ export default function CashierPage() {
                           <div className="flex-1">
                             <p className="text-xl font-black text-gray-800">{a.pets?.name} <span className="text-gray-400 font-normal text-base">· {a.clients?.name}</span></p>
                             <p className="text-gray-500 text-sm">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
+                            {a.payment_status === 'cash_pending' && (
+                              <p className="text-green-600 text-xs font-bold mt-0.5">💵 Already flagged cash at kiosk — will finalize together</p>
+                            )}
                             {staffList.length > 0 ? (
                               <div className="flex items-center gap-2 mt-1 flex-wrap">
                                 <select value={a.assigned_groomer || ''} disabled={assigningId === a.id}
