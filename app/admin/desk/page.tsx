@@ -3902,26 +3902,6 @@ export default function DeskAdmin() {
                           <div className="col-span-2"><span className="text-xs text-gray-400 block">Member Since</span><p className="font-medium text-gray-700">{new Date(clientSince).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</p></div>
                         )}
                       </div>
-                      <div className="pt-2 mt-2 border-t border-gray-100 flex items-center justify-between">
-                        <div>
-                          <span className="text-xs text-gray-400 block">SMS Consent</span>
-                          {detailClient?.sms_consent ? (
-                            <p className="text-sm font-semibold text-emerald-700">✓ Opted in{detailClient.sms_consent_at ? ` · ${new Date(detailClient.sms_consent_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : ''}</p>
-                          ) : (
-                            <p className="text-sm font-semibold text-amber-700">⚠ Not opted in — no texts sent</p>
-                          )}
-                        </div>
-                        {!detailClient?.sms_consent && (
-                          <button
-                            onClick={() => clientPhone && grantSmsConsent(clientPhone)}
-                            disabled={smsConsentSaving || !clientPhone}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white disabled:opacity-50 hover:bg-sky-700"
-                            title="Use only after the client has verbally confirmed they want to receive SMS notifications"
-                          >
-                            {smsConsentSaving ? 'Saving…' : 'Mark opted-in'}
-                          </button>
-                        )}
-                      </div>
                     </div>
 
                     {/* Authorized pickups */}
