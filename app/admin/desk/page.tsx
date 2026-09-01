@@ -8575,6 +8575,9 @@ export default function DeskAdmin() {
                               {a.appointment_time.replace(':00','').replace(' AM','a').replace(' PM','p')} {a.service==='bath_brush'?'B&B':a.service==='asian_fusion'?'AF':a.service==='simply_cute'?'SC':(serviceMap[a.service]??a.service).slice(0,4)}
                             </div>
                           ))}
+                          {dayAppts.length>2 && (
+                            <div className="text-[10px] text-gray-400 font-medium px-1">+{dayAppts.length-2} more</div>
+                          )}
                         </div>
                       )
                     })}
