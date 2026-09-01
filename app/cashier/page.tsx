@@ -627,6 +627,158 @@ function GroupCheckoutModal({
   )
 }
 
+// ── Group Venmo/Zelle Verify Modal (multiple dogs, one client) ────────────────
+function GroupVzModal({
+  appts,
+  onClose,
+  onSuccess,
+  serviceLabels,
+}: {
+  appts: Appt[]
+  onClose: () => void
+  onSuccess: (updates: { id: string; updated: Partial<Appt> }[]) => void
+  serviceLabels?: Record<string, string>
+}) {
+  const isVenmo = appts[0]?.payment_method === 'venmo'
+  const owner = appts[0]?.clients?.name ?? ''
+  const serviceAmts = appts.map(a => parseFloat(a.payment_amount || '0'))
+  const subtotal = serviceAmts.reduce((s, v) => s + v, 0)
+  const [received, setReceived] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const receivedAmt = parseFloat(received) || 0
+  // If one transfer covered every pet, the amount above what the services cost
+  // is tip — split proportionally across pets by service amount, same as the
+  // cash/card group checkout does.
+  const calculatedTip = Math.max(0, receivedAmt - subtotal)
+  const tipParts = splitTip(serviceAmts, calculatedTip)
+
+  const confirm = async () => {
+    if (!received || receivedAmt < subtotal) return
+    setSaving(true)
+    try {
+      const results = await Promise.all(appts.map((a, i) =>
+        fetch(`/api/admin/appointments/${a.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'record-payment',
+            payment_amount: a.payment_amount,
+            tip_amount: tipParts[i].toFixed(2),
+            payment_method: a.payment_method,
+            payment_status: 'paid',
+          }),
+        }).then(r => r.json()).then(d => ({ ok: !!d.success, i }))
+      ))
+      if (results.every(r => r.ok)) {
+        setDone(true)
+        onSuccess(appts.map((a, i) => ({
+          id: a.id,
+          updated: {
+            tip_amount: tipParts[i].toFixed(2),
+            payment_method: a.payment_method,
+            payment_status: 'paid',
+          },
+        })))
+        setTimeout(onClose, 1200)
+      }
+    } catch {/**/}
+    setSaving(false)
+  }
+
+  if (done) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+        <div className="bg-white rounded-3xl p-10 text-center shadow-2xl">
+          <p className="text-6xl mb-3">✅</p>
+          <p className="text-2xl font-black text-gray-800">{appts.length} Payments Verified!</p>
+          <p className="text-gray-400 mt-1">{isVenmo ? '💜 Venmo' : '💛 Zelle'} · {fmtMoney(receivedAmt)}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div className={`px-6 py-5 flex items-center gap-4 ${isVenmo ? 'bg-gradient-to-r from-indigo-500 to-purple-600' : 'bg-gradient-to-r from-yellow-400 to-amber-500'}`}>
+          <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-3xl flex-shrink-0">🐾</div>
+          <div className="text-white min-w-0 flex-1">
+            <p className="text-xl font-black leading-tight">{appts.length} pets · verify together</p>
+            <p className="text-sm opacity-90">{owner} · {appts.map(a => a.pets?.name).filter(Boolean).join(' & ')}</p>
+          </div>
+          <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">✕</button>
+        </div>
+
+        <div className="px-6 pt-5 pb-4 space-y-4">
+          <div>
+            <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${isVenmo ? 'text-indigo-500' : 'text-amber-500'}`}>
+              {isVenmo ? 'Venmo' : 'Zelle'} Payment — Please Verify
+            </p>
+            <div className="space-y-1.5">
+              {appts.map(a => (
+                <div key={a.id} className="flex justify-between text-sm text-gray-500">
+                  <span>{a.pets?.name} · {(serviceLabels ?? SERVICE_LABELS)[a.service] ?? a.service}</span>
+                  <span className="font-semibold text-gray-800">{fmtMoney(a.payment_amount)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between text-sm font-bold text-gray-700 pt-1.5 border-t border-gray-100">
+                <span>Service subtotal</span>
+                <span>{fmtMoney(subtotal)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-2">Total Amount Received</p>
+            <div className="flex items-center gap-2 bg-gray-50 border-2 border-gray-200 rounded-2xl px-4 py-3">
+              <span className={`text-2xl font-bold ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={received}
+                onChange={e => setReceived(e.target.value.replace(/[^0-9.]/g, ''))}
+                placeholder={fmtMoney(subtotal)}
+                className="flex-1 text-2xl font-bold text-gray-800 outline-none bg-transparent placeholder-gray-300"
+              />
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">If one transfer covered both, enter the total here — the extra is split as tip across the pets by service amount.</p>
+          </div>
+
+          {receivedAmt > 0 && (
+            <div className="space-y-1 pt-2 border-t border-gray-100">
+              {calculatedTip > 0 && (
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>Tip included (split)</span>
+                  <span className={`font-semibold ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>+{fmtMoney(calculatedTip)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-lg font-black">
+                <span className="text-gray-600">Total Received</span>
+                <span className={isVenmo ? 'text-indigo-700' : 'text-amber-700'}>{fmtMoney(receivedAmt)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 pb-5 flex gap-3">
+          <button onClick={onClose} className="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-gray-500 font-semibold text-sm hover:bg-gray-50">
+            Later
+          </button>
+          <button
+            onClick={confirm}
+            disabled={!received || receivedAmt < subtotal || saving}
+            className={`flex-[2] py-3 rounded-2xl text-white font-black text-base shadow-lg disabled:opacity-40 active:scale-95 transition-all ${isVenmo ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-amber-400 hover:bg-amber-500'}`}
+          >
+            {saving ? 'Saving…' : `✓ Verified — Mark ${appts.length} Paid`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Phone search (check-in tab) ───────────────────────────────────────────────
 function PhoneSearch({ onDone, serviceLabels }: { onDone: () => void; serviceLabels?: Record<string, string> }) {
   const [phone, setPhone] = useState('')
@@ -775,6 +927,7 @@ export default function CashierPage() {
   const [now, setNow] = useState(new Date())
   const [checkoutAppt, setCheckoutAppt] = useState<Appt | null>(null)
   const [groupCheckout, setGroupCheckout] = useState<Appt[] | null>(null)
+  const [groupVzPopup, setGroupVzPopup] = useState<Appt[] | null>(null)
   const [cashPopup, setCashPopup] = useState<Appt | null>(null)
   const [vzPopup, setVzPopup] = useState<Appt | null>(null)
   const [vzTipInput, setVzTipInput] = useState('')
@@ -820,6 +973,10 @@ export default function CashierPage() {
   // one separately instead of collecting one lump sum together.
   const cashPendingGroups: Appt[][] = groupByPhone(cashPending)
   const vzPending = todayAppts.filter(a => a.payment_status === 'venmo_pending' || a.payment_status === 'zelle_pending')
+  // Same grouping for Venmo/Zelle verification — a family may send one
+  // combined transfer for multiple pets and shouldn't have to verify each
+  // pet in a separate popup.
+  const vzPendingGroups: Appt[][] = groupByPhone(vzPending)
   const paid = todayAppts.filter(a => a.payment_status === 'paid')
   const checkins = todayAppts.filter(a => ['confirmed', 'in_progress'].includes(a.status) && a.grooming_status !== 'ready' && a.grooming_status !== 'done')
   const waitingCheckin = todayAppts.filter(a => ['pending', 'confirmed'].includes(a.status) && !a.grooming_status)
@@ -1448,7 +1605,8 @@ export default function CashierPage() {
                       </button>
                     </div>
                   ))}
-                  {vzPending.map(a => {
+                  {vzPendingGroups.map(group => group.length === 1 ? (() => {
+                    const a = group[0]
                     const isVenmo = a.payment_method === 'venmo'
                     return (
                       <div key={a.id} className={`flex items-center gap-3 px-5 py-3 ${isVenmo ? 'bg-indigo-50 hover:bg-indigo-100/40' : 'bg-yellow-50 hover:bg-yellow-100/40'} transition-colors`}>
@@ -1463,7 +1621,33 @@ export default function CashierPage() {
                         </button>
                       </div>
                     )
-                  })}
+                  })() : (() => {
+                    const isVenmo = group[0].payment_method === 'venmo'
+                    return (
+                      <div key={group[0].id} className={isVenmo ? 'bg-indigo-50/40 border-y border-indigo-100' : 'bg-yellow-50/40 border-y border-yellow-100'}>
+                        <div className="flex items-center justify-between px-5 pt-3 pb-2">
+                          <p className={`text-xs font-black uppercase tracking-wide ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>{isVenmo ? '💜' : '💛'} {group[0].clients?.name} · {group.length} pets</p>
+                          <button onClick={() => setGroupVzPopup(group)}
+                            className={`flex-shrink-0 text-white font-black px-4 py-2 rounded-xl text-sm shadow transition-colors ${isVenmo ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
+                            {isVenmo ? '💜' : '💛'} Verify all {group.length} together
+                          </button>
+                        </div>
+                        {group.map(a => (
+                          <div key={a.id} className="flex items-center gap-3 px-5 py-2 pl-7 hover:bg-white/40 transition-colors">
+                            {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-gray-800 truncate">{a.pets?.name}</p>
+                              <p className="text-gray-400 text-xs truncate">{serviceMap[a.service] ?? a.service} · {fmtMoney(a.payment_amount)}</p>
+                            </div>
+                            <button onClick={() => setVzPopup(a)}
+                              className={`flex-shrink-0 bg-white border-2 font-bold px-3 py-1.5 rounded-xl text-xs shadow-sm transition-colors ${isVenmo ? 'border-indigo-200 text-indigo-600 hover:bg-indigo-50' : 'border-amber-200 text-amber-600 hover:bg-amber-50'}`}>
+                              Verify separately
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })())}
                   {unpaidGroups.map(group => group.length === 1 ? (
                     (a => (
                       <div key={a.id} className="flex items-center gap-3 px-5 py-3 hover:bg-rose-50/30 transition-colors">
@@ -1804,6 +1988,17 @@ export default function CashierPage() {
           onSuccess={(updates) => {
             handleGroupPaymentSuccess(updates)
             setGroupCheckout(null)
+          }}
+          serviceLabels={serviceMap}
+        />
+      )}
+      {groupVzPopup && groupVzPopup.length > 0 && (
+        <GroupVzModal
+          appts={groupVzPopup}
+          onClose={() => setGroupVzPopup(null)}
+          onSuccess={(updates) => {
+            handleGroupPaymentSuccess(updates)
+            setGroupVzPopup(null)
           }}
           serviceLabels={serviceMap}
         />
