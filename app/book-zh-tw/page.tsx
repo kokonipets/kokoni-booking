@@ -175,6 +175,15 @@ export default function BookPageZhTw() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // 現場報到模式——從服務台的「快速報到」按鈕進入（/book-zh-tw?walkin=1）。
+  // 不需要選擇時段：客人現在人已經在店裡，會馬上為他們服務，所以會跳過「選擇日期和時間」的步驟，直接以目前時間預約。
+  const [isWalkIn, setIsWalkIn] = useState(false)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('walkin') === '1') {
+      setIsWalkIn(true)
+    }
+  }, [])
+
   const [phone, setPhone] = useState('')
   const [smsConsentChecked, setSmsConsentChecked] = useState(false)
 
@@ -396,6 +405,19 @@ export default function BookPageZhTw() {
   const handleServiceContinue = () => {
     if (!service) { setError('請選擇服務項目。'); return }
     setError('')
+    if (isWalkIn) {
+      // Skip the calendar entirely — book for right now, in the salon's own timezone.
+      const laParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
+      const laGet = (t: string) => laParts.find(p => p.type === t)?.value ?? '00'
+      const y = parseInt(laGet('year')), mo = parseInt(laGet('month')), d = parseInt(laGet('day'))
+      const h24 = parseInt(laGet('hour')), min = parseInt(laGet('minute'))
+      setSelectedDate(new Date(y, mo - 1, d))
+      const period = h24 >= 12 ? 'PM' : 'AM'
+      const h12 = h24 % 12 || 12
+      setSelectedTime(`${h12}:${String(min).padStart(2, '0')} ${period}`)
+      setStep('vaccine-notes')
+      return
+    }
     setStep('datetime')
   }
 
@@ -430,6 +452,7 @@ export default function BookPageZhTw() {
         tosAgreedAt: new Date().toISOString(),
         smsConsent: smsConsentChecked,
         smsConsentAt: smsConsentChecked ? new Date().toISOString() : null,
+        isWalkIn,
       }
       if (isNewClient) {
         payload.isNewClient = true
@@ -570,9 +593,9 @@ export default function BookPageZhTw() {
         <p className="text-sm text-sky-600 font-medium">線上預約</p>
         <div className="flex items-center gap-2 mt-2">
           <span className="text-xs text-gray-400">語言：</span>
-          <a href="/book?lang=en" className="text-xs text-gray-500 hover:text-sky-600 px-2 py-0.5 rounded-full hover:bg-sky-50 transition-colors">English</a>
+          <a href={`/book${isWalkIn ? '?lang=en&walkin=1' : '?lang=en'}`} className="text-xs text-gray-500 hover:text-sky-600 px-2 py-0.5 rounded-full hover:bg-sky-50 transition-colors">English</a>
           <span className="text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">繁體中文</span>
-          <a href="/book-zh-cn" className="text-xs text-gray-500 hover:text-sky-600 px-2 py-0.5 rounded-full hover:bg-sky-50 transition-colors">简体中文</a>
+          <a href={`/book-zh-cn${isWalkIn ? '?walkin=1' : ''}`} className="text-xs text-gray-500 hover:text-sky-600 px-2 py-0.5 rounded-full hover:bg-sky-50 transition-colors">简体中文</a>
         </div>
       </div>
 
@@ -789,8 +812,22 @@ export default function BookPageZhTw() {
             <p className="text-sm text-gray-500 mb-5">
               為 {isNewClient ? newPetName : (isAddingNewPet ? newPetName : selectedPet?.name)} 選擇
             </p>
+            {isWalkIn && (
+              <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-center">
+                <p className="text-sm font-semibold text-amber-800">🚶 現場報到 — 不需要預約時段</p>
+                <p className="text-xs text-amber-700 mt-0.5">選擇服務項目，我們馬上為您服務。</p>
+              </div>
+            )}
+
             <div className="space-y-4">
-              {dynamicServices.filter(s => s.visible !== false).map(s => (
+              {(() => {
+                const visibleServices = dynamicServices.filter(s => (s.visible !== false) && (!isWalkIn || s.skipCapacity))
+                if (isWalkIn && visibleServices.length === 0) {
+                  return (
+                    <p className="text-sm text-gray-400 text-center py-6">目前尚未設定現場報到服務，請洽詢櫃台人員。</p>
+                  )
+                }
+                return visibleServices.map(s => (
                 <button key={s.id} onClick={() => setService(s.id)}
                   className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-all text-left group ${service === s.id ? 'border-sky-500 bg-sky-50' : 'border-gray-100 hover:border-sky-200'}`}>
                   <span className="text-2xl mt-0.5">{s.icon}</span>
@@ -812,7 +849,8 @@ export default function BookPageZhTw() {
                   </div>
                   {service === s.id && <CheckCircle2 className="w-5 h-5 text-sky-500 mt-1" />}
                 </button>
-              ))}
+                ))
+              })()}
             </div>
 
 
@@ -882,7 +920,7 @@ export default function BookPageZhTw() {
         {/* ── STEP: VACCINE & NOTES ── */}
         {step === 'vaccine-notes' && (
           <div className="p-6">
-            <button onClick={() => setStep('datetime')} className="flex items-center text-sky-600 text-sm mb-4 hover:underline">
+            <button onClick={() => setStep(isWalkIn ? 'service' : 'datetime')} className="flex items-center text-sky-600 text-sm mb-4 hover:underline">
               <ChevronLeft className="w-4 h-4" /> 返回
             </button>
             <h2 className="text-xl font-bold text-sky-900 mb-1">疫苗記錄及備注</h2>
@@ -957,7 +995,7 @@ export default function BookPageZhTw() {
               <p className="font-semibold text-sky-800">預約摘要</p>
               <p className="text-gray-600">🐾 {isNewClient || isAddingNewPet ? newPetName : selectedPet?.name}</p>
               <p className="text-gray-600">✂️ {dynamicServices.find(s => s.id === service)?.name}</p>
-              <p className="text-gray-600">📅 {selectedDate ? formatDate(selectedDate) : ''} @ {selectedTime}</p>
+              <p className="text-gray-600">📅 {isWalkIn ? '現在（現場報到）' : `${selectedDate ? formatDate(selectedDate) : ''} @ ${selectedTime}`}</p>
             </div>
             <div ref={tosRef}
               className="tos-scroll h-52 overflow-y-auto border border-gray-200 rounded-xl p-4 text-xs text-gray-600 leading-relaxed bg-gray-50">
@@ -991,16 +1029,23 @@ export default function BookPageZhTw() {
         {step === 'confirmed' && (
           <div className="p-6 text-center">
             <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">📋</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">已收到您的預約申請！</h2>
-            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-5 py-4 mb-5 mt-3">
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">{isWalkIn ? '您已完成報到！' : '已收到您的預約申請！'}</h2>
+            {isWalkIn ? (
+              <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl px-5 py-4 mb-5 mt-3">
+                <p className="text-emerald-800 font-bold text-base">🚶 您已完成現場報到登記。</p>
+                <p className="text-emerald-700 text-sm mt-1">請稍候，我們馬上為您服務。</p>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-5 py-4 mb-5 mt-3">
               <p className="text-amber-800 font-bold text-base">⚠️ 您的預約尚未確認。</p>
               <p className="text-amber-700 text-sm mt-1">我們將審核您的申請，確認後將以<strong>簡訊</strong>通知您。</p>
             </div>
+            )}
             <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm text-left mb-4 space-y-2">
               <p className="font-semibold text-gray-700 mb-1">📝 您的預約</p>
               <div className="flex items-center gap-2 text-gray-600"><span>🐾</span><span>{isNewClient || isAddingNewPet ? newPetName : selectedPet?.name}</span></div>
               <div className="flex items-center gap-2 text-gray-600"><span>✂️</span><span>{dynamicServices.find(s => s.id === service)?.name}</span></div>
-              <div className="flex items-center gap-2 text-gray-600"><span>📅</span><span>{selectedDate ? formatDate(selectedDate) : ''} @ {selectedTime}</span></div>
+              <div className="flex items-center gap-2 text-gray-600"><span>📅</span><span>{isWalkIn ? '現在（現場報到）' : `${selectedDate ? formatDate(selectedDate) : ''} @ ${selectedTime}`}</span></div>
               <div className="flex items-center gap-2 text-gray-600"><span>📱</span><span>{phone}</span></div>
             </div>
             {needsVaccineEmail && (
