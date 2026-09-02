@@ -92,6 +92,80 @@ function splitTip(serviceAmts: number[], totalTip: number): number[] {
   return parts
 }
 
+// ── Cashier sign-in gate ─────────────────────────────────────────────────────
+// A lightweight but real (username + password, same credentials as
+// Admin/Desk) login just for this screen, so Admin/Desk can show who's been
+// on register and when they signed in. Persists in localStorage so it
+// doesn't re-prompt on every page refresh mid-shift — only on "Switch user"
+// or a fresh browser/device, each of which logs a new sign-in event.
+function CashierLogin({ onSuccess }: { onSuccess: (user: { id: string; name: string }) => void }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      const res = await fetch('/api/cashier/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setError(data.error || 'Login failed')
+        return
+      }
+      onSuccess(data.user)
+    } catch {
+      setError('Connection error. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-violet-500 to-violet-700 flex flex-col items-center justify-center px-6">
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 space-y-4">
+        <div className="text-center mb-2">
+          <p className="text-3xl mb-1">🐾</p>
+          <h1 className="text-xl font-black text-gray-800">Cashier Sign In</h1>
+          <p className="text-gray-400 text-sm mt-1">Use your staff username &amp; password</p>
+        </div>
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
+            {error}
+          </div>
+        )}
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Username</label>
+          <input
+            type="text" value={username} onChange={e => setUsername(e.target.value)}
+            placeholder="your username" autoCapitalize="none" autoCorrect="off" autoComplete="username"
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
+          <input
+            type="password" value={password} onChange={e => setPassword(e.target.value)}
+            placeholder="••••••••" autoComplete="current-password"
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-gray-50"
+          />
+        </div>
+        <button
+          type="button" onClick={handleLogin} disabled={loading || !username || !password}
+          className="w-full py-3.5 bg-violet-600 active:bg-violet-800 text-white font-bold rounded-xl transition-colors disabled:opacity-40 text-base shadow-md shadow-violet-200">
+          {loading ? 'Signing in…' : 'Sign In'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Checkout Modal ────────────────────────────────────────────────────────────
 function CheckoutModal({
   appt,
@@ -947,6 +1021,26 @@ function NewClientForm({ onDone }: { onDone: () => void }) {
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function CashierPage() {
+  // Who's currently signed in to this Cashier screen (separate from the
+  // Admin/Desk login) — persisted in localStorage across refreshes.
+  const [cashierUser, setCashierUser] = useState<{ id: string; name: string } | null>(null)
+  const [cashierAuthChecked, setCashierAuthChecked] = useState(false)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('auth_cashier')
+      if (raw) setCashierUser(JSON.parse(raw))
+    } catch {/**/}
+    setCashierAuthChecked(true)
+  }, [])
+  const cashierLogin = (user: { id: string; name: string }) => {
+    try { localStorage.setItem('auth_cashier', JSON.stringify(user)) } catch {/**/}
+    setCashierUser(user)
+  }
+  const cashierLogout = () => {
+    try { localStorage.removeItem('auth_cashier') } catch {/**/}
+    setCashierUser(null)
+  }
+
   const [tab, setTab] = useState<Tab>('dashboard')
   const [allAppts, setAllAppts] = useState<Appt[]>([])
   const [weekTotal, setWeekTotal] = useState<number | null>(null)
@@ -1333,6 +1427,15 @@ export default function CashierPage() {
     { id: 'checkout',  label: 'Ready to Go', icon: '💰' },
   ]
 
+  // Auth gate — every hook above this line still runs on every render, so
+  // this early return (after them all) doesn't break the rules of hooks.
+  if (!cashierAuthChecked) {
+    return <div className="min-h-screen bg-gray-50" />
+  }
+  if (!cashierUser) {
+    return <CashierLogin onSuccess={cashierLogin} />
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ── VENMO / ZELLE POPUP ─────────────────────────────────────────────── */}
@@ -1542,6 +1645,12 @@ export default function CashierPage() {
               {unpaid.length} unpaid
             </span>
           )}
+          <div className="flex items-center gap-2 pl-3 border-l border-gray-200">
+            <span className="text-xs text-gray-400">Cashier: <span className="font-bold text-gray-600">{cashierUser.name}</span></span>
+            <button onClick={cashierLogout} className="text-xs text-violet-500 hover:text-violet-700 font-semibold underline underline-offset-2">
+              Switch user
+            </button>
+          </div>
         </div>
       </div>
 
