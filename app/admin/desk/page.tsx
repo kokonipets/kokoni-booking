@@ -1054,7 +1054,6 @@ export default function DeskAdmin() {
         .then(d => setDetailPetTags((d.tags ?? []) as PetTag[]))
         .catch(() => {/**/})
     }
-    setEditingApptDiary(false)
 
     // Fetch full client record (address, pickups, etc.)
     setDetailClientLoading(true)
