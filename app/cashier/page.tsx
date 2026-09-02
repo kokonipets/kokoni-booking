@@ -22,6 +22,26 @@ const PM = {
   zelle: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '💛', label: 'Zelle', border: 'border-yellow-200', tip: 'Enter Zelle tip amount' },
 } as Record<string, { bg: string; text: string; icon: string; label: string; border: string; tip: string }>
 
+// Small secondary selector for which method a tip was actually paid in —
+// defaults to match the main Payment Method but can be changed independently
+// (e.g. paid by card, tipped in cash).
+function TipMethodPicker({ value, onChange }: { value: 'card' | 'cash' | 'venmo' | 'zelle'; onChange: (m: 'card' | 'cash' | 'venmo' | 'zelle') => void }) {
+  return (
+    <div className="grid grid-cols-4 gap-1.5 mt-2">
+      {(['card', 'cash', 'zelle', 'venmo'] as const).map(m => (
+        <button key={m} type="button" onClick={() => onChange(m)}
+          className={`py-1.5 rounded-xl font-bold text-[11px] transition-all flex items-center justify-center gap-1 border ${
+            value === m
+              ? `${PM[m].bg} ${PM[m].text} ${PM[m].border}`
+              : 'bg-gray-50 border-gray-200 text-gray-400'
+          }`}>
+          <span>{PM[m].icon}</span><span>{PM[m].label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 type Appt = {
   id: string
   appointment_time: string
@@ -32,6 +52,7 @@ type Appt = {
   payment_method: string | null
   payment_amount: string | null
   tip_amount: string | null
+  tip_method: string | null
   payment_status: string | null
   assigned_groomer: string | null
   assigned_bather: string | null
@@ -91,6 +112,9 @@ function CheckoutModal({
   const [discount, setDiscount] = useState(false)
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
+  const [tipMethod, setTipMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(method)
+  const [tipMethodTouched, setTipMethodTouched] = useState(false)
+  useEffect(() => { if (!tipMethodTouched) setTipMethod(method) }, [method, tipMethodTouched])
 
   useEffect(() => {
     const petId = appt.pets?.id
@@ -124,6 +148,7 @@ function CheckoutModal({
           action: 'record-payment',
           payment_amount: serviceAmt.toFixed(2),
           tip_amount: tip || '0',
+          tip_method: parseFloat(tip) > 0 ? tipMethod : null,
           payment_method: method,
           payment_status: 'paid',
           discount_label: discount ? 'First-time customer 20% off' : null,
@@ -140,6 +165,7 @@ function CheckoutModal({
         onSuccess({
           payment_amount: serviceAmt.toFixed(2),
           tip_amount: tip || '0',
+          tip_method: parseFloat(tip) > 0 ? tipMethod : null,
           payment_method: method,
           payment_status: 'paid',
         })
@@ -270,6 +296,12 @@ function CheckoutModal({
                   className="px-3 text-gray-300 hover:text-gray-500 text-lg">✕</button>
               )}
             </div>
+            {parseFloat(tip) > 0 && (
+              <div className="mt-2">
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Tip paid via</p>
+                <TipMethodPicker value={tipMethod} onChange={m => { setTipMethod(m); setTipMethodTouched(true) }} />
+              </div>
+            )}
           </div>
 
           {/* Total */}
@@ -343,6 +375,9 @@ function GroupCheckoutModal({
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
+  const [tipMethod, setTipMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(method)
+  const [tipMethodTouched, setTipMethodTouched] = useState(false)
+  useEffect(() => { if (!tipMethodTouched) setTipMethod(method) }, [method, tipMethodTouched])
 
   // First-time = none of these pets has a prior recorded payment.
   useEffect(() => {
@@ -389,6 +424,7 @@ function GroupCheckoutModal({
             action: 'record-payment',
             payment_amount: serviceAmts[i].toFixed(2),
             tip_amount: tipParts[i].toFixed(2),
+            tip_method: tipAmt > 0 ? tipMethod : null,
             payment_method: method,
             payment_status: 'paid',
             discount_label: discount ? 'First-time customer 20% off' : null,
@@ -406,6 +442,7 @@ function GroupCheckoutModal({
           updated: {
             payment_amount: serviceAmts[i].toFixed(2),
             tip_amount: tipParts[i].toFixed(2),
+            tip_method: tipAmt > 0 ? tipMethod : null,
             payment_method: method,
             payment_status: 'paid',
           },
@@ -583,6 +620,12 @@ function GroupCheckoutModal({
                 <button onClick={() => setTip('')} className="px-3 text-gray-300 hover:text-gray-500 text-lg">✕</button>
               )}
             </div>
+            {parseFloat(tip) > 0 && (
+              <div className="mt-2">
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Tip paid via</p>
+                <TipMethodPicker value={tipMethod} onChange={m => { setTipMethod(m); setTipMethodTouched(true) }} />
+              </div>
+            )}
           </div>
 
           {/* Total */}

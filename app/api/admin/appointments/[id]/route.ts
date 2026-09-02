@@ -640,7 +640,7 @@ export async function PATCH(
 
   // Record payment
   if (action === 'record-payment') {
-    const { payment_amount, tip_amount, payment_method, payment_status, addons, discount_label, discount_percent, discount_amount, discount_bearer, size_tier } = body
+    const { payment_amount, tip_amount, payment_method, payment_status, addons, discount_label, discount_percent, discount_amount, discount_bearer, size_tier, tip_method } = body
     const updates: Record<string, unknown> = {}
     if (payment_amount !== undefined) updates.payment_amount = payment_amount || null
     if (tip_amount !== undefined) updates.tip_amount = tip_amount || null
@@ -746,6 +746,18 @@ export async function PATCH(
         .update({ size_tier: size_tier || null })
         .eq('id', id)
       if (tierErr) console.warn('size_tier not saved (run size_tier migration?):', tierErr.message)
+    }
+
+    // Persist which method the tip was actually paid in — separate from
+    // payment_method, since a customer can pay by one method and tip in
+    // another (best-effort; separate update so payment recording still
+    // succeeds if the tip_method column isn't migrated yet).
+    if (tip_method !== undefined) {
+      const { error: tipMethodErr } = await supabase
+        .from('appointments')
+        .update({ tip_method: tip_method || null })
+        .eq('id', id)
+      if (tipMethodErr) console.warn('tip_method not saved (run tip_method migration?):', tipMethodErr.message)
     }
 
     return NextResponse.json({ success: true })
