@@ -691,6 +691,7 @@ export default function DeskAdmin() {
   const [reportSavingId, setReportSavingId] = useState<string | null>(null)
 
   // Cashier
+  const [cashierLogins, setCashierLogins] = useState<{ id: string; staff_name: string; logged_in_at: string }[]>([])
   const [cashierRange, setCashierRange] = useState<'today' | 'week' | 'month' | 'custom'>('today')
   const [cashierCustomDate, setCashierCustomDate] = useState('')
   const [cashierExpandedId, setCashierExpandedId] = useState<string | null>(null)
@@ -2334,6 +2335,14 @@ export default function DeskAdmin() {
     }
   }, [payrollReport, payrollStartDate, payrollEndDate, payrollPayDate, payrollSelectedGroomer])
 
+  const fetchCashierLogins = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cashier/login')
+      const data = await res.json()
+      setCashierLogins(data.logins || [])
+    } catch { /* silent */ }
+  }, [])
+
   const fetchReports = useCallback(async (range?: 'week' | 'month' | 'all') => {
     setReportsLoading(true)
     try {
@@ -2543,11 +2552,12 @@ export default function DeskAdmin() {
     else if (tab === 'checkout') fetchAppointments('today')
     else if (tab === 'cashier') {
       fetchReports()
+      fetchCashierLogins()
       const iv = setInterval(() => fetchReports(), 15000)
       return () => clearInterval(iv)
     }
     else if (tab === 'reports') { fetchReports(); fetchPayroll() }
-  }, [authed, tab, fetchCalendar, fetchClients, fetchVaccineRecords, fetchPayroll, fetchSettings, fetchAppointments, fetchReports, calendarMonth])
+  }, [authed, tab, fetchCalendar, fetchClients, fetchVaccineRecords, fetchPayroll, fetchSettings, fetchAppointments, fetchReports, fetchCashierLogins, calendarMonth])
 
   // Poll pending count every 30s so badge always stays current
   useEffect(() => {
@@ -7434,6 +7444,31 @@ export default function DeskAdmin() {
                   </div>
                   <button onClick={() => fetchReports()} className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5">⟳ Refresh</button>
                 </div>
+
+                {/* Cashier sign-in activity — who's been on register, and when they signed in */}
+                {cashierLogins.length > 0 && (
+                  <details className="bg-white rounded-2xl border border-gray-100 overflow-hidden group">
+                    <summary className="px-4 py-3 flex items-center justify-between cursor-pointer select-none list-none">
+                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">🔑 Cashier Sign-Ins</span>
+                      <span className="text-xs text-gray-400">
+                        Last: <span className="font-semibold text-gray-600">{cashierLogins[0].staff_name}</span>
+                        {' · '}{new Date(cashierLogins[0].logged_in_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        <span className="ml-1.5 text-gray-300 group-open:hidden">▾</span>
+                        <span className="ml-1.5 text-gray-300 hidden group-open:inline">▴</span>
+                      </span>
+                    </summary>
+                    <div className="border-t border-gray-50 max-h-64 overflow-y-auto divide-y divide-gray-50">
+                      {cashierLogins.map(l => (
+                        <div key={l.id} className="px-4 py-2 flex items-center justify-between text-sm">
+                          <span className="font-semibold text-gray-700">{l.staff_name}</span>
+                          <span className="text-xs text-gray-400">
+                            {new Date(l.logged_in_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
 
                 {/* Summary — end of day breakdown */}
                 <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
