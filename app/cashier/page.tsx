@@ -186,8 +186,14 @@ function CheckoutModal({
   const [discount, setDiscount] = useState(false)
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
-  const [tipMethod, setTipMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(method)
-  const [tipMethodTouched, setTipMethodTouched] = useState(false)
+  // Preselect from the appointment's own saved tip_method (if this checkout
+  // was already recorded once), otherwise fall back to preselecting from the
+  // payment method. Without reading appt.tip_method here, reopening a
+  // checkout that was paid with a cash tip would always show "Card" again.
+  const [tipMethod, setTipMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(
+    (appt.tip_method as 'card' | 'cash' | 'venmo' | 'zelle') || method
+  )
+  const [tipMethodTouched, setTipMethodTouched] = useState(!!appt.tip_method)
   useEffect(() => { if (!tipMethodTouched) setTipMethod(method) }, [method, tipMethodTouched])
 
   useEffect(() => {
@@ -449,8 +455,12 @@ function GroupCheckoutModal({
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
-  const [tipMethod, setTipMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(method)
-  const [tipMethodTouched, setTipMethodTouched] = useState(false)
+  // Same fix as the single-pet checkout: preselect from a previously saved
+  // tip_method instead of always defaulting back to the payment method.
+  const [tipMethod, setTipMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(
+    (appts[0]?.tip_method as 'card' | 'cash' | 'venmo' | 'zelle') || method
+  )
+  const [tipMethodTouched, setTipMethodTouched] = useState(!!appts[0]?.tip_method)
   useEffect(() => { if (!tipMethodTouched) setTipMethod(method) }, [method, tipMethodTouched])
 
   // First-time = none of these pets has a prior recorded payment.
