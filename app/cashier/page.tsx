@@ -1092,6 +1092,10 @@ export default function CashierPage() {
   // full itemized list; now it switches the summary boxes to that period
   // instead, and the itemized list becomes an optional "view list" beneath them.
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('today')
+  // Which day's appointments are loaded — lets staff step back to yesterday
+  // to fix a checkout they missed, while still being able to edit it fully
+  // (checkout/payment actions work the same regardless of which day is shown).
+  const [viewDay, setViewDay] = useState<'today' | 'yesterday'>('today')
   const [periodRevenue, setPeriodRevenue] = useState<Record<string, { amount: number; tips: number; count: number }> | null>(null)
   const [alerts, setAlerts] = useState<{ id: string; pet: string; owner: string; method: string; amount: string | null; tip: string | null; time: string }[]>([])
   const [now, setNow] = useState(new Date())
@@ -1116,7 +1120,11 @@ export default function CashierPage() {
   const isFirst = useRef(true)
 
   // Derived lists — use Pacific Time so date doesn't flip at 5 PM
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  const today = (() => {
+    const d = new Date(); if (d.getHours() < 4) d.setDate(d.getDate() - 1)
+    if (viewDay === 'yesterday') d.setDate(d.getDate() - 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })()
   const todayAppts = allAppts.filter(a => a.appointment_date === today && a.status !== 'cancelled' && a.status !== 'no_show')
   const unpaid = todayAppts.filter(a =>
     (a.status === 'completed' || a.grooming_status === 'ready' || a.grooming_status === 'done')
@@ -1174,6 +1182,7 @@ export default function CashierPage() {
   const fetchData = useCallback(async () => {
     try {
       const _now = new Date(); if (_now.getHours() < 4) _now.setDate(_now.getDate() - 1)
+      if (viewDay === 'yesterday') _now.setDate(_now.getDate() - 1)
       const todayStr = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`
       const { data } = await supabase
         .from('appointments')
@@ -1183,8 +1192,13 @@ export default function CashierPage() {
 
       const list = (data ?? []) as Appt[]
 
+      // The live chimes/auto-popups below are for front-desk activity as it
+      // happens right now — skip them entirely when browsing yesterday so
+      // reviewing/fixing an old checkout doesn't trigger sounds or popups.
+      const isLive = viewDay === 'today'
+
       // Detect newly paid (for chime + alert)
-      const newlyPaid = list.filter(a => a.payment_status === 'paid' && !seenIds.current.has(a.id))
+      const newlyPaid = isLive ? list.filter(a => a.payment_status === 'paid' && !seenIds.current.has(a.id)) : []
       if (!isFirst.current && newlyPaid.length > 0) {
         try {
           const ctx = new AudioContext(); const osc = ctx.createOscillator(); const gain = ctx.createGain()
@@ -1198,10 +1212,10 @@ export default function CashierPage() {
           ...prev,
         ].slice(0, 20))
       }
-      list.filter(a => a.payment_status === 'paid').forEach(a => seenIds.current.add(a.id))
+      if (isLive) list.filter(a => a.payment_status === 'paid').forEach(a => seenIds.current.add(a.id))
 
       // Detect newly cash-pending — pop modal + chime
-      const newlyCash = list.filter(a => a.payment_status === 'cash_pending' && !seenCashIds.current.has(a.id))
+      const newlyCash = isLive ? list.filter(a => a.payment_status === 'cash_pending' && !seenCashIds.current.has(a.id)) : []
       if (newlyCash.length > 0) {
         if (!isFirst.current) {
           try {
@@ -1238,10 +1252,10 @@ export default function CashierPage() {
           setCashReceived('')
         }
       }
-      list.filter(a => a.payment_status === 'paid').forEach(a => seenCashIds.current.delete(a.id))
+      if (isLive) list.filter(a => a.payment_status === 'paid').forEach(a => seenCashIds.current.delete(a.id))
 
       // Detect newly venmo/zelle-pending — pop modal + chime
-      const newlyVZ = list.filter(a => (a.payment_status === 'venmo_pending' || a.payment_status === 'zelle_pending') && !seenVZIds.current.has(a.id))
+      const newlyVZ = isLive ? list.filter(a => (a.payment_status === 'venmo_pending' || a.payment_status === 'zelle_pending') && !seenVZIds.current.has(a.id)) : []
       if (newlyVZ.length > 0) {
         if (!isFirst.current) {
           try {
@@ -1269,11 +1283,11 @@ export default function CashierPage() {
           setVzPopup(firstVZ)
         }
       }
-      list.filter(a => a.payment_status === 'paid').forEach(a => seenVZIds.current.delete(a.id))
+      if (isLive) list.filter(a => a.payment_status === 'paid').forEach(a => seenVZIds.current.delete(a.id))
       isFirst.current = false
       setAllAppts(list)
     } catch (e) { console.error(e) }
-  }, [])
+  }, [viewDay])
 
   const fetchPeriodTotals = useCallback(async () => {
     try {
@@ -1452,7 +1466,11 @@ export default function CashierPage() {
     setCheckinLoading(null)
   }
 
-  const todayLabel = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const todayLabel = (() => {
+    const d = new Date(); if (d.getHours() < 4) d.setDate(d.getDate() - 1)
+    if (viewDay === 'yesterday') d.setDate(d.getDate() - 1)
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  })()
 
   const TABS: { id: Tab; label: string; icon: string }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -1670,7 +1688,19 @@ export default function CashierPage() {
             <div className="w-px h-4 bg-gray-200" />
             <h1 className="text-2xl font-black text-gray-800">🐾 Kokoni Cashier</h1>
           </div>
-          <p className="text-gray-400 text-sm">{todayLabel}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-gray-400 text-sm">{todayLabel}</p>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-full p-0.5">
+              <button onClick={() => setViewDay('today')}
+                className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${viewDay === 'today' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+                Today
+              </button>
+              <button onClick={() => setViewDay('yesterday')}
+                className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${viewDay === 'yesterday' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+                Yesterday
+              </button>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           {unpaid.length > 0 && (
