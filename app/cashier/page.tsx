@@ -417,7 +417,7 @@ function CheckoutModal({
               method === 'zelle' ? 'bg-yellow-500 hover:bg-yellow-600' :
                                    'bg-blue-500 hover:bg-blue-600'
             }`}>
-            {saving ? 'Saving…' : `${pm.icon} Confirm ${pm.label} · ${fmtMoney(total)}`}
+            {saving ? 'Saving…' : `${pm.icon} Confirm · ${fmtMoney(total)}`}
           </button>
         </div>
       </div>
