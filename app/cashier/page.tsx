@@ -56,6 +56,10 @@ type Appt = {
   payment_status: string | null
   assigned_groomer: string | null
   assigned_bather: string | null
+  discount_label: string | null
+  discount_percent: string | null
+  discount_amount: string | null
+  discount_bearer: string | null
   pets: { id: string; name: string; breed?: string; photo_url: string | null } | null
   clients: { name: string; phone: string } | null
 }
@@ -181,9 +185,19 @@ function CheckoutModal({
   const [method, setMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(
     (appt.payment_method as 'card' | 'cash' | 'venmo' | 'zelle') || 'card'
   )
-  const [amount, setAmount] = useState(appt.payment_amount || '')
+  // Once a discount is applied and confirmed, payment_amount holds the
+  // *discounted* total — so reopening needs to add discount_amount back to
+  // reconstruct the number originally typed into "Service Total", and
+  // restore the toggle itself, so a previously-applied discount doesn't
+  // silently vanish from the display (or get dropped if re-confirmed).
+  const initialDiscount = !!appt.discount_label
+  const [amount, setAmount] = useState(
+    initialDiscount && appt.payment_amount && appt.discount_amount
+      ? (parseFloat(appt.payment_amount) + parseFloat(appt.discount_amount)).toFixed(2)
+      : appt.payment_amount || ''
+  )
   const [tip, setTip] = useState(appt.tip_amount && appt.tip_amount !== '0' ? appt.tip_amount : '')
-  const [discount, setDiscount] = useState(false)
+  const [discount, setDiscount] = useState(initialDiscount)
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
   // Preselect from the appointment's own saved tip_method (if this checkout
@@ -446,12 +460,21 @@ function GroupCheckoutModal({
   const [method, setMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(
     (appts[0]?.payment_method as 'card' | 'cash' | 'venmo' | 'zelle') || 'card'
   )
+  // Same fix as the single-pet checkout: reconstruct each pet's pre-discount
+  // amount from payment_amount + discount_amount, and restore the shared
+  // discount toggle, instead of always reopening as if no discount had ever
+  // been applied.
+  const groupInitialDiscount = !!appts[0]?.discount_label
   const [amounts, setAmounts] = useState<Record<string, string>>(
-    () => Object.fromEntries(appts.map(a => [a.id, a.payment_amount || '']))
+    () => Object.fromEntries(appts.map(a => [a.id,
+      groupInitialDiscount && a.payment_amount && a.discount_amount
+        ? (parseFloat(a.payment_amount) + parseFloat(a.discount_amount)).toFixed(2)
+        : a.payment_amount || ''
+    ]))
   )
   const [tip, setTip] = useState('')
   const [cashReceived, setCashReceived] = useState('')
-  const [discount, setDiscount] = useState(false)
+  const [discount, setDiscount] = useState(groupInitialDiscount)
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
