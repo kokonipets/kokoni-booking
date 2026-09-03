@@ -70,7 +70,7 @@ export async function GET() {
     .from('cashier_logins')
     .select('id, staff_name, logged_in_at')
     .order('logged_in_at', { ascending: false })
-    .limit(100)
+    .limit(500)
 
   if (error) return NextResponse.json({ logins: [] })
   return NextResponse.json({ logins: data || [] })

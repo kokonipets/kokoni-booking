@@ -87,6 +87,7 @@ const DASHBOARD_TABS = [
   { key: 'reports',    label: 'Reports' },
   { key: 'settings',   label: 'Settings' },
   { key: 'timesheet',  label: 'Timesheet' },
+  { key: 'cashier_logins', label: 'Cashier Sign-Ins' },
 ]
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
