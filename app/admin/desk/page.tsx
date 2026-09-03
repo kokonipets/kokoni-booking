@@ -295,6 +295,7 @@ const NAV = [
   { key: 'intake',     label: 'New Client Intake',       icon: '📝' },
   { key: 'waitlist',   label: 'Waitlist',                icon: '⏳' },
   { key: 'cashier',    label: 'Cashier',                 icon: '💰' },
+  { key: 'cashier_logins', label: 'Cashier Sign-Ins',    icon: '🔑' },
   { key: 'reviews',    label: 'SMS Reviews',             icon: '⭐' },
   { key: 'reports',    label: 'Reports',                 icon: '📊' },
   { key: 'settings',   label: 'Settings',                icon: '⚙️' },
@@ -2556,6 +2557,7 @@ export default function DeskAdmin() {
       const iv = setInterval(() => fetchReports(), 15000)
       return () => clearInterval(iv)
     }
+    else if (tab === 'cashier_logins') fetchCashierLogins()
     else if (tab === 'reports') { fetchReports(); fetchPayroll() }
   }, [authed, tab, fetchCalendar, fetchClients, fetchVaccineRecords, fetchPayroll, fetchSettings, fetchAppointments, fetchReports, fetchCashierLogins, calendarMonth])
 
@@ -7540,6 +7542,55 @@ export default function DeskAdmin() {
                       </>
                     )}
                   </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* ── CASHIER SIGN-INS ─────────────────────────────────────────────── */}
+          {tab === 'cashier_logins' && (() => {
+            // Group sign-ins by calendar day so the list reads like a daily log.
+            const groups: { dateKey: string; label: string; entries: typeof cashierLogins }[] = []
+            for (const l of cashierLogins) {
+              const d = new Date(l.logged_in_at)
+              const dateKey = d.toDateString()
+              let g = groups.find(g => g.dateKey === dateKey)
+              if (!g) {
+                g = { dateKey, label: d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }), entries: [] }
+                groups.push(g)
+              }
+              g.entries.push(l)
+            }
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-400">Every time a staff member has signed into the Cashier checkout screen.</p>
+                  <button onClick={() => fetchCashierLogins()} className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5">⟳ Refresh</button>
+                </div>
+                {cashierLogins.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+                    <div className="text-5xl mb-3">🔑</div>
+                    <h2 className="font-bold text-gray-800 text-lg mb-2">No sign-ins yet</h2>
+                    <p className="text-gray-400 text-sm">Once someone signs into the Cashier screen, their sign-ins will show up here.</p>
+                  </div>
+                ) : (
+                  groups.map(g => (
+                    <div key={g.dateKey} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{g.label}</span>
+                      </div>
+                      <div className="divide-y divide-gray-50">
+                        {g.entries.map(l => (
+                          <div key={l.id} className="px-4 py-3 flex items-center justify-between text-sm">
+                            <span className="font-semibold text-gray-700">🔑 {l.staff_name}</span>
+                            <span className="text-xs text-gray-400">
+                              {new Date(l.logged_in_at).toLocaleString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             )
