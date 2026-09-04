@@ -4777,7 +4777,16 @@ export default function DeskAdmin() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="hidden md:block text-sm text-gray-400">{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/Los_Angeles'})}</span>
+            <span className="hidden md:block text-sm text-gray-400">{(() => {
+              // Match the salon's 4am business-day cutoff used by the Today/
+              // Cashier tabs (salonNow()) so this header never shows a
+              // different date than the data below it right after midnight —
+              // e.g. at 12:15am the "Today" tab still shows the business day
+              // that just ended, and this label should say the same date.
+              const bd = salonNow(); if (bd.getHours() < 4) bd.setDate(bd.getDate() - 1)
+              const bdStr = `${bd.getFullYear()}-${String(bd.getMonth() + 1).padStart(2, '0')}-${String(bd.getDate()).padStart(2, '0')}`
+              return new Date(bdStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+            })()}</span>
             {!isBookMode && <ChatIconButton />}
             {!isBookMode && (
               <a href="/admin" className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors font-medium">
