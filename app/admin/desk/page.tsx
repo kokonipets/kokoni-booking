@@ -8157,13 +8157,13 @@ export default function DeskAdmin() {
                 {/* Date range selector */}
                 <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {(['today', 'next_payroll', 'this_payroll', 'last_payroll', 'month', 'custom'] as const).map(r => (
+                    {(['today', 'next_payroll', 'this_payroll', 'last_payroll', 'month', 'last_month', 'custom'] as const).map(r => (
                       <button
                         key={r}
                         onClick={() => setReportsRange(r)}
                         className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${reportsRange === r ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}`}
                       >
-                        {r === 'today' ? 'Today' : r === 'next_payroll' ? '💵 Next Pay' : r === 'this_payroll' ? '💵 This Pay' : r === 'last_payroll' ? '💵 Last Pay' : r === 'month' ? 'This Month' : '📅 Custom'}
+                        {r === 'today' ? 'Today' : r === 'next_payroll' ? '💵 Next Pay' : r === 'this_payroll' ? '💵 This Pay' : r === 'last_payroll' ? '💵 Last Pay' : r === 'month' ? 'This Month' : r === 'last_month' ? 'Last Month' : '📅 Custom'}
                       </button>
                     ))}
                     <div className="ml-auto flex items-center gap-2">
