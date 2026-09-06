@@ -8143,10 +8143,11 @@ export default function DeskAdmin() {
               check: { count: 0, amount: 0, tips: 0 }, unpaid: { count: 0, amount: 0, tips: 0 },
             }
             allRangeAppts.forEach(a => {
-              // Cancelled appointments were never going to be paid — matching the
-              // Cashier tab's own Unpaid list, they're left out of this breakdown
-              // entirely so "Unpaid" only reflects visits you might still collect on.
-              if (a.status === 'cancelled') return
+              // Cancelled and no-show appointments were never going to be paid —
+              // matching the Cashier tab's own Unpaid list, they're left out of this
+              // breakdown entirely so "Unpaid" only reflects visits you might still
+              // collect on.
+              if (a.status === 'cancelled' || a.status === 'no_show') return
               const key = (a.payment_status === 'paid' && a.payment_method) ? a.payment_method : 'unpaid'
               if (!rangeMethodTotals[key]) rangeMethodTotals[key] = { count: 0, amount: 0, tips: 0 }
               rangeMethodTotals[key].count += 1
@@ -8268,7 +8269,7 @@ export default function DeskAdmin() {
                     </div>
 
                     {showUnpaidModal && (() => {
-                      const unpaidRows = allRangeAppts.filter(a => a.status !== 'cancelled' && !(a.payment_status === 'paid' && a.payment_method))
+                      const unpaidRows = allRangeAppts.filter(a => a.status !== 'cancelled' && a.status !== 'no_show' && !(a.payment_status === 'paid' && a.payment_method))
                       return (
                         <div className="fixed inset-0 z-[9000] flex items-center justify-center p-4" onClick={() => setShowUnpaidModal(false)}>
                           <div className="absolute inset-0 bg-black/40" />
