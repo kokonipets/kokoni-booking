@@ -5581,7 +5581,7 @@ export default function DeskAdmin() {
                           {appt.pets?.photo_url
                             ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
-                          <span className="text-sm">{appt.pets?.name}</span>
+                          <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -5622,7 +5622,7 @@ export default function DeskAdmin() {
                           {appt.pets?.photo_url
                             ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
-                          <span className="text-sm">{appt.pets?.name}</span>
+                          <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -5656,7 +5656,7 @@ export default function DeskAdmin() {
                           {appt.pets?.photo_url
                             ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
-                          <span className="text-sm">{appt.pets?.name}</span>
+                          <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -5690,7 +5690,7 @@ export default function DeskAdmin() {
                           {appt.pets?.photo_url
                             ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
-                          <span className="text-sm">{appt.pets?.name}</span>
+                          <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -5725,7 +5725,7 @@ export default function DeskAdmin() {
                           {appt.pets?.photo_url
                             ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
-                          <span className="text-sm">{appt.pets?.name}</span>
+                          <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
