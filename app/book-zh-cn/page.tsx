@@ -271,7 +271,7 @@ export default function BookPageZhCn() {
       .catch(() => {})
   }, [])
 
-  const fetchDateSlots = useCallback((date: Date | null) => {
+  const fetchDateSlots = useCallback((date: Date | null, forService?: string, forSizeTier?: string) => {
     if (!date) { setDateSlots(null); return }
     const yyyy = date.getFullYear()
     const mm = String(date.getMonth() + 1).padStart(2, '0')
@@ -279,7 +279,9 @@ export default function BookPageZhCn() {
     const dateStr = `${yyyy}-${mm}-${dd}`
     setDateSlotsLoading(true)
     setDateSlots(null)
-    fetch(`/api/slots?date=${dateStr}&t=${Date.now()}`)
+    const svcParam = forService ? `&service=${encodeURIComponent(forService)}` : ''
+    const tierParam = forSizeTier ? `&size_tier=${encodeURIComponent(forSizeTier)}` : ''
+    fetch(`/api/slots?date=${dateStr}${svcParam}${tierParam}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { if (Array.isArray(data.slots)) setDateSlots(data.slots) })
       .catch(() => {})
@@ -291,17 +293,17 @@ export default function BookPageZhCn() {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         fetchAvailability()
-        fetchDateSlots(selectedDateRef.current)
+        fetchDateSlots(selectedDateRef.current, service, newPetWeight)
       }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [fetchAvailability, fetchDateSlots])
+  }, [fetchAvailability, fetchDateSlots, service, newPetWeight])
 
   useEffect(() => {
     selectedDateRef.current = selectedDate
-    fetchDateSlots(selectedDate)
-  }, [selectedDate, fetchDateSlots])
+    fetchDateSlots(selectedDate, service, newPetWeight)
+  }, [selectedDate, service, newPetWeight, fetchDateSlots])
 
   const handlePhoneLookup = async () => {
     const digits = phone.replace(/\D/g, '')
@@ -888,13 +890,13 @@ export default function BookPageZhCn() {
                   const selStr = selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}` : ''
                   const isSelectedToday = selStr === laTodayStr
                   const nowMins = isSelectedToday ? parseInt(laGet('hour')) * 60 + parseInt(laGet('minute')) : -1
+                  // The server already accounts for this service's real duration — whether it
+                  // would run into closing time or another appointment further out — so nothing
+                  // needs to be re-filtered here beyond hiding times already in the past.
                   const baseSlots = dateSlots ?? dynamicTimeSlots
-                  const selectedServiceObj = dynamicServices.find(s => s.id === service)
-                  const serviceDuration = selectedServiceObj?.durationMinutes || 0
-                  const closingTimeMins = 16 * 60 + 30
                   const availableSlots = baseSlots.filter(t => {
                     if (isSelectedToday && parseTimeMins(t) <= nowMins) return false
-                    return parseTimeMins(t) + serviceDuration <= closingTimeMins
+                    return true
                   })
                   return availableSlots.length > 0 ? (
                     <div className="grid grid-cols-3 gap-2">

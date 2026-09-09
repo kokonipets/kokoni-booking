@@ -295,7 +295,7 @@ export default function BookPage() {
       .catch(() => {})
   }, [])
 
-  const fetchDateSlots = useCallback((date: Date | null, forService?: string) => {
+  const fetchDateSlots = useCallback((date: Date | null, forService?: string, forSizeTier?: string) => {
     if (!date) { setDateSlots(null); return }
     const yyyy = date.getFullYear()
     const mm = String(date.getMonth() + 1).padStart(2, '0')
@@ -304,7 +304,11 @@ export default function BookPage() {
     setDateSlotsLoading(true)
     setDateSlots(null)
     const svcParam = forService ? `&service=${encodeURIComponent(forService)}` : ''
-    fetch(`/api/slots?date=${dateStr}${svcParam}&t=${Date.now()}`)
+    // Lets the server know how long this specific booking would actually take, so it can
+    // rule out any slot that would run into closing time or another appointment down the line
+    // — not just slots where nobody's free at the exact moment it starts.
+    const tierParam = forSizeTier ? `&size_tier=${encodeURIComponent(forSizeTier)}` : ''
+    fetch(`/api/slots?date=${dateStr}${svcParam}${tierParam}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { if (Array.isArray(data.slots)) setDateSlots(data.slots) })
       .catch(() => {})
@@ -317,18 +321,18 @@ export default function BookPage() {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         fetchAvailability()
-        fetchDateSlots(selectedDateRef.current, service) // re-fetch slots for currently selected date
+        fetchDateSlots(selectedDateRef.current, service, newPetWeight) // re-fetch slots for currently selected date
       }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [fetchAvailability, fetchDateSlots, service])
+  }, [fetchAvailability, fetchDateSlots, service, newPetWeight])
 
-  // Fetch capacity-aware slots whenever the selected date (or service) changes
+  // Fetch capacity-aware slots whenever the selected date, service, or pet size changes
   useEffect(() => {
     selectedDateRef.current = selectedDate
-    fetchDateSlots(selectedDate, service)
-  }, [selectedDate, service, fetchDateSlots])
+    fetchDateSlots(selectedDate, service, newPetWeight)
+  }, [selectedDate, service, newPetWeight, fetchDateSlots])
 
   // ─── Step: Phone ────────────────────────────────────────
   const handlePhoneLookup = async () => {
@@ -1111,20 +1115,15 @@ export default function BookPage() {
                   const selStr = selectedDate ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}` : ''
                   const isSelectedToday = selStr === laTodayStr
                   const nowMins = isSelectedToday ? parseInt(laGet('hour')) * 60 + parseInt(laGet('minute')) : -1
-                  // Use capacity-aware slots from /api/slots if loaded, else fall back to dynamicTimeSlots
+                  // Use capacity-aware slots from /api/slots if loaded, else fall back to dynamicTimeSlots.
+                  // The server already accounts for this service's real duration — whether it
+                  // would run into closing time or into another appointment further out — so
+                  // nothing needs to be re-filtered here beyond hiding times already in the past.
                   const baseSlots = dateSlots ?? dynamicTimeSlots
 
-                  // Get selected service duration (need 30 min cleanup, so appointments finish by 4:30 PM = 16:30 = 990 mins)
-                  const selectedServiceObj = dynamicServices.find(s => s.id === service)
-                  const serviceDuration = selectedServiceObj?.durationMinutes || 0
-                  const closingTimeMins = 16 * 60 + 30 // 4:30 PM (with 30 min cleanup buffer)
-
                   const availableSlots = baseSlots.filter(t => {
-                    // Filter out past times if selected date is today
                     if (isSelectedToday && parseTimeMins(t) <= nowMins) return false
-                    // Filter out times that would end after closing (5 PM)
-                    const slotEndTime = parseTimeMins(t) + serviceDuration
-                    return slotEndTime <= closingTimeMins
+                    return true
                   })
                   return availableSlots.length > 0 ? (
                     <div className="grid grid-cols-3 gap-2">

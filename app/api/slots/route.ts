@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const dateStr = searchParams.get('date') // YYYY-MM-DD
   const serviceId = searchParams.get('service') // optional — service being booked
+  const sizeTier = searchParams.get('size_tier') // optional — pet size/weight bucket for the service being booked
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -87,10 +88,19 @@ export async function GET(req: NextRequest) {
   let allServices: ServiceDef[] = []
   try { allServices = settings.services ? JSON.parse(settings.services) : [] } catch { allServices = [] }
 
+  // Customer-facing weight buttons don't always match a given service's own tier labels
+  // (e.g. Asian Fusion's tiers use different lb ranges than the generic weight picker), so an
+  // exact label match often won't be found. When it isn't, fall back to the LONGEST duration
+  // among that service's tiers rather than just the first one — better to occasionally hold a
+  // slot open a bit too conservatively than to under-book a groomer's real time.
   const serviceDurationMin = (svcId: string, sizeTier?: string | null): number => {
     const svc = allServices.find(s => s.id === svcId)
-    const tier = svc?.tiers?.find(t => t.label === sizeTier) || svc?.tiers?.[0]
-    return parseDurationStr(tier?.duration) ?? 45
+    if (!svc?.tiers?.length) return 45
+    const exactTier = sizeTier ? svc.tiers.find(t => t.label === sizeTier) : undefined
+    const exactDur = exactTier ? parseDurationStr(exactTier.duration) : null
+    if (exactDur != null) return exactDur
+    const allDurations = svc.tiers.map(t => parseDurationStr(t.duration)).filter((d): d is number => d != null)
+    return allDurations.length ? Math.max(...allDurations) : 45
   }
 
   // Walk-in quick services (e.g. Nail Trim, Top Dog) can be flagged in Settings to skip
@@ -218,8 +228,12 @@ export async function GET(req: NextRequest) {
   const occupiedAtSlot = (slotMinutes: number): number =>
     apptWindows.filter(w => slotMinutes >= w.start && slotMinutes < w.end).length
 
-  // 5. Filter: a slot is available if booked < the real per-slot capacity (how many groomers
-  //    actually have this exact time inside their working window today)
+  // 5. How long would THIS new booking itself take? A slot only 30 minutes wide can still
+  //    be the start of a 2-hour appointment — the whole span needs to be checked, not just the
+  //    instant it starts, or a slot could look open right up until it walks straight into
+  //    closing time or into another appointment that starts later in that same window.
+  const newApptDuration = serviceId ? serviceDurationMin(serviceId, sizeTier) : interval
+
   // Slots explicitly blocked for THIS date via the admin calendar
   const blockedSlotsForDate = new Set(
     blockedTimes.filter(b => b.date === dateStr).map(b => b.time)
@@ -228,12 +242,37 @@ export async function GET(req: NextRequest) {
   const slotCapacity: Record<string, number> = {}
   const availableSlots = allSlots.filter(slot => {
     if (storeClosedToday) return false // store isn't open this day of the week at all
-    if (blockedSlotsForDate.has(slot)) return false
-    if (skipCapacityForService) return true // walk-in quick service — always bookable, capacity doesn't apply
     const slotMin = parseTime(slot)
-    const cap = capacityAtSlot(slotMin)
-    slotCapacity[slot] = cap
-    return occupiedAtSlot(slotMin) < cap
+    const apptEnd = slotMin + newApptDuration
+
+    // Must fully fit before closing — not just start before close
+    if (apptEnd > endMins) return false
+
+    // Must not run into a recurring blocked-hours range (e.g. "closed after 3 PM") at any
+    // point during the appointment, not just at its start
+    const crossesBlockedHours = validBlocks.some(b => {
+      const bs = parseTime(b.start), be = parseTime(b.end)
+      return slotMin < be && apptEnd > bs
+    })
+    if (crossesBlockedHours) return false
+
+    // Must not run into a slot the admin explicitly blocked for this date, anywhere in its span
+    const crossesBlockedSlot = Array.from(blockedSlotsForDate).some(t => {
+      const tm = parseTime(t)
+      return tm >= slotMin && tm < apptEnd
+    })
+    if (crossesBlockedSlot) return false
+
+    if (skipCapacityForService) return true // walk-in quick service — capacity doesn't apply, but still respects hours/blocks above
+
+    // Capacity must hold for every slot across the appointment's real duration, not just the
+    // one it starts in — otherwise a 2-hour service could be booked right into a groomer who's
+    // free right now but has another appointment starting 30 minutes later.
+    for (let m = slotMin; m < apptEnd; m += interval) {
+      if (occupiedAtSlot(m) >= capacityAtSlot(m)) return false
+    }
+    slotCapacity[slot] = capacityAtSlot(slotMin)
+    return true
   })
 
   return NextResponse.json({
