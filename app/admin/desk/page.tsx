@@ -2864,6 +2864,45 @@ export default function DeskAdmin() {
 
                 {!calDayLoading && (
                   <>
+                    {/* Confirmed & Scheduled — shown above the day's staff calendar so the
+                        already-settled schedule (confirmed, staff assigned, groomer confirmed)
+                        is visible before the grid. Hidden when embedded in Pending Request,
+                        which already lists these. */}
+                    {showConfirmedList && dayFullyConfirmedAppts.length > 0 && (
+                      <div className="mt-5">
+                        <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Confirmed &amp; Scheduled</p>
+                        <div className="bg-white rounded-2xl border border-emerald-100 overflow-hidden">
+                          <div className="overflow-x-auto"><div className="min-w-[520px]">
+                          <div className="px-5 py-3 border-b border-gray-100 bg-emerald-50 grid grid-cols-6 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Status</span>
+                          </div>
+                          {dayFullyConfirmedAppts.map(appt => (
+                            <div key={appt.id} onClick={() => openApptDetail(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-emerald-50/50 cursor-pointer">
+                              <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
+                              <span className="text-sm text-gray-600">{appt.appointment_time}</span>
+                              <div className="flex items-center gap-2">
+                                {appt.pets?.photo_url
+                                  ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
+                                  : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
+                                <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
+                                <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
+                              </div>
+                              <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
+                              <div className="flex flex-col gap-1">
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full w-fit">✓ Confirmed</span>
+                                {appt.assigned_groomer && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">✂️ {firstName(appt.assigned_groomer)} ✓</span>}
+                                {appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)} ✓</span>}
+                              </div>
+                            </div>
+                          ))}
+                          </div></div>
+                        </div>
+                      </div>
+                    )}
+
                     {unassignedAppts.length > 0 ? (
                       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
                         <div className="flex items-center justify-between mb-2">
@@ -3013,44 +3052,6 @@ export default function DeskAdmin() {
                       </div>
                     </div>
                     {groomers.length === 0 && <p className="text-sm text-gray-400 mt-3">No active groomers configured.</p>}
-
-                    {/* Confirmed & Scheduled — moved here from Pending Request; these are fully
-                        settled (confirmed, staff assigned, groomer confirmed) for this day.
-                        Hidden when embedded in Pending Request, which already lists these. */}
-                    {showConfirmedList && dayFullyConfirmedAppts.length > 0 && (
-                      <div className="mt-5">
-                        <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Confirmed &amp; Scheduled</p>
-                        <div className="bg-white rounded-2xl border border-emerald-100 overflow-hidden">
-                          <div className="overflow-x-auto"><div className="min-w-[520px]">
-                          <div className="px-5 py-3 border-b border-gray-100 bg-emerald-50 grid grid-cols-6 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Status</span>
-                          </div>
-                          {dayFullyConfirmedAppts.map(appt => (
-                            <div key={appt.id} onClick={() => openApptDetail(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-emerald-50/50 cursor-pointer">
-                              <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
-                              <span className="text-sm text-gray-600">{appt.appointment_time}</span>
-                              <div className="flex items-center gap-2">
-                                {appt.pets?.photo_url
-                                  ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
-                                  : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
-                                <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
-                                <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
-                              </div>
-                              <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
-                              <div className="flex flex-col gap-1">
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full w-fit">✓ Confirmed</span>
-                                {appt.assigned_groomer && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">✂️ {firstName(appt.assigned_groomer)} ✓</span>}
-                                {appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)} ✓</span>}
-                              </div>
-                            </div>
-                          ))}
-                          </div></div>
-                        </div>
-                      </div>
-                    )}
                   </>
                 )}
               </div>
