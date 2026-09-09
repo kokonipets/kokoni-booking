@@ -437,6 +437,12 @@ export default function DeskAdmin() {
   // "Recent Confirmed" tab — per-staff calendar for a given day
   const [staffCalSelectingId, setStaffCalSelectingId] = useState<string | null>(null)
   const [staffCalAssigning, setStaffCalAssigning] = useState<string | null>(null)
+  // "Recent Confirmed" — inline edit of a staff member's hours for the viewed day only
+  // (saved as a special_hours override, never touching their normal weekly work_hours)
+  const [editingHoursStaffId, setEditingHoursStaffId] = useState<string | null>(null)
+  const [editHoursStart, setEditHoursStart] = useState('09:00')
+  const [editHoursEnd, setEditHoursEnd] = useState('17:00')
+  const [savingHours, setSavingHours] = useState(false)
   const [blockedTimes, setBlockedTimes] = useState<{date:string;time:string;reason:string|null}[]>([])
   const [blockingSlot, setBlockingSlot] = useState<{date:string;time:string}|null>(null)
   const [blockReason, setBlockReason] = useState('')
@@ -1313,6 +1319,53 @@ export default function DeskAdmin() {
   // "Recent Confirmed" staff calendar — one-click assign: pick an unassigned
   // confirmed appointment, then click a staff member's column to assign them
   // as both groomer and bather (the common case for a solo walk-in service).
+  const minToHHMM = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
+
+  // "Recent Confirmed" — save/clear a one-day hours override for a staff member (special_hours),
+  // e.g. when they decide to leave early on a slow day. Never touches their normal work_hours.
+  const saveTodaysHours = async (staffId: string, dayStr: string, start: string, end: string) => {
+    setSavingHours(true)
+    try {
+      const s = staff.find(st => st.id === staffId)
+      const newSpecial = { ...(s?.special_hours || {}), [dayStr]: { start, end } }
+      const res = await fetch(`/api/admin/staff/${staffId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ special_hours: newSpecial }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setStaff(prev => prev.map(st => st.id === staffId ? { ...st, special_hours: newSpecial } : st))
+        showToast('✓ Hours updated for today')
+      } else {
+        showToast('⚠️ Failed to save hours')
+      }
+    } catch { showToast('⚠️ Error saving hours') }
+    finally { setSavingHours(false); setEditingHoursStaffId(null) }
+  }
+
+  const resetTodaysHours = async (staffId: string, dayStr: string) => {
+    setSavingHours(true)
+    try {
+      const s = staff.find(st => st.id === staffId)
+      const newSpecial = { ...(s?.special_hours || {}) }
+      delete newSpecial[dayStr]
+      const res = await fetch(`/api/admin/staff/${staffId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ special_hours: newSpecial }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setStaff(prev => prev.map(st => st.id === staffId ? { ...st, special_hours: newSpecial } : st))
+        showToast('✓ Reset to regular hours')
+      } else {
+        showToast('⚠️ Failed to reset')
+      }
+    } catch { showToast('⚠️ Error') }
+    finally { setSavingHours(false); setEditingHoursStaffId(null) }
+  }
+
   const quickAssignStaff = async (apptId: string, staffName: string) => {
     setStaffCalAssigning(apptId)
     try {
@@ -4964,12 +5017,50 @@ export default function DeskAdmin() {
                           <div className="sticky top-0 bg-gray-50 border-b border-r border-gray-200 z-10"></div>
                           {groomers.map(s => {
                             const w = workFor(s)
+                            const isEditingHours = editingHoursStaffId === s.id
+                            const hasOverrideToday = !!s.special_hours?.[dayStr]
                             return (
                               <div key={s.id} className="sticky top-0 bg-gray-50 border-b border-r border-gray-200 z-10 text-center py-2 px-2">
                                 <p className="text-xs font-bold text-gray-700">{s.name}</p>
-                                <p className={`text-[10px] font-semibold ${w ? 'text-gray-400' : 'text-rose-500'}`}>
-                                  {w ? `${fmtCalMin(w.start)} – ${fmtCalMin(w.end)}` : (storeClosedToday ? 'Store Closed' : 'Off Today')}
-                                </p>
+                                {isEditingHours ? (
+                                  <div className="mt-1 flex flex-col items-center gap-1">
+                                    <div className="flex items-center gap-1">
+                                      <input type="time" value={editHoursStart} onChange={e => setEditHoursStart(e.target.value)}
+                                        className="text-[10px] border border-gray-300 rounded px-1 py-0.5 w-[68px]" />
+                                      <span className="text-[10px] text-gray-400">–</span>
+                                      <input type="time" value={editHoursEnd} onChange={e => setEditHoursEnd(e.target.value)}
+                                        className="text-[10px] border border-gray-300 rounded px-1 py-0.5 w-[68px]" />
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button onClick={() => saveTodaysHours(s.id, dayStr, editHoursStart, editHoursEnd)} disabled={savingHours}
+                                        className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-60">
+                                        {savingHours ? '…' : 'Save'}
+                                      </button>
+                                      {hasOverrideToday && (
+                                        <button onClick={() => resetTodaysHours(s.id, dayStr)} disabled={savingHours}
+                                          className="text-[10px] font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-60">
+                                          Reset
+                                        </button>
+                                      )}
+                                      <button onClick={() => setEditingHoursStaffId(null)} disabled={savingHours}
+                                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded text-gray-400 hover:text-gray-600">
+                                        ✕
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : storeClosedToday ? (
+                                  <p className="text-[10px] font-semibold text-rose-500">Store Closed</p>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setEditingHoursStaffId(s.id)
+                                      setEditHoursStart(w ? minToHHMM(w.start) : '09:00')
+                                      setEditHoursEnd(w ? minToHHMM(w.end) : '17:00')
+                                    }}
+                                    className={`text-[10px] font-semibold hover:underline ${w ? 'text-gray-400' : 'text-rose-500'}`}>
+                                    {w ? `${fmtCalMin(w.start)} – ${fmtCalMin(w.end)}` : 'Off Today'}{hasOverrideToday && ' ✎'}
+                                  </button>
+                                )}
                               </div>
                             )
                           })}

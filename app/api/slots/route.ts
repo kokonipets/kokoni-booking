@@ -127,38 +127,44 @@ export async function GET(req: NextRequest) {
     .select('id, name, role, work_hours, days_off, special_hours')
     .eq('role', 'groomer')
 
-  let availableGroomers = 0
   const totalGroomers = staffRows?.length ?? 0
 
-  if (staffRows) {
-    for (const s of staffRows) {
-      const daysOff: string[] = s.days_off || []
-      // If this specific date is a day off → not working
-      if (daysOff.includes(dateStr)) continue
+  // Each groomer's actual working window for THIS specific date — special_hours (a one-day
+  // override, e.g. "leaving early today") takes priority over their normal weekly work_hours.
+  // Capacity is then computed per time slot from these real windows, not as one flat headcount
+  // applied to the whole day — so a slot after everyone's shift has ended correctly shows full.
+  const groomerWindows: ({ start: number; end: number } | null)[] = (staffRows || []).map(s => {
+    const daysOff: string[] = s.days_off || []
+    if (daysOff.includes(dateStr)) return null // day off → not working at all today
 
-      // Check special_hours override for this date
-      const specialHours: Record<string, { start: string; end: string }> = s.special_hours || {}
-      if (specialHours[dateStr]) {
-        // Has special hours for this date → working
-        availableGroomers++
-        continue
-      }
-
-      // Check regular work_hours for this day name
-      const workHours: Record<string, { start: string; end: string }> = s.work_hours || {}
-      const hasAnyWorkHours = Object.keys(workHours).length > 0
-
-      if (!hasAnyWorkHours) {
-        // No schedule configured → assume working every day (unless day off above)
-        availableGroomers++
-      } else if (workHours[dayName] && workHours[dayName].start && workHours[dayName].end) {
-        // start/end stored as "HH:MM" (24h)
-        const ws = parse24h(workHours[dayName].start)
-        const we = parse24h(workHours[dayName].end)
-        if (we > ws) availableGroomers++ // valid shift → working
-      }
-      // else: work_hours exists but this day not listed → not scheduled
+    const specialHours: Record<string, { start: string; end: string }> = s.special_hours || {}
+    const special = specialHours[dateStr]
+    if (special && special.start && special.end) {
+      const ws = parse24h(special.start), we = parse24h(special.end)
+      return we > ws ? { start: ws, end: we } : null
     }
+
+    const workHours: Record<string, { start: string; end: string }> = s.work_hours || {}
+    const hasAnyWorkHours = Object.keys(workHours).length > 0
+    if (!hasAnyWorkHours) return { start: startMins, end: endMins } // no schedule configured → assume working full store hours
+
+    const wh = workHours[dayName]
+    if (wh && wh.start && wh.end) {
+      const ws = parse24h(wh.start), we = parse24h(wh.end)
+      if (we > ws) return { start: ws, end: we }
+    }
+    return null // work_hours exists but this day not listed → not scheduled
+  })
+
+  const availableGroomers = groomerWindows.filter(w => w !== null).length
+  // Defensive fallback: if schedule data says literally nobody is working today at all — almost
+  // certainly a data/config gap rather than a real fully-unstaffed day — don't block every slot;
+  // fall back to the old flat "assume everyone's on" behavior for the whole day.
+  const noOneScheduledToday = availableGroomers === 0
+
+  const capacityAtSlot = (slotMinutes: number): number => {
+    if (noOneScheduledToday) return Math.max(totalGroomers, 1)
+    return groomerWindows.filter(w => w !== null && slotMinutes >= w.start && slotMinutes < w.end).length
   }
 
   // 4. Load existing appointments for this date (non-cancelled)
@@ -177,28 +183,29 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 5. Filter: a slot is available if booked < availableGroomers
-  //    If we couldn't determine groomer count, fall back to total groomers (no one marked off)
-  const capacity = availableGroomers > 0 ? availableGroomers : Math.max(totalGroomers, 1)
-
+  // 5. Filter: a slot is available if booked < the real per-slot capacity (how many groomers
+  //    actually have this exact time inside their working window today)
   // Slots explicitly blocked for THIS date via the admin calendar
   const blockedSlotsForDate = new Set(
     blockedTimes.filter(b => b.date === dateStr).map(b => b.time)
   )
 
+  const slotCapacity: Record<string, number> = {}
   const availableSlots = allSlots.filter(slot => {
     if (storeClosedToday) return false // store isn't open this day of the week at all
     if (blockedSlotsForDate.has(slot)) return false
     if (skipCapacityForService) return true // walk-in quick service — always bookable, capacity doesn't apply
+    const cap = capacityAtSlot(parseTime(slot))
+    slotCapacity[slot] = cap
     const booked = bookedCount[slot] || 0
-    return booked < capacity
+    return booked < cap
   })
 
   return NextResponse.json({
     slots: availableSlots,
     groomer_count: availableGroomers,
     total_groomers: totalGroomers,
-    capacity_used: capacity,
+    slot_capacity: slotCapacity,
     day_name: dayName,
     booked: bookedCount,
     all_slots: allSlots,
