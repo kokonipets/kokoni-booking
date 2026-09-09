@@ -5020,8 +5020,9 @@ export default function DeskAdmin() {
                                       onClick={(e) => { e.stopPropagation(); openApptDetail(a) }}
                                       className={`absolute left-1 right-1 rounded-lg border px-1.5 py-1 text-[10px] leading-tight overflow-hidden cursor-pointer ${cls}`}
                                       style={{ top: `${Math.max(top, 0)}px`, height: `${Math.max(h, 20)}px` }}
-                                      title={`${a.pets?.name ?? ''} · ${serviceMap[a.service] ?? a.service}`}>
+                                      title={`${a.pets?.name ?? ''} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(startMin)}–${fmtCalMin(startMin + dur)}`}>
                                       <p className="font-bold truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'}</p>
+                                      <p className="truncate opacity-80">{fmtCalMin(startMin)}–{fmtCalMin(startMin + dur)}</p>
                                       <p className="truncate opacity-80">{serviceMap[a.service] ?? a.service}</p>
                                     </div>
                                   )
