@@ -3022,7 +3022,14 @@ export default function DeskAdmin() {
                       const apptDate = detailAppt.appointment_date
                       // Admin accounts are dashboard-only logins, not assignable groomers/bathers.
                       const activeStaff = staff.filter(s => s.is_active && s.role !== 'admin')
-                      const isOff = (s: StaffMember) => s.days_off?.includes(apptDate) ?? false
+                      const isOff = (s: StaffMember) => {
+                        if (s.days_off?.includes(apptDate)) return true
+                        // Store is closed this day of the week — nobody's actually working,
+                        // regardless of what's saved in days_off / work_hours.
+                        const [y, mo, d] = apptDate.split('-').map(Number)
+                        const dow = new Date(y, mo - 1, d).getDay()
+                        return !openDays.includes(dow)
+                      }
 
                       const StaffPicker = ({ icon, label, value, onChange }: { icon: string; label: string; value: string; onChange: (v: string) => void }) => (
                         <div>

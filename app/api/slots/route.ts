@@ -113,6 +113,14 @@ export async function GET(req: NextRequest) {
   // settings DAYS array is Mon-indexed: getDay()==0 → index 6 ("Sunday"), getDay()==1 → index 0 ("Monday")
   const dayName = DAY_NAMES[dow === 0 ? 6 : dow - 1]
 
+  // Store-wide recurring closed days (e.g. "Tuesday,Saturday") — if the store itself
+  // isn't open this day of the week, nobody is actually working, no matter what's saved
+  // in any individual staff member's work_hours / days_off.
+  const closedDayNames = new Set(
+    (settings.closed_days || '').split(',').map(d => d.trim()).filter(Boolean)
+  )
+  const storeClosedToday = closedDayNames.has(dayName)
+
   // 3. Load all staff (groomers) and count who's working that day
   const { data: staffRows } = await supabase
     .from('staff')
@@ -179,6 +187,7 @@ export async function GET(req: NextRequest) {
   )
 
   const availableSlots = allSlots.filter(slot => {
+    if (storeClosedToday) return false // store isn't open this day of the week at all
     if (blockedSlotsForDate.has(slot)) return false
     if (skipCapacityForService) return true // walk-in quick service — always bookable, capacity doesn't apply
     const booked = bookedCount[slot] || 0

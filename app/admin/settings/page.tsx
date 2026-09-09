@@ -330,6 +330,16 @@ export default function SettingsPage() {
     return workHours
   }
 
+  // Strip out any per-day hours that fall on a day the store is now closed —
+  // a closed day should never leave stale hours sitting in a staff member's schedule.
+  const cleanWorkHours = (wh: Record<string, { start: string; end: string }> | undefined) => {
+    const result: Record<string, { start: string; end: string }> = {}
+    Object.entries(wh || {}).forEach(([day, hours]) => {
+      if (!closedDays.has(day)) result[day] = hours
+    })
+    return result
+  }
+
   const handleSave = async () => {
     // Validation
     if (!formData.first_name?.trim()) {
@@ -374,7 +384,7 @@ export default function SettingsPage() {
             commission_percent: typeof formData.commission_percent === 'number' ? formData.commission_percent : 0,
             tip_percent: typeof formData.tip_percent === 'number' ? formData.tip_percent : 0,
             clock_pin: formData.clock_pin ?? null,
-            work_hours: formData.work_hours,
+            work_hours: cleanWorkHours(formData.work_hours),
             days_off: formData.days_off,
             special_hours: formData.special_hours,
             permissions: formData.permissions,
@@ -419,7 +429,7 @@ export default function SettingsPage() {
             commission_percent: typeof formData.commission_percent === 'number' ? formData.commission_percent : 0,
             tip_percent: typeof formData.tip_percent === 'number' ? formData.tip_percent : 0,
             clock_pin: formData.clock_pin ?? null,
-            work_hours: formData.work_hours || {},
+            work_hours: cleanWorkHours(formData.work_hours),
             days_off: formData.days_off || [],
             special_hours: formData.special_hours || {},
             permissions: formData.permissions || {},
