@@ -4995,7 +4995,11 @@ export default function DeskAdmin() {
                                 <div className={`text-xs space-y-0.5 ${isDone ? 'text-gray-400' : 'text-gray-500'}`}>
                                   {appt.assigned_groomer && <p>✂️ {firstName(appt.assigned_groomer)}</p>}
                                   {appt.assigned_bather  && <p>🛁 {firstName(appt.assigned_bather)}</p>}
-                                  {!appt.assigned_groomer && !appt.assigned_bather && <p className="text-gray-300">—</p>}
+                                  {!appt.assigned_groomer && !appt.assigned_bather && (
+                                    appt.status === 'confirmed'
+                                      ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full w-fit">⚠️ Assign groomer</span>
+                                      : <p className="text-gray-300">—</p>
+                                  )}
                                 </div>
 
                                 {/* Timeline */}
