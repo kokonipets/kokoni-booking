@@ -4861,6 +4861,25 @@ export default function DeskAdmin() {
 
             const groomers = staff.filter(s => s.is_active && s.role === 'groomer')
 
+            // Real per-appointment block length: look up the actual service (and, when
+            // it's size-tiered, the matching size) from Settings' duration field, so the
+            // calendar reflects e.g. "Asian Fusion = 1.5h" instead of a flat guess.
+            // Falls back to 45 min for any service/tier that hasn't had a duration set yet.
+            const parseDurationStr = (s?: string | null): number | null => {
+              if (!s) return null
+              const hMatch = s.match(/(\d+(?:\.\d+)?)\s*h/i)
+              if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60)
+              const mMatch = s.match(/(\d+)\s*m/i)
+              if (mMatch) return parseInt(mMatch[1])
+              const num = parseFloat(s)
+              return isNaN(num) ? null : Math.round(num)
+            }
+            const serviceDurationMin = (serviceId: string, sizeTier?: string | null): number => {
+              const svc = services.find(sv => sv.id === serviceId)
+              const tier = svc?.tiers?.find(t => t.label === sizeTier) || svc?.tiers?.[0]
+              return parseDurationStr(tier?.duration) ?? 45
+            }
+
             const workFor = (s: StaffMember): { start: number; end: number } | null => {
               if (storeClosedToday) return null
               if (s.days_off?.includes(dayStr)) return null
@@ -4990,7 +5009,7 @@ export default function DeskAdmin() {
                                 {colAppts.map(a => {
                                   const d = parseApptTime(a.appointment_date, a.appointment_time)
                                   const startMin = d.getHours() * 60 + d.getMinutes()
-                                  const dur = 45
+                                  const dur = serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier)
                                   const top = (startMin - CAL_START) * CAL_PX
                                   const h = dur * CAL_PX
                                   const isDone = a.status === 'completed' || !!a.checked_out_at
