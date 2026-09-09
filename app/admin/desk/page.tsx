@@ -8248,10 +8248,10 @@ export default function DeskAdmin() {
                             const t = rangeMethodTotals[m]
                             return (
                               <div key={m} className={`rounded-xl border px-3 py-2.5 ${colors[m]} ${t.count === 0 ? 'opacity-30' : ''}`}>
-                                <p className="text-base font-bold">${t.amount.toFixed(2)}</p>
+                                <p className="text-base font-bold" title="Total received, including tips">${(t.amount + t.tips).toFixed(2)}</p>
                                 <p className="text-[11px] font-semibold mt-0.5">{labels[m]}</p>
                                 <p className="text-[10px] opacity-70">{t.count} appt{t.count !== 1 ? 's' : ''}</p>
-                                {t.tips > 0 && <p className="text-[10px] opacity-70">+${t.tips.toFixed(2)} tips</p>}
+                                {t.tips > 0 && <p className="text-[10px] opacity-70">${t.amount.toFixed(2)} + ${t.tips.toFixed(2)} tip</p>}
                               </div>
                             )
                           })}
