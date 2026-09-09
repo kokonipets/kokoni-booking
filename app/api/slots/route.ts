@@ -41,6 +41,18 @@ function parse24h(t: string): number {
   return h * 60 + (m || 0)
 }
 
+// Parse a service-tier duration string ("1.5h", "20min", "90") into minutes.
+// Mirrors the same parser used on the admin Recent Confirmed calendar.
+function parseDurationStr(s?: string | null): number | null {
+  if (!s) return null
+  const hMatch = s.match(/(\d+(?:\.\d+)?)\s*h/i)
+  if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60)
+  const mMatch = s.match(/(\d+)\s*m/i)
+  if (mMatch) return parseInt(mMatch[1])
+  const num = parseFloat(s)
+  return isNaN(num) ? null : Math.round(num)
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const dateStr = searchParams.get('date') // YYYY-MM-DD
@@ -67,16 +79,24 @@ export async function GET(req: NextRequest) {
   let blockedTimes: { date: string; time: string; reason: string | null }[] = []
   try { blockedTimes = settings.blocked_times_list ? JSON.parse(settings.blocked_times_list) : [] } catch { blockedTimes = [] }
 
+  // Service definitions (with per-size-tier duration) — used both to let quick walk-in
+  // services skip the capacity check entirely, and to know how long an EXISTING booked
+  // appointment actually occupies a groomer (see step 4 below).
+  type ServiceTierDef = { label: string; duration?: string }
+  type ServiceDef = { id: string; skipCapacity?: boolean; tiers?: ServiceTierDef[] }
+  let allServices: ServiceDef[] = []
+  try { allServices = settings.services ? JSON.parse(settings.services) : [] } catch { allServices = [] }
+
+  const serviceDurationMin = (svcId: string, sizeTier?: string | null): number => {
+    const svc = allServices.find(s => s.id === svcId)
+    const tier = svc?.tiers?.find(t => t.label === sizeTier) || svc?.tiers?.[0]
+    return parseDurationStr(tier?.duration) ?? 45
+  }
+
   // Walk-in quick services (e.g. Nail Trim, Top Dog) can be flagged in Settings to skip
   // the per-slot groomer capacity check entirely — they're in-and-out in minutes, so they
   // shouldn't be blocked just because the slot looks "full" of longer grooming appointments.
-  let skipCapacityForService = false
-  if (serviceId) {
-    try {
-      const allServices: { id: string; skipCapacity?: boolean }[] = settings.services ? JSON.parse(settings.services) : []
-      skipCapacityForService = !!allServices.find(s => s.id === serviceId)?.skipCapacity
-    } catch { skipCapacityForService = false }
-  }
+  const skipCapacityForService = serviceId ? !!allServices.find(s => s.id === serviceId)?.skipCapacity : false
 
   // Generate all store time slots, skipping any blocked periods
   // Guard against corrupted DB values (e.g. "11:NaN AM") by checking for NaN
@@ -170,11 +190,11 @@ export async function GET(req: NextRequest) {
   // 4. Load existing appointments for this date (non-cancelled)
   const { data: apptRows } = await supabase
     .from('appointments')
-    .select('appointment_time, status')
+    .select('appointment_time, status, service, size_tier')
     .eq('appointment_date', dateStr)
     .neq('status', 'cancelled')
 
-  // Count bookings per time slot
+  // Count bookings per time slot (kept for the informational `booked` field in the response)
   const bookedCount: Record<string, number> = {}
   if (apptRows) {
     for (const a of apptRows) {
@@ -182,6 +202,19 @@ export async function GET(req: NextRequest) {
       bookedCount[t] = (bookedCount[t] || 0) + 1
     }
   }
+
+  // Each existing appointment occupies a groomer for its real service duration, not just its
+  // exact starting slot — e.g. a 1.5h Asian Fusion booked at 9:30 is still occupying someone
+  // at 10:00 and 10:30 too. Without this, a longer appointment only "blocked" the one slot it
+  // started in, so the next slot or two could look wide open even though nobody was free.
+  const apptWindows: { start: number; end: number }[] = (apptRows || []).map(a => {
+    const start = parseTime((a.appointment_time as string).trim())
+    const dur = serviceDurationMin(a.service as string, (a as { size_tier?: string | null }).size_tier)
+    return { start, end: start + dur }
+  }).filter(w => !isNaN(w.start))
+
+  const occupiedAtSlot = (slotMinutes: number): number =>
+    apptWindows.filter(w => slotMinutes >= w.start && slotMinutes < w.end).length
 
   // 5. Filter: a slot is available if booked < the real per-slot capacity (how many groomers
   //    actually have this exact time inside their working window today)
@@ -195,10 +228,10 @@ export async function GET(req: NextRequest) {
     if (storeClosedToday) return false // store isn't open this day of the week at all
     if (blockedSlotsForDate.has(slot)) return false
     if (skipCapacityForService) return true // walk-in quick service — always bookable, capacity doesn't apply
-    const cap = capacityAtSlot(parseTime(slot))
+    const slotMin = parseTime(slot)
+    const cap = capacityAtSlot(slotMin)
     slotCapacity[slot] = cap
-    const booked = bookedCount[slot] || 0
-    return booked < cap
+    return occupiedAtSlot(slotMin) < cap
   })
 
   return NextResponse.json({
