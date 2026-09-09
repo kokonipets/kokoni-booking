@@ -177,10 +177,12 @@ export async function GET(req: NextRequest) {
   })
 
   const availableGroomers = groomerWindows.filter(w => w !== null).length
-  // Defensive fallback: if schedule data says literally nobody is working today at all — almost
-  // certainly a data/config gap rather than a real fully-unstaffed day — don't block every slot;
-  // fall back to the old flat "assume everyone's on" behavior for the whole day.
-  const noOneScheduledToday = availableGroomers === 0
+  // Only fall back to "assume full capacity" when there's a genuine data gap — nobody
+  // (zero staff rows) configured in the system at all. If real staff exist but are all
+  // legitimately off *this specific day* (days off, a special_hours override, or just not
+  // scheduled that weekday), that's a real 0-capacity day and must show as fully booked,
+  // not wide open — so the fallback must NOT key off availableGroomers being 0.
+  const noOneScheduledToday = totalGroomers === 0
 
   const capacityAtSlot = (slotMinutes: number): number => {
     if (noOneScheduledToday) return Math.max(totalGroomers, 1)
