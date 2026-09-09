@@ -8148,7 +8148,12 @@ export default function DeskAdmin() {
               // breakdown entirely so "Unpaid" only reflects visits you might still
               // collect on.
               if (a.status === 'cancelled' || a.status === 'no_show') return
-              const key = (a.payment_status === 'paid' && a.payment_method) ? a.payment_method : 'unpaid'
+              const isPaid = a.payment_status === 'paid' && a.payment_method
+              // A confirmed appointment later in the range that the client hasn't
+              // checked in for yet isn't a missed payment — it just hasn't happened.
+              // Only count it toward "Unpaid" once they've actually checked in.
+              if (!isPaid && !a.checked_in_at) return
+              const key = isPaid ? a.payment_method : 'unpaid'
               if (!rangeMethodTotals[key]) rangeMethodTotals[key] = { count: 0, amount: 0, tips: 0 }
               rangeMethodTotals[key].count += 1
               rangeMethodTotals[key].amount += parseFloat(a.payment_amount || '0')
@@ -8269,7 +8274,7 @@ export default function DeskAdmin() {
                     </div>
 
                     {showUnpaidModal && (() => {
-                      const unpaidRows = allRangeAppts.filter(a => a.status !== 'cancelled' && a.status !== 'no_show' && !(a.payment_status === 'paid' && a.payment_method))
+                      const unpaidRows = allRangeAppts.filter(a => a.status !== 'cancelled' && a.status !== 'no_show' && !!a.checked_in_at && !(a.payment_status === 'paid' && a.payment_method))
                       return (
                         <div className="fixed inset-0 z-[9000] flex items-center justify-center p-4" onClick={() => setShowUnpaidModal(false)}>
                           <div className="absolute inset-0 bg-black/40" />
