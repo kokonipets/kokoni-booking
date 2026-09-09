@@ -360,6 +360,11 @@ export default function DeskAdmin() {
   const [tab, setTab] = useState<TabKey>('today')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  // Dedicated dataset for the staff calendar widget (shown in both Recent Confirmed and
+  // Pending Request) — kept separate from `appointments` above, which the rest of Pending
+  // Request's tables need to hold a totally different (multi-day, status-broad) query.
+  const [calDayAppts, setCalDayAppts] = useState<Appointment[]>([])
+  const [calDayLoading, setCalDayLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -814,11 +819,27 @@ export default function DeskAdmin() {
     setLoading(false)
   }, [])
 
-  // Today tab (and the Recent Confirmed staff calendar, which shares the same
-  // day-scoped data): (re)load appointments whenever the tab opens or the viewed day changes.
+  // Today tab: (re)load appointments whenever the tab opens or the viewed day changes.
   useEffect(() => {
-    if (tab === 'today' || tab === 'staff_cal') fetchAppointments('today', todayViewDate)
+    if (tab === 'today') fetchAppointments('today', todayViewDate)
   }, [tab, todayViewDate, fetchAppointments])
+
+  const fetchCalDayAppts = useCallback(async (date: string) => {
+    setCalDayLoading(true)
+    try {
+      const res = await fetch(`/api/admin/appointments?status=today&date=${date}`)
+      const data = await res.json()
+      setCalDayAppts(data.appointments || [])
+    } catch { setCalDayAppts([]) }
+    setCalDayLoading(false)
+  }, [])
+
+  // Staff calendar widget: shown inside both Recent Confirmed and Pending Request, so it
+  // loads whenever either tab is open (or the viewed day changes) rather than piggybacking
+  // on the Today tab's fetch.
+  useEffect(() => {
+    if (tab === 'staff_cal' || tab === 'requests') fetchCalDayAppts(todayViewDate)
+  }, [tab, todayViewDate, fetchCalDayAppts])
 
   const fetchCalendar = useCallback(async () => {
     setLoading(true)
@@ -2746,6 +2767,295 @@ export default function DeskAdmin() {
       )}
     </div>
   )
+
+  // Staff calendar widget — the Wylie/Mia day schedule grid. Embedded in both Recent
+  // Confirmed and Pending Request (per Semira's request), reading from calDayAppts so it
+  // never conflicts with whatever Pending Request's own tables are showing.
+  const renderStaffCalendar = (showConfirmedList: boolean = true) => {
+            const dayStr = todayViewDate
+            const isTodayCal = dayStr === salonDayStr()
+            const shiftCal = (days: number) => { const d = new Date(dayStr + 'T12:00:00'); d.setDate(d.getDate() + days); setTodayViewDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`) }
+            const calLabel = new Date(dayStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+            const CAL_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+            const calDow = new Date(dayStr + 'T12:00:00').getDay()
+            const calDayName = CAL_DAY_NAMES[calDow]
+            const storeClosedToday = !openDays.includes(calDow)
+
+            const CAL_START = 8 * 60, CAL_END = 19 * 60, CAL_PX = 1.6
+            const fmtCalMin = (mins: number) => {
+              let h = Math.floor(mins / 60), m = mins % 60
+              const ap = h >= 12 ? 'PM' : 'AM'
+              let h12 = h % 12; if (h12 === 0) h12 = 12
+              return `${h12}:${m.toString().padStart(2, '0')} ${ap}`
+            }
+
+            const groomers = staff.filter(s => s.is_active && s.role === 'groomer')
+
+            // Real per-appointment block length: look up the actual service (and, when
+            // it's size-tiered, the matching size) from Settings' duration field, so the
+            // calendar reflects e.g. "Asian Fusion = 1.5h" instead of a flat guess.
+            // Falls back to 45 min for any service/tier that hasn't had a duration set yet.
+            const parseDurationStr = (s?: string | null): number | null => {
+              if (!s) return null
+              const hMatch = s.match(/(\d+(?:\.\d+)?)\s*h/i)
+              if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60)
+              const mMatch = s.match(/(\d+)\s*m/i)
+              if (mMatch) return parseInt(mMatch[1])
+              const num = parseFloat(s)
+              return isNaN(num) ? null : Math.round(num)
+            }
+            const serviceDurationMin = (serviceId: string, sizeTier?: string | null): number => {
+              const svc = services.find(sv => sv.id === serviceId)
+              const tier = svc?.tiers?.find(t => t.label === sizeTier) || svc?.tiers?.[0]
+              return parseDurationStr(tier?.duration) ?? 45
+            }
+
+            const workFor = (s: StaffMember): { start: number; end: number } | null => {
+              if (storeClosedToday) return null
+              if (s.days_off?.includes(dayStr)) return null
+              const special = s.special_hours?.[dayStr]
+              if (special?.start && special?.end) {
+                const [sh, sm] = special.start.split(':').map(Number)
+                const [eh, em] = special.end.split(':').map(Number)
+                if (isNaN(sh) || isNaN(eh)) return null
+                return { start: sh * 60 + (sm || 0), end: eh * 60 + (em || 0) }
+              }
+              const wh = s.work_hours?.[calDayName]
+              if (!wh?.start || !wh?.end) return null
+              const [sh, sm] = wh.start.split(':').map(Number)
+              const [eh, em] = wh.end.split(':').map(Number)
+              if (isNaN(sh) || isNaN(eh)) return null
+              const start = sh * 60 + (sm || 0), end = eh * 60 + (em || 0)
+              if (end <= start) return null
+              return { start, end }
+            }
+
+            const dayAppts = calDayAppts.filter(a => a.appointment_date === dayStr && a.status !== 'cancelled')
+            const unassignedAppts = dayAppts.filter(a => a.status === 'confirmed' && !a.assigned_groomer && !a.assigned_bather)
+            // Confirmed, staff assigned, groomer confirmed — fully ready to happen. Moved here
+            // from Pending Request's "Confirmed & Scheduled" section since these don't need any
+            // more action; this is where the day's already-settled schedule actually lives.
+            const dayFullyConfirmedAppts = dayAppts.filter(a =>
+              a.status === 'confirmed' && (a.assigned_groomer || a.assigned_bather) && a.groomer_confirmed
+            )
+            const nowMinCal = (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
+
+            return (
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => shiftCal(-1)} className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 text-lg">‹</button>
+                    <div className="relative">
+                      <span className="text-base font-bold text-gray-800">{isTodayCal ? 'Today' : calLabel}</span>
+                      {!isTodayCal && <span className="block text-[11px] text-gray-400 -mt-0.5">{calLabel}</span>}
+                      <input type="date" value={dayStr}
+                        onChange={e => e.target.value && setTodayViewDate(e.target.value)}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full" title="Pick a date" />
+                    </div>
+                    <button onClick={() => shiftCal(1)} className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 text-lg">›</button>
+                  </div>
+                  {!isTodayCal && (
+                    <button onClick={() => setTodayViewDate(salonDayStr())}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white hover:bg-sky-700">Jump to Today</button>
+                  )}
+                </div>
+
+                {calDayLoading && <p className="text-gray-400 text-sm">Loading...</p>}
+
+                {!calDayLoading && (
+                  <>
+                    {unassignedAppts.length > 0 ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-bold uppercase tracking-widest text-amber-700">⚠️ Confirmed — Needs Staff</p>
+                          <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">{unassignedAppts.length}</span>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {unassignedAppts.map(a => (
+                            <div key={a.id} className={`flex-shrink-0 min-w-[160px] bg-white border rounded-xl px-3 py-2 ${staffCalSelectingId === a.id ? 'ring-2 ring-amber-400 border-amber-300' : 'border-amber-200'}`}>
+                              <p className="text-xs font-bold text-amber-700">{a.appointment_time}</p>
+                              <p className="text-xs font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'} · {serviceMap[a.service] ?? a.service}</p>
+                              <button
+                                onClick={() => setStaffCalSelectingId(prev => prev === a.id ? null : a.id)}
+                                disabled={staffCalAssigning === a.id}
+                                className={`mt-1.5 w-full text-xs font-bold px-2 py-1 rounded-lg transition-colors ${staffCalSelectingId === a.id ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
+                                {staffCalAssigning === a.id ? 'Saving…' : staffCalSelectingId === a.id ? 'Pick staff below →' : 'Assign →'}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        {staffCalSelectingId && (
+                          <p className="text-xs font-semibold text-amber-700 mt-2">👆 Click a staff member&apos;s column below to assign.</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 mb-4 text-sm font-semibold text-emerald-700">
+                        ✓ All confirmed appointments have staff assigned.
+                      </div>
+                    )}
+
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <div className="grid" style={{ gridTemplateColumns: `56px repeat(${groomers.length || 1}, minmax(200px, 1fr))`, minWidth: `${56 + (groomers.length || 1) * 200}px` }}>
+                          <div className="sticky top-0 bg-gray-50 border-b border-r border-gray-200 z-10"></div>
+                          {groomers.map(s => {
+                            const w = workFor(s)
+                            const isEditingHours = editingHoursStaffId === s.id
+                            const hasOverrideToday = !!s.special_hours?.[dayStr]
+                            return (
+                              <div key={s.id} className="sticky top-0 bg-gray-50 border-b border-r border-gray-200 z-10 text-center py-2 px-2">
+                                <p className="text-xs font-bold text-gray-700">{s.name}</p>
+                                {isEditingHours ? (
+                                  <div className="mt-1 flex flex-col items-center gap-1">
+                                    <div className="flex items-center gap-1">
+                                      <input type="time" value={editHoursStart} onChange={e => setEditHoursStart(e.target.value)}
+                                        className="text-[10px] border border-gray-300 rounded px-1 py-0.5 w-[68px]" />
+                                      <span className="text-[10px] text-gray-400">–</span>
+                                      <input type="time" value={editHoursEnd} onChange={e => setEditHoursEnd(e.target.value)}
+                                        className="text-[10px] border border-gray-300 rounded px-1 py-0.5 w-[68px]" />
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button onClick={() => saveTodaysHours(s.id, dayStr, editHoursStart, editHoursEnd)} disabled={savingHours}
+                                        className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-60">
+                                        {savingHours ? '…' : 'Save'}
+                                      </button>
+                                      {hasOverrideToday && (
+                                        <button onClick={() => resetTodaysHours(s.id, dayStr)} disabled={savingHours}
+                                          className="text-[10px] font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-60">
+                                          Reset
+                                        </button>
+                                      )}
+                                      <button onClick={() => setEditingHoursStaffId(null)} disabled={savingHours}
+                                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded text-gray-400 hover:text-gray-600">
+                                        ✕
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : storeClosedToday ? (
+                                  <p className="text-[10px] font-semibold text-rose-500">Store Closed</p>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setEditingHoursStaffId(s.id)
+                                      setEditHoursStart(w ? minToHHMM(w.start) : '09:00')
+                                      setEditHoursEnd(w ? minToHHMM(w.end) : '17:00')
+                                    }}
+                                    className={`text-[10px] font-semibold hover:underline ${w ? 'text-gray-400' : 'text-rose-500'}`}>
+                                    {w ? `${fmtCalMin(w.start)} – ${fmtCalMin(w.end)}` : 'Off Today'}{hasOverrideToday && ' ✎'}
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          })}
+
+                          <div className="relative border-r border-gray-200" style={{ height: `${(CAL_END - CAL_START) * CAL_PX}px` }}>
+                            {Array.from({ length: Math.floor((CAL_END - CAL_START) / 60) + 1 }).map((_, i) => {
+                              const mins = CAL_START + i * 60
+                              return (
+                                <div key={i} className="absolute right-1 text-[10px] text-gray-400" style={{ top: `${(mins - CAL_START) * CAL_PX - 6}px` }}>
+                                  {fmtCalMin(mins)}
+                                </div>
+                              )
+                            })}
+                          </div>
+
+                          {groomers.map(s => {
+                            const w = workFor(s)
+                            const colHeight = (CAL_END - CAL_START) * CAL_PX
+                            const colAppts = dayAppts.filter(a => a.assigned_groomer === s.name || a.assigned_bather === s.name)
+                            const pickable = staffCalSelectingId !== null && !!w
+                            return (
+                              <div key={s.id}
+                                onClick={() => { if (pickable) quickAssignStaff(staffCalSelectingId as string, s.name) }}
+                                className={`relative border-r border-gray-200 ${pickable ? 'cursor-pointer bg-amber-50/40 hover:bg-amber-50' : ''}`}
+                                style={{ height: `${colHeight}px` }}>
+                                {Array.from({ length: Math.floor((CAL_END - CAL_START) / 60) + 1 }).map((_, i) => (
+                                  <div key={i} className="absolute left-0 right-0 border-t border-gray-100" style={{ top: `${i * 60 * CAL_PX}px` }} />
+                                ))}
+                                {!w ? (
+                                  <div className="absolute inset-0" style={{ background: 'repeating-linear-gradient(45deg,#f9fafb,#f9fafb 6px,#f3f4f6 6px,#f3f4f6 12px)' }} />
+                                ) : (
+                                  <>
+                                    {w.start > CAL_START && <div className="absolute left-0 right-0 top-0" style={{ height: `${(w.start - CAL_START) * CAL_PX}px`, background: 'repeating-linear-gradient(45deg,#f9fafb,#f9fafb 6px,#f3f4f6 6px,#f3f4f6 12px)' }} />}
+                                    {w.end < CAL_END && <div className="absolute left-0 right-0" style={{ top: `${(w.end - CAL_START) * CAL_PX}px`, height: `${(CAL_END - w.end) * CAL_PX}px`, background: 'repeating-linear-gradient(45deg,#f9fafb,#f9fafb 6px,#f3f4f6 6px,#f3f4f6 12px)' }} />}
+                                  </>
+                                )}
+                                {colAppts.map(a => {
+                                  const d = parseApptTime(a.appointment_date, a.appointment_time)
+                                  const startMin = d.getHours() * 60 + d.getMinutes()
+                                  const dur = serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier)
+                                  const top = (startMin - CAL_START) * CAL_PX
+                                  const h = dur * CAL_PX
+                                  const isDone = a.status === 'completed' || !!a.checked_out_at
+                                  const isCheckedIn = !!a.checked_in_at && !a.checked_out_at
+                                  const cls = isDone ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : isCheckedIn ? 'bg-sky-50 border-sky-200 text-sky-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+                                  return (
+                                    <div key={a.id}
+                                      onClick={(e) => { e.stopPropagation(); openApptDetail(a) }}
+                                      className={`absolute left-1 right-1 rounded-lg border px-1.5 py-1 text-[10px] leading-tight overflow-hidden cursor-pointer ${cls}`}
+                                      style={{ top: `${Math.max(top, 0)}px`, height: `${Math.max(h, 20)}px` }}
+                                      title={`${a.pets?.name ?? ''} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(startMin)}–${fmtCalMin(startMin + dur)}`}>
+                                      <p className="font-bold truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'}</p>
+                                      <p className="truncate opacity-80">{fmtCalMin(startMin)}–{fmtCalMin(startMin + dur)}</p>
+                                      <p className="truncate opacity-80">{serviceMap[a.service] ?? a.service}</p>
+                                    </div>
+                                  )
+                                })}
+                                {isTodayCal && nowMinCal >= CAL_START && nowMinCal <= CAL_END && (
+                                  <div className="absolute left-0 right-0 border-t-2 border-rose-500 z-10" style={{ top: `${(nowMinCal - CAL_START) * CAL_PX}px` }}>
+                                    <div className="w-2 h-2 rounded-full bg-rose-500 -mt-1 -ml-1" />
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    {groomers.length === 0 && <p className="text-sm text-gray-400 mt-3">No active groomers configured.</p>}
+
+                    {/* Confirmed & Scheduled — moved here from Pending Request; these are fully
+                        settled (confirmed, staff assigned, groomer confirmed) for this day.
+                        Hidden when embedded in Pending Request, which already lists these. */}
+                    {showConfirmedList && dayFullyConfirmedAppts.length > 0 && (
+                      <div className="mt-5">
+                        <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Confirmed &amp; Scheduled</p>
+                        <div className="bg-white rounded-2xl border border-emerald-100 overflow-hidden">
+                          <div className="overflow-x-auto"><div className="min-w-[520px]">
+                          <div className="px-5 py-3 border-b border-gray-100 bg-emerald-50 grid grid-cols-6 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Status</span>
+                          </div>
+                          {dayFullyConfirmedAppts.map(appt => (
+                            <div key={appt.id} onClick={() => openApptDetail(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-emerald-50/50 cursor-pointer">
+                              <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
+                              <span className="text-sm text-gray-600">{appt.appointment_time}</span>
+                              <div className="flex items-center gap-2">
+                                {appt.pets?.photo_url
+                                  ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
+                                  : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
+                                <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
+                                <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
+                              </div>
+                              <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
+                              <div className="flex flex-col gap-1">
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full w-fit">✓ Confirmed</span>
+                                {appt.assigned_groomer && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">✂️ {firstName(appt.assigned_groomer)} ✓</span>}
+                                {appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)} ✓</span>}
+                              </div>
+                            </div>
+                          ))}
+                          </div></div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )
+  }
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
   return (
@@ -4894,290 +5204,7 @@ export default function DeskAdmin() {
 
           {/* ── TODAY ──────────────────────────────────────────────────── */}
           {/* ── RECENT CONFIRMED (staff calendar) ─────────────────────── */}
-          {tab === 'staff_cal' && (() => {
-            const dayStr = todayViewDate
-            const isTodayCal = dayStr === salonDayStr()
-            const shiftCal = (days: number) => { const d = new Date(dayStr + 'T12:00:00'); d.setDate(d.getDate() + days); setTodayViewDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`) }
-            const calLabel = new Date(dayStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-            const CAL_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-            const calDow = new Date(dayStr + 'T12:00:00').getDay()
-            const calDayName = CAL_DAY_NAMES[calDow]
-            const storeClosedToday = !openDays.includes(calDow)
-
-            const CAL_START = 8 * 60, CAL_END = 19 * 60, CAL_PX = 1.6
-            const fmtCalMin = (mins: number) => {
-              let h = Math.floor(mins / 60), m = mins % 60
-              const ap = h >= 12 ? 'PM' : 'AM'
-              let h12 = h % 12; if (h12 === 0) h12 = 12
-              return `${h12}:${m.toString().padStart(2, '0')} ${ap}`
-            }
-
-            const groomers = staff.filter(s => s.is_active && s.role === 'groomer')
-
-            // Real per-appointment block length: look up the actual service (and, when
-            // it's size-tiered, the matching size) from Settings' duration field, so the
-            // calendar reflects e.g. "Asian Fusion = 1.5h" instead of a flat guess.
-            // Falls back to 45 min for any service/tier that hasn't had a duration set yet.
-            const parseDurationStr = (s?: string | null): number | null => {
-              if (!s) return null
-              const hMatch = s.match(/(\d+(?:\.\d+)?)\s*h/i)
-              if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60)
-              const mMatch = s.match(/(\d+)\s*m/i)
-              if (mMatch) return parseInt(mMatch[1])
-              const num = parseFloat(s)
-              return isNaN(num) ? null : Math.round(num)
-            }
-            const serviceDurationMin = (serviceId: string, sizeTier?: string | null): number => {
-              const svc = services.find(sv => sv.id === serviceId)
-              const tier = svc?.tiers?.find(t => t.label === sizeTier) || svc?.tiers?.[0]
-              return parseDurationStr(tier?.duration) ?? 45
-            }
-
-            const workFor = (s: StaffMember): { start: number; end: number } | null => {
-              if (storeClosedToday) return null
-              if (s.days_off?.includes(dayStr)) return null
-              const special = s.special_hours?.[dayStr]
-              if (special?.start && special?.end) {
-                const [sh, sm] = special.start.split(':').map(Number)
-                const [eh, em] = special.end.split(':').map(Number)
-                if (isNaN(sh) || isNaN(eh)) return null
-                return { start: sh * 60 + (sm || 0), end: eh * 60 + (em || 0) }
-              }
-              const wh = s.work_hours?.[calDayName]
-              if (!wh?.start || !wh?.end) return null
-              const [sh, sm] = wh.start.split(':').map(Number)
-              const [eh, em] = wh.end.split(':').map(Number)
-              if (isNaN(sh) || isNaN(eh)) return null
-              const start = sh * 60 + (sm || 0), end = eh * 60 + (em || 0)
-              if (end <= start) return null
-              return { start, end }
-            }
-
-            const dayAppts = appointments.filter(a => a.appointment_date === dayStr && a.status !== 'cancelled')
-            const unassignedAppts = dayAppts.filter(a => a.status === 'confirmed' && !a.assigned_groomer && !a.assigned_bather)
-            // Confirmed, staff assigned, groomer confirmed — fully ready to happen. Moved here
-            // from Pending Request's "Confirmed & Scheduled" section since these don't need any
-            // more action; this is where the day's already-settled schedule actually lives.
-            const dayFullyConfirmedAppts = dayAppts.filter(a =>
-              a.status === 'confirmed' && (a.assigned_groomer || a.assigned_bather) && a.groomer_confirmed
-            )
-            const nowMinCal = (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
-
-            return (
-              <div>
-                <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => shiftCal(-1)} className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 text-lg">‹</button>
-                    <div className="relative">
-                      <span className="text-base font-bold text-gray-800">{isTodayCal ? 'Today' : calLabel}</span>
-                      {!isTodayCal && <span className="block text-[11px] text-gray-400 -mt-0.5">{calLabel}</span>}
-                      <input type="date" value={dayStr}
-                        onChange={e => e.target.value && setTodayViewDate(e.target.value)}
-                        className="absolute inset-0 opacity-0 cursor-pointer w-full" title="Pick a date" />
-                    </div>
-                    <button onClick={() => shiftCal(1)} className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 text-lg">›</button>
-                  </div>
-                  {!isTodayCal && (
-                    <button onClick={() => setTodayViewDate(salonDayStr())}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white hover:bg-sky-700">Jump to Today</button>
-                  )}
-                </div>
-
-                {loading && <p className="text-gray-400 text-sm">Loading...</p>}
-
-                {!loading && (
-                  <>
-                    {unassignedAppts.length > 0 ? (
-                      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-bold uppercase tracking-widest text-amber-700">⚠️ Confirmed — Needs Staff</p>
-                          <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">{unassignedAppts.length}</span>
-                        </div>
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {unassignedAppts.map(a => (
-                            <div key={a.id} className={`flex-shrink-0 min-w-[160px] bg-white border rounded-xl px-3 py-2 ${staffCalSelectingId === a.id ? 'ring-2 ring-amber-400 border-amber-300' : 'border-amber-200'}`}>
-                              <p className="text-xs font-bold text-amber-700">{a.appointment_time}</p>
-                              <p className="text-xs font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'} · {serviceMap[a.service] ?? a.service}</p>
-                              <button
-                                onClick={() => setStaffCalSelectingId(prev => prev === a.id ? null : a.id)}
-                                disabled={staffCalAssigning === a.id}
-                                className={`mt-1.5 w-full text-xs font-bold px-2 py-1 rounded-lg transition-colors ${staffCalSelectingId === a.id ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
-                                {staffCalAssigning === a.id ? 'Saving…' : staffCalSelectingId === a.id ? 'Pick staff below →' : 'Assign →'}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        {staffCalSelectingId && (
-                          <p className="text-xs font-semibold text-amber-700 mt-2">👆 Click a staff member&apos;s column below to assign.</p>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 mb-4 text-sm font-semibold text-emerald-700">
-                        ✓ All confirmed appointments have staff assigned.
-                      </div>
-                    )}
-
-                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                      <div className="overflow-x-auto">
-                        <div className="grid" style={{ gridTemplateColumns: `56px repeat(${groomers.length || 1}, minmax(200px, 1fr))`, minWidth: `${56 + (groomers.length || 1) * 200}px` }}>
-                          <div className="sticky top-0 bg-gray-50 border-b border-r border-gray-200 z-10"></div>
-                          {groomers.map(s => {
-                            const w = workFor(s)
-                            const isEditingHours = editingHoursStaffId === s.id
-                            const hasOverrideToday = !!s.special_hours?.[dayStr]
-                            return (
-                              <div key={s.id} className="sticky top-0 bg-gray-50 border-b border-r border-gray-200 z-10 text-center py-2 px-2">
-                                <p className="text-xs font-bold text-gray-700">{s.name}</p>
-                                {isEditingHours ? (
-                                  <div className="mt-1 flex flex-col items-center gap-1">
-                                    <div className="flex items-center gap-1">
-                                      <input type="time" value={editHoursStart} onChange={e => setEditHoursStart(e.target.value)}
-                                        className="text-[10px] border border-gray-300 rounded px-1 py-0.5 w-[68px]" />
-                                      <span className="text-[10px] text-gray-400">–</span>
-                                      <input type="time" value={editHoursEnd} onChange={e => setEditHoursEnd(e.target.value)}
-                                        className="text-[10px] border border-gray-300 rounded px-1 py-0.5 w-[68px]" />
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <button onClick={() => saveTodaysHours(s.id, dayStr, editHoursStart, editHoursEnd)} disabled={savingHours}
-                                        className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-60">
-                                        {savingHours ? '…' : 'Save'}
-                                      </button>
-                                      {hasOverrideToday && (
-                                        <button onClick={() => resetTodaysHours(s.id, dayStr)} disabled={savingHours}
-                                          className="text-[10px] font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-60">
-                                          Reset
-                                        </button>
-                                      )}
-                                      <button onClick={() => setEditingHoursStaffId(null)} disabled={savingHours}
-                                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded text-gray-400 hover:text-gray-600">
-                                        ✕
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : storeClosedToday ? (
-                                  <p className="text-[10px] font-semibold text-rose-500">Store Closed</p>
-                                ) : (
-                                  <button
-                                    onClick={() => {
-                                      setEditingHoursStaffId(s.id)
-                                      setEditHoursStart(w ? minToHHMM(w.start) : '09:00')
-                                      setEditHoursEnd(w ? minToHHMM(w.end) : '17:00')
-                                    }}
-                                    className={`text-[10px] font-semibold hover:underline ${w ? 'text-gray-400' : 'text-rose-500'}`}>
-                                    {w ? `${fmtCalMin(w.start)} – ${fmtCalMin(w.end)}` : 'Off Today'}{hasOverrideToday && ' ✎'}
-                                  </button>
-                                )}
-                              </div>
-                            )
-                          })}
-
-                          <div className="relative border-r border-gray-200" style={{ height: `${(CAL_END - CAL_START) * CAL_PX}px` }}>
-                            {Array.from({ length: Math.floor((CAL_END - CAL_START) / 60) + 1 }).map((_, i) => {
-                              const mins = CAL_START + i * 60
-                              return (
-                                <div key={i} className="absolute right-1 text-[10px] text-gray-400" style={{ top: `${(mins - CAL_START) * CAL_PX - 6}px` }}>
-                                  {fmtCalMin(mins)}
-                                </div>
-                              )
-                            })}
-                          </div>
-
-                          {groomers.map(s => {
-                            const w = workFor(s)
-                            const colHeight = (CAL_END - CAL_START) * CAL_PX
-                            const colAppts = dayAppts.filter(a => a.assigned_groomer === s.name || a.assigned_bather === s.name)
-                            const pickable = staffCalSelectingId !== null && !!w
-                            return (
-                              <div key={s.id}
-                                onClick={() => { if (pickable) quickAssignStaff(staffCalSelectingId as string, s.name) }}
-                                className={`relative border-r border-gray-200 ${pickable ? 'cursor-pointer bg-amber-50/40 hover:bg-amber-50' : ''}`}
-                                style={{ height: `${colHeight}px` }}>
-                                {Array.from({ length: Math.floor((CAL_END - CAL_START) / 60) + 1 }).map((_, i) => (
-                                  <div key={i} className="absolute left-0 right-0 border-t border-gray-100" style={{ top: `${i * 60 * CAL_PX}px` }} />
-                                ))}
-                                {!w ? (
-                                  <div className="absolute inset-0" style={{ background: 'repeating-linear-gradient(45deg,#f9fafb,#f9fafb 6px,#f3f4f6 6px,#f3f4f6 12px)' }} />
-                                ) : (
-                                  <>
-                                    {w.start > CAL_START && <div className="absolute left-0 right-0 top-0" style={{ height: `${(w.start - CAL_START) * CAL_PX}px`, background: 'repeating-linear-gradient(45deg,#f9fafb,#f9fafb 6px,#f3f4f6 6px,#f3f4f6 12px)' }} />}
-                                    {w.end < CAL_END && <div className="absolute left-0 right-0" style={{ top: `${(w.end - CAL_START) * CAL_PX}px`, height: `${(CAL_END - w.end) * CAL_PX}px`, background: 'repeating-linear-gradient(45deg,#f9fafb,#f9fafb 6px,#f3f4f6 6px,#f3f4f6 12px)' }} />}
-                                  </>
-                                )}
-                                {colAppts.map(a => {
-                                  const d = parseApptTime(a.appointment_date, a.appointment_time)
-                                  const startMin = d.getHours() * 60 + d.getMinutes()
-                                  const dur = serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier)
-                                  const top = (startMin - CAL_START) * CAL_PX
-                                  const h = dur * CAL_PX
-                                  const isDone = a.status === 'completed' || !!a.checked_out_at
-                                  const isCheckedIn = !!a.checked_in_at && !a.checked_out_at
-                                  const cls = isDone ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : isCheckedIn ? 'bg-sky-50 border-sky-200 text-sky-700' : 'bg-amber-50 border-amber-200 text-amber-700'
-                                  return (
-                                    <div key={a.id}
-                                      onClick={(e) => { e.stopPropagation(); openApptDetail(a) }}
-                                      className={`absolute left-1 right-1 rounded-lg border px-1.5 py-1 text-[10px] leading-tight overflow-hidden cursor-pointer ${cls}`}
-                                      style={{ top: `${Math.max(top, 0)}px`, height: `${Math.max(h, 20)}px` }}
-                                      title={`${a.pets?.name ?? ''} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(startMin)}–${fmtCalMin(startMin + dur)}`}>
-                                      <p className="font-bold truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'}</p>
-                                      <p className="truncate opacity-80">{fmtCalMin(startMin)}–{fmtCalMin(startMin + dur)}</p>
-                                      <p className="truncate opacity-80">{serviceMap[a.service] ?? a.service}</p>
-                                    </div>
-                                  )
-                                })}
-                                {isTodayCal && nowMinCal >= CAL_START && nowMinCal <= CAL_END && (
-                                  <div className="absolute left-0 right-0 border-t-2 border-rose-500 z-10" style={{ top: `${(nowMinCal - CAL_START) * CAL_PX}px` }}>
-                                    <div className="w-2 h-2 rounded-full bg-rose-500 -mt-1 -ml-1" />
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                    {groomers.length === 0 && <p className="text-sm text-gray-400 mt-3">No active groomers configured.</p>}
-
-                    {/* Confirmed & Scheduled — moved here from Pending Request; these are fully
-                        settled (confirmed, staff assigned, groomer confirmed) for this day */}
-                    {dayFullyConfirmedAppts.length > 0 && (
-                      <div className="mt-5">
-                        <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Confirmed &amp; Scheduled</p>
-                        <div className="bg-white rounded-2xl border border-emerald-100 overflow-hidden">
-                          <div className="overflow-x-auto"><div className="min-w-[520px]">
-                          <div className="px-5 py-3 border-b border-gray-100 bg-emerald-50 grid grid-cols-6 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            <span>Date</span><span>Time</span><span>Pet</span><span>Owner</span><span>Service</span><span>Status</span>
-                          </div>
-                          {dayFullyConfirmedAppts.map(appt => (
-                            <div key={appt.id} onClick={() => openApptDetail(appt)} className="px-5 py-3 border-b border-gray-50 grid grid-cols-6 items-center hover:bg-emerald-50/50 cursor-pointer">
-                              <span className="text-sm font-semibold text-gray-800">{formatDate(appt.appointment_date)}</span>
-                              <span className="text-sm text-gray-600">{appt.appointment_time}</span>
-                              <div className="flex items-center gap-2">
-                                {appt.pets?.photo_url
-                                  ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
-                                  : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
-                                <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
-                                <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
-                              </div>
-                              <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
-                              <div className="flex flex-col gap-1">
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full w-fit">✓ Confirmed</span>
-                                {appt.assigned_groomer && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">✂️ {firstName(appt.assigned_groomer)} ✓</span>}
-                                {appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)} ✓</span>}
-                              </div>
-                            </div>
-                          ))}
-                          </div></div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )
-          })()}
+          {tab === 'staff_cal' && renderStaffCalendar()}
 
           {tab === 'today' && (
             <div>
@@ -6081,6 +6108,13 @@ export default function DeskAdmin() {
                 </>
               )}
 
+              {/* Staff Schedule — the same Wylie/Mia day calendar shown in Recent Confirmed,
+                  kept here too so staff availability is visible while working requests.
+                  Confirmed & Scheduled list omitted here — it already lives above. */}
+              <div className="mt-6">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">Staff Schedule</p>
+                {renderStaffCalendar(false)}
+              </div>
             </div>
             )
           })()}
