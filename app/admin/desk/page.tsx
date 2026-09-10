@@ -2875,6 +2875,19 @@ export default function DeskAdmin() {
   // Staff calendar widget — the Wylie/Mia day schedule grid. Embedded in both Recent
   // Confirmed and Pending Request (per Semira's request), reading from calDayAppts so it
   // never conflicts with whatever Pending Request's own tables are showing.
+  // Distinct banner colors per groomer column so e.g. Wylie vs. Mia pop out
+  // at a glance instead of blending into the same gray header. Cycles if
+  // there are more groomers than colors. bg/border pair share a hue so the
+  // 2px bottom border reads as a clear accent instead of fighting bg-gray-200.
+  const STAFF_BANNER_COLORS = [
+    { bg: 'bg-sky-100', border: 'border-b-sky-400', text: 'text-sky-800' },
+    { bg: 'bg-violet-100', border: 'border-b-violet-400', text: 'text-violet-800' },
+    { bg: 'bg-amber-100', border: 'border-b-amber-400', text: 'text-amber-800' },
+    { bg: 'bg-emerald-100', border: 'border-b-emerald-400', text: 'text-emerald-800' },
+    { bg: 'bg-rose-100', border: 'border-b-rose-400', text: 'text-rose-800' },
+    { bg: 'bg-teal-100', border: 'border-b-teal-400', text: 'text-teal-800' },
+  ]
+
   const renderStaffCalendar = (showConfirmedList: boolean = true) => {
             const dayStr = todayViewDate
             const isTodayCal = dayStr === salonDayStr()
@@ -3051,13 +3064,14 @@ export default function DeskAdmin() {
                       <div className="overflow-x-auto">
                         <div className="grid" style={{ gridTemplateColumns: `56px repeat(${groomers.length || 1}, minmax(200px, 1fr))`, minWidth: `${56 + (groomers.length || 1) * 200}px` }}>
                           <div className="sticky top-0 bg-gray-50 border-b border-r border-gray-200 z-10"></div>
-                          {groomers.map(s => {
+                          {groomers.map((s, colIdx) => {
                             const w = workFor(s)
                             const isEditingHours = editingHoursStaffId === s.id
                             const hasOverrideToday = !!s.special_hours?.[dayStr]
+                            const staffColor = STAFF_BANNER_COLORS[colIdx % STAFF_BANNER_COLORS.length]
                             return (
-                              <div key={s.id} className="sticky top-0 bg-gray-50 border-b border-r border-gray-200 z-10 text-center py-2 px-2">
-                                <p className="text-xs font-bold text-gray-700">{s.name}</p>
+                              <div key={s.id} className={`sticky top-0 border-b-2 border-r border-gray-200 z-10 text-center py-2 px-2 ${staffColor.bg} ${staffColor.border}`}>
+                                <p className={`text-xs font-bold ${staffColor.text}`}>{s.name}</p>
                                 {isEditingHours ? (
                                   <div className="mt-1 flex flex-col items-center gap-1">
                                     <div className="flex items-center gap-1">
