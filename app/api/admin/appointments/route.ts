@@ -242,7 +242,7 @@ function phoneVariants(digits: string): string[] {
 // POST /api/admin/appointments — admin quick-add appointment
 export async function POST(req: NextRequest) {
   const supabase = getAdminClient()
-  const { phone, clientName, email, petId, petName, breed, weight, vaccineStatus, service, date, time } = await req.json()
+  const { phone, clientName, email, petId, petName, breed, weight, vaccineStatus, service, date, time, groupId } = await req.json()
 
   const digits = normalizePhone(phone)
   if (!digits || !service || !date || !time) {
@@ -312,6 +312,10 @@ export async function POST(req: NextRequest) {
     status: isNewClient ? 'pending' : 'confirmed',
     confirmed_at: isNewClient ? null : now,
   }
+  // Links this appointment to sibling appointments for other dogs from the same
+  // client booked together (see supabase/migrations/20260910_add_group_id_to_appointments.sql).
+  // Optional — most appointments are still a single pet booked alone.
+  if (groupId) apptFields.group_id = groupId
 
   const { error } = await supabase.from('appointments').insert(apptFields)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -95,6 +95,10 @@ type Appointment = {
   clients: { name: string; phone: string; email: string | null; sms_consent?: boolean | null } | null
   pets: { id?: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry?: string | null; photo_url: string | null } | null
   is_new_client?: boolean
+  // Links this appointment to sibling appointments for other dogs from the same
+  // client booked together at (roughly) the same time — see supabase/migrations/
+  // 20260910_add_group_id_to_appointments.sql. Null for an ordinary single-pet booking.
+  group_id?: string | null
 }
 
 type ClientRecord = {
@@ -469,6 +473,10 @@ export default function DeskAdmin() {
   const [addApptSaving, setAddApptSaving] = useState(false)
   const [addApptClientData, setAddApptClientData] = useState<{name:string;pets:{id:string;name:string;breed?:string;weight?:string}[]}|null>(null)
   const [addApptPhoneLooking, setAddApptPhoneLooking] = useState(false)
+  // Multi-dog "group booking" — up to 2 additional dogs from the same client, same
+  // nominal time. Their real start times get fitted into groomer capacity within a
+  // 1-hour tolerance window when the appointment is added (see /api/slots/group).
+  const [addApptExtraPets, setAddApptExtraPets] = useState<{ petId: string; petName: string; breed: string; weight: string; service: string }[]>([])
 
   // Appointment detail slide-over
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null)
@@ -1612,43 +1620,102 @@ export default function DeskAdmin() {
     setAddApptPhone(''); setAddApptClientName(''); setAddApptFirstName(''); setAddApptLastName(''); setAddApptEmail('')
     setAddApptPetId(''); setAddApptPetName(''); setAddApptBreed(''); setAddApptWeight('')
     setAddApptVaccine('pending'); setAddApptClientData(null)
+    setAddApptExtraPets([])
+  }
+
+  // Adds another dog (same client, same requested time) to this booking — up to 3
+  // dogs total. Their real start times are computed together at submit time.
+  const addExtraApptPet = () => {
+    setAddApptExtraPets(prev => prev.length >= 2 ? prev : [...prev, { petId: '', petName: '', breed: '', weight: '', service: addApptService }])
+  }
+  const removeExtraApptPet = (idx: number) => {
+    setAddApptExtraPets(prev => prev.filter((_, i) => i !== idx))
+  }
+  const updateExtraApptPet = (idx: number, patch: Partial<{ petId: string; petName: string; breed: string; weight: string; service: string }>) => {
+    setAddApptExtraPets(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p))
   }
 
   const submitQuickAddAppt = async () => {
     if (!addingApptSlot || !addApptPhone || (!addApptPetId && !addApptPetName)) return
+    const extras = addApptExtraPets.filter(p => p.petId || p.petName)
     setAddApptSaving(true)
     try {
-      const res = await fetch('/api/admin/appointments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: addApptPhone,
-          clientName: `${addApptFirstName.trim()} ${addApptLastName.trim()}`.trim() || addApptClientName || addApptPhone,
-          email: addApptEmail || null,
-          petId: addApptPetId || null,
-          petName: addApptPetName,
-          breed: addApptBreed || null,
-          weight: addApptWeight || null,
-          vaccineStatus: addApptVaccine,
-          service: addApptService,
-          date: addingApptSlot.date,
-          time: addingApptSlot.time,
-        }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        clearAddApptForm()
-        if (data.newClientCreated) {
-          // New client — send to New Client Intake so admin can complete their profile
-          showToast('🆕 New client added! Complete their profile in New Client Intake.')
-          setTab('intake')
-          fetchAppointments('pending')
-        } else {
-          showToast('✓ Appointment added!')
-          fetchCalendar()
+      // For a single dog, keep the exact existing behavior: book right at the
+      // requested slot. For 2-3 dogs booked together, first confirm every dog can
+      // actually be fitted somewhere within 1 hour of the requested time against
+      // real groomer capacity (existing bookings + each other) — then book each
+      // dog at its own real assigned time, linked by a shared group_id so staff
+      // see them together and can assign final staffing as a group.
+      let groupId: string | null = null
+      let assignedTimes: string[] = [addingApptSlot.time]
+
+      if (extras.length > 0) {
+        const dogsPayload = [
+          { service: addApptService, size_tier: addApptWeight || null },
+          ...extras.map(p => ({ service: p.service, size_tier: p.weight || null })),
+        ]
+        const feasRes = await fetch('/api/slots/group', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: addingApptSlot.date, dogs: dogsPayload }),
+        })
+        const feasData = await feasRes.json()
+        const assignment = feasRes.ok ? feasData.assignments?.[addingApptSlot.time] : null
+        if (!assignment) {
+          showToast('⚠️ Not enough real groomer capacity for all dogs within 1 hour of this time — try a different time.')
+          setAddApptSaving(false)
+          return
         }
+        assignedTimes = [...assignment]
+          .sort((a: { index: number }, b: { index: number }) => a.index - b.index)
+          .map((a: { start: string }) => a.start)
+        groupId = `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      }
+
+      const dogsToSubmit: { petId: string | null; petName: string; breed: string | null; weight: string | null; vaccineStatus: string; service: string }[] = [
+        { petId: addApptPetId || null, petName: addApptPetName, breed: addApptBreed || null, weight: addApptWeight || null, vaccineStatus: addApptVaccine, service: addApptService },
+        ...extras.map(p => ({ petId: p.petId || null, petName: p.petName, breed: p.breed || null, weight: p.weight || null, vaccineStatus: 'pending', service: p.service })),
+      ]
+
+      let anyNewClient = false
+      for (let i = 0; i < dogsToSubmit.length; i++) {
+        const dog = dogsToSubmit[i]
+        const res = await fetch('/api/admin/appointments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: addApptPhone,
+            clientName: `${addApptFirstName.trim()} ${addApptLastName.trim()}`.trim() || addApptClientName || addApptPhone,
+            email: addApptEmail || null,
+            petId: dog.petId,
+            petName: dog.petName,
+            breed: dog.breed,
+            weight: dog.weight,
+            vaccineStatus: dog.vaccineStatus,
+            service: dog.service,
+            date: addingApptSlot.date,
+            time: assignedTimes[i] || addingApptSlot.time,
+            groupId,
+          }),
+        })
+        const data = await res.json()
+        if (!data.success) {
+          showToast('⚠️ ' + (data.error || 'Error adding appointment') + (i > 0 ? ` (dog ${i + 1})` : ''))
+          setAddApptSaving(false)
+          return
+        }
+        if (data.newClientCreated) anyNewClient = true
+      }
+
+      clearAddApptForm()
+      if (anyNewClient) {
+        // New client — send to New Client Intake so admin can complete their profile
+        showToast('🆕 New client added! Complete their profile in New Client Intake.')
+        setTab('intake')
+        fetchAppointments('pending')
       } else {
-        showToast('⚠️ ' + (data.error || 'Error adding appointment'))
+        showToast(groupId ? `✓ ${dogsToSubmit.length} appointments added!` : '✓ Appointment added!')
+        fetchCalendar()
       }
     } catch { showToast('⚠️ Error adding appointment') }
     finally { setAddApptSaving(false) }
@@ -2857,6 +2924,11 @@ export default function DeskAdmin() {
               a.status === 'confirmed' && (a.assigned_groomer || a.assigned_bather) && a.groomer_confirmed
             )
             const nowMinCal = (() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
+            // Other dogs from the same client booked together — see group_id on Appointment.
+            const groupSiblingNames = (appt: Appointment): string[] =>
+              appt.group_id
+                ? dayAppts.filter(a => a.group_id === appt.group_id && a.id !== appt.id).map(a => a.pets?.name).filter((n): n is string => !!n)
+                : []
 
             return (
               <div>
@@ -2903,6 +2975,11 @@ export default function DeskAdmin() {
                                   ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                                   : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
                                 <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
+                          {appt.group_id && groupSiblingNames(appt).length > 0 && (
+                            <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked together, same client">
+                              👥 +{groupSiblingNames(appt).join(', ')}
+                            </span>
+                          )}
                               </div>
                               <div>
                                 <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -3202,6 +3279,65 @@ export default function DeskAdmin() {
                 )}
               </div>
 
+              {/* ── ADDITIONAL DOGS (group booking) ── same client, same requested time */}
+              {addApptExtraPets.map((extra, idx) => (
+                <div key={idx} className="p-3 bg-violet-50 border border-violet-100 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Dog {idx + 2} (same client, same time)</span>
+                    <button onClick={() => removeExtraApptPet(idx)}
+                      className="text-violet-400 hover:text-violet-600 text-lg leading-none">×</button>
+                  </div>
+                  {addApptClientData && addApptClientData.pets.length > 0 && (
+                    <select value={extra.petId}
+                      onChange={e => {
+                        const pet = addApptClientData.pets.find(p => p.id === e.target.value)
+                        updateExtraApptPet(idx, { petId: e.target.value, petName: pet?.name || '' })
+                      }}
+                      className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                      <option value="">Select a pet…</option>
+                      {addApptClientData.pets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  )}
+                  {(!addApptClientData || addApptClientData.pets.length === 0 || !extra.petId) && (
+                    <input type="text" value={extra.petName}
+                      onChange={e => updateExtraApptPet(idx, { petName: e.target.value, petId: '' })}
+                      placeholder="Pet name *"
+                      className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                  )}
+                  {!extra.petId && extra.petName && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <BreedInput value={extra.breed} onChange={(v: string) => updateExtraApptPet(idx, { breed: v })}
+                        className="border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 w-full" />
+                      <select value={extra.weight} onChange={e => updateExtraApptPet(idx, { weight: e.target.value })}
+                        className="border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
+                        <option value="">Size / Weight</option>
+                        {WEIGHT_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <select value={extra.service} onChange={e => updateExtraApptPet(idx, { service: e.target.value })}
+                    className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                    {services.filter(s => inferServiceCategory(s) === 'main').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+              ))}
+              {addApptExtraPets.length < 2 && (
+                <button onClick={addExtraApptPet}
+                  className="w-full text-sm font-medium text-violet-600 hover:text-violet-700 border border-dashed border-violet-300 rounded-xl py-2 hover:bg-violet-50">
+                  + Add another dog (same client, same time)
+                </button>
+              )}
+              {addApptExtraPets.length > 0 && (
+                <p className="text-xs text-gray-500">
+                  We'll fit each dog into real groomer capacity within 1 hour of{' '}
+                  {(() => {
+                    const [h, m] = addingApptSlot.time.split(':')
+                    const hour = parseInt(h), period = hour >= 12 ? 'PM' : 'AM'
+                    return `${hour % 12 || 12}:${m} ${period}`
+                  })()} — exact start times are confirmed when you add the appointment.
+                </p>
+              )}
+
               {/* ── VACCINE RECORDS ── (only when new pet) */}
               {!addApptPetId && (
                 <div>
@@ -3235,7 +3371,7 @@ export default function DeskAdmin() {
             {/* Footer */}
             <div className="px-6 pb-5 pt-3 border-t border-gray-100 flex gap-3 shrink-0">
               <button onClick={submitQuickAddAppt}
-                disabled={addApptSaving || !addApptPhone || (!addApptPetId && !addApptPetName)}
+                disabled={addApptSaving || !addApptPhone || (!addApptPetId && !addApptPetName) || addApptExtraPets.some(p => !p.petId && !p.petName)}
                 className="flex-1 bg-sky-500 hover:bg-sky-600 disabled:opacity-40 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">
                 {addApptSaving ? 'Adding…' : 'Add Appointment'}
               </button>
@@ -5947,6 +6083,11 @@ export default function DeskAdmin() {
               a.status === 'confirmed' && (a.assigned_groomer || a.assigned_bather) && !a.groomer_confirmed
             )
             const alertCount = pendingAppts.length + rescheduledAppts.length + needsGroomerAppts.length + awaitingGroomerAppts.length
+            // Other dogs from the same client booked together — see group_id on Appointment.
+            const groupSiblingNames = (appt: Appointment): string[] =>
+              appt.group_id
+                ? appointments.filter(a => a.group_id === appt.group_id && a.id !== appt.id).map(a => a.pets?.name).filter((n): n is string => !!n)
+                : []
             return (
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -6001,6 +6142,11 @@ export default function DeskAdmin() {
                             ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
                           <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
+                          {appt.group_id && groupSiblingNames(appt).length > 0 && (
+                            <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked together, same client">
+                              👥 +{groupSiblingNames(appt).join(', ')}
+                            </span>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -6042,6 +6188,11 @@ export default function DeskAdmin() {
                             ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
                           <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
+                          {appt.group_id && groupSiblingNames(appt).length > 0 && (
+                            <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked together, same client">
+                              👥 +{groupSiblingNames(appt).join(', ')}
+                            </span>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -6076,6 +6227,11 @@ export default function DeskAdmin() {
                             ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
                           <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
+                          {appt.group_id && groupSiblingNames(appt).length > 0 && (
+                            <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked together, same client">
+                              👥 +{groupSiblingNames(appt).join(', ')}
+                            </span>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -6110,6 +6266,11 @@ export default function DeskAdmin() {
                             ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</div>}
                           <span className="text-sm">{appt.pets?.name}</span>{appt.is_new_client && <span className="text-amber-500" title="First-time client">⭐</span>}
+                          {appt.group_id && groupSiblingNames(appt).length > 0 && (
+                            <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked together, same client">
+                              👥 +{groupSiblingNames(appt).join(', ')}
+                            </span>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
