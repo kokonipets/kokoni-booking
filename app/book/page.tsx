@@ -477,16 +477,45 @@ export default function BookPage() {
   }
 
   // ─── Booking multiple dogs at the same time (existing pets only) ──────
-  const addGroupExtraPet = () => {
-    if (groupExtraPets.length >= 2 || !selectedPet) return
-    const used = new Set([selectedPet.id, ...groupExtraPets.map(g => g.petId)])
-    const next = pets.find(p => !used.has(p.id))
-    if (!next) return
-    setGroupExtraPets(prev => [...prev, { petId: next.id, service }])
+  // Tapping a pet card on the "Which dog" step toggles it in/out of this booking —
+  // the first one picked is the primary dog, up to 2 more can join as a group.
+  const toggleGroupPetSelection = (pet: Pet) => {
+    setIsAddingNewPet(false)
+    // Walk-ins are seen immediately and skip the date/time step entirely, so there's
+    // no slot to check group feasibility against — keep walk-in selection single-pet.
+    if (isWalkIn) { setSelectedPet(pet); setGroupExtraPets([]); return }
+    if (selectedPet?.id === pet.id) {
+      // Deselecting the primary dog — promote the first extra (if any) to primary
+      // so the booking doesn't just vanish out from under the other selected dogs.
+      if (groupExtraPets.length > 0) {
+        const [head, ...rest] = groupExtraPets
+        setSelectedPet(pets.find(p => p.id === head.petId) || null)
+        setGroupExtraPets(rest)
+      } else {
+        setSelectedPet(null)
+      }
+      return
+    }
+    const extraIdx = groupExtraPets.findIndex(g => g.petId === pet.id)
+    if (extraIdx > -1) {
+      setGroupExtraPets(groupExtraPets.filter((_, i) => i !== extraIdx))
+      return
+    }
+    if (!selectedPet) { setSelectedPet(pet); return }
+    if (groupExtraPets.length < 2) {
+      setGroupExtraPets([...groupExtraPets, { petId: pet.id, service }])
+    }
   }
   const removeGroupExtraPet = (idx: number) => setGroupExtraPets(prev => prev.filter((_, i) => i !== idx))
   const updateGroupExtraPet = (idx: number, patch: Partial<{ petId: string; service: string }>) =>
     setGroupExtraPets(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p))
+  // An extra dog picked before a service was chosen for the primary dog starts with
+  // no service of its own — default it to match once the primary service is picked,
+  // without ever overwriting a choice the customer already made for that dog.
+  useEffect(() => {
+    if (!service) return
+    setGroupExtraPets(prev => prev.map(p => p.service ? p : { ...p, service }))
+  }, [service])
 
   // ─── Step: Service ──────────────────────────────────────
   const handleServiceContinue = () => {
@@ -940,14 +969,23 @@ export default function BookPage() {
               ← Back
             </button>
             <h2 className="text-xl font-bold text-sky-900 mb-1">Hello{clientName && !/^\d+$/.test(clientName.trim()) ? `, ${clientName.split(' ')[0]}` : ''}! 👋</h2>
-            <p className="text-sm text-gray-500 mb-5">Which dog is coming in today?</p>
+            <p className="text-sm text-gray-500 mb-5">
+              {pets.length > 1 ? 'Which dogs are coming in today? Book up to 3 together at the same time.' : 'Which dog is coming in today?'}
+            </p>
 
             <div className="space-y-3">
-              {pets.map(pet => (
-                <div key={pet.id} className={`rounded-xl border-2 transition-all ${selectedPet?.id === pet.id && !isAddingNewPet ? 'border-sky-500 bg-sky-50' : 'border-gray-100'}`}>
+              {pets.map(pet => {
+                const isPrimary = selectedPet?.id === pet.id && !isAddingNewPet
+                const isExtra = groupExtraPets.some(g => g.petId === pet.id)
+                const isChecked = isPrimary || isExtra
+                const totalSelected = (selectedPet && !isAddingNewPet ? 1 : 0) + groupExtraPets.length
+                const disabled = !isChecked && totalSelected >= 3
+                return (
+                <div key={pet.id} className={`rounded-xl border-2 transition-all ${isChecked ? 'border-sky-500 bg-sky-50' : disabled ? 'border-gray-100 opacity-40' : 'border-gray-100'}`}>
                   <button
-                    onClick={() => { setSelectedPet(pet); setIsAddingNewPet(false) }}
-                    className="w-full flex items-center gap-4 p-4 text-left"
+                    onClick={() => toggleGroupPetSelection(pet)}
+                    disabled={disabled}
+                    className="w-full flex items-center gap-4 p-4 text-left disabled:cursor-not-allowed"
                   >
                     {/* Pet photo */}
                     {pet.photo_url ? (
@@ -959,13 +997,17 @@ export default function BookPage() {
                       <p className="font-semibold text-gray-800">{pet.name}</p>
                       {pet.breed && <p className="text-sm text-gray-400">{pet.breed}</p>}
                     </div>
-                    {selectedPet?.id === pet.id && !isAddingNewPet && (
-                      <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0" />
+                    {pets.length > 1 && !isWalkIn ? (
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${isChecked ? 'bg-sky-500 border-sky-500' : 'border-gray-300'}`}>
+                        {isChecked && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>}
+                      </div>
+                    ) : (
+                      isChecked && <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0" />
                     )}
                   </button>
 
-                  {/* Photo upload row — shown when this pet is selected */}
-                  {selectedPet?.id === pet.id && !isAddingNewPet && (
+                  {/* Photo upload row — shown for the primary dog only */}
+                  {isPrimary && (
                     <div className="px-4 pb-3 flex items-center gap-2 border-t border-sky-100">
                       <label className={`flex items-center gap-1.5 text-white text-xs font-semibold px-3 py-1.5 rounded-lg cursor-pointer transition-colors ${
                         uploadingPetPhotoId === pet.id ? 'bg-sky-400' :
@@ -1005,11 +1047,12 @@ export default function BookPage() {
                     </div>
                   )}
                 </div>
-              ))}
+                )
+              })}
 
-              {/* Add new pet */}
+              {/* Add new pet — a brand-new dog books alone, not as part of a group */}
               <button
-                onClick={() => { setIsAddingNewPet(true); setSelectedPet(null) }}
+                onClick={() => { setIsAddingNewPet(true); setSelectedPet(null); setGroupExtraPets([]) }}
                 className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${isAddingNewPet ? 'border-sky-500 bg-sky-50' : 'border-dashed border-gray-200 hover:border-sky-300'}`}
               >
                 <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-xl">➕</div>
@@ -1017,6 +1060,27 @@ export default function BookPage() {
                 {isAddingNewPet && <CheckCircle2 className="w-5 h-5 text-sky-500 ml-auto" />}
               </button>
             </div>
+
+            {pets.length > 1 && !isAddingNewPet && !isWalkIn && (
+              <p className="text-xs font-semibold text-sky-700 mt-3">
+                Selected {(selectedPet ? 1 : 0) + groupExtraPets.length} / up to 3
+              </p>
+            )}
+
+            {/* Online booking tops out at 3 dogs together — a bigger group needs a real
+                person to work out the confirmation timing. */}
+            {!isWalkIn && (selectedPet ? 1 : 0) + groupExtraPets.length >= 3 && pets.length > 3 && (
+              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 mt-2">
+                Booking more than 3 dogs together? Text us at <span className="font-semibold text-gray-700">(626) 621-4646</span> and
+                we&apos;ll help arrange the times.
+              </p>
+            )}
+
+            {isGroupBooking && !isWalkIn && (
+              <p className="text-xs text-gray-500 mt-3">
+                We&apos;ll do our best to fit every dog within 1 hour of the time you pick later — exact start times may be staggered slightly, and we&apos;ll confirm with you.
+              </p>
+            )}
 
             {isAddingNewPet && (
               <div className="mt-4 space-y-3">
@@ -1167,23 +1231,18 @@ export default function BookPage() {
               })()}
             </div>
 
-            {/* ── Book another dog at the same time (returning clients with 2+ dogs on file) ── */}
-            {!isNewClient && !isAddingNewPet && selectedPet && pets.filter(p => p.id !== selectedPet.id).length > 0 && !isWalkIn && (
+            {/* ── Other dogs in this group already picked on the previous step — just need a service each ── */}
+            {isGroupBooking && !isWalkIn && (
               <div className="mt-5 space-y-3">
                 {groupExtraPets.map((extra, idx) => {
-                  const usedIds = new Set([selectedPet.id, ...groupExtraPets.filter((_, i) => i !== idx).map(g => g.petId)])
-                  const options = pets.filter(p => p.id === extra.petId || !usedIds.has(p.id))
+                  const extraPet = pets.find(p => p.id === extra.petId)
                   return (
                     <div key={idx} className="p-3 bg-violet-50 border border-violet-100 rounded-xl space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Also booking</span>
+                        <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Also booking — {extraPet?.name}</span>
                         <button onClick={() => removeGroupExtraPet(idx)}
                           className="text-violet-400 hover:text-violet-600 text-lg leading-none">×</button>
                       </div>
-                      <select value={extra.petId} onChange={e => updateGroupExtraPet(idx, { petId: e.target.value })}
-                        className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
-                        {options.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
                       <select value={extra.service} onChange={e => updateGroupExtraPet(idx, { service: e.target.value })}
                         className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
                         {dynamicServices.filter((s: any) => s.visible !== false && !s.skipCapacity).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -1191,26 +1250,9 @@ export default function BookPage() {
                     </div>
                   )
                 })}
-                {groupExtraPets.length < 2 && groupExtraPets.length < pets.filter(p => p.id !== selectedPet.id).length && (
-                  <button onClick={addGroupExtraPet}
-                    className="w-full text-sm font-medium text-violet-600 hover:text-violet-700 border border-dashed border-violet-300 rounded-xl py-2.5 hover:bg-violet-50">
-                    + Book another dog at the same time
-                  </button>
-                )}
-                {/* Online booking tops out at 3 dogs together — a bigger group needs a real
-                    person to work out the confirmation timing, so we hand off to a text
-                    instead of pretending the picker supports it. */}
-                {groupExtraPets.length >= 2 && pets.filter(p => p.id !== selectedPet.id).length > groupExtraPets.length && (
-                  <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
-                    Booking more than 3 dogs together? Text us at <span className="font-semibold text-gray-700">(626) 621-4646</span> and
-                    we&apos;ll help arrange the times.
-                  </p>
-                )}
-                {groupExtraPets.length > 0 && (
-                  <p className="text-xs text-gray-500">
-                    We&apos;ll do our best to fit every dog within 1 hour of the time you pick on the next step — exact start times may be staggered slightly, and we&apos;ll confirm with you.
-                  </p>
-                )}
+                <p className="text-xs text-gray-500">
+                  We&apos;ll do our best to fit every dog within 1 hour of the time you pick on the next step — exact start times may be staggered slightly, and we&apos;ll confirm with you.
+                </p>
               </div>
             )}
 
