@@ -4023,11 +4023,14 @@ export default function DeskAdmin() {
                                       body: JSON.stringify({ action: 'change-service', service: newSvcId }),
                                     })
                                     if (res.ok) {
-                                      setDetailAppt(prev => prev ? { ...prev, service: newSvcId } : prev)
-                                      setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, service: newSvcId } : a))
+                                      const resData = await res.json().catch(() => ({}))
+                                      const priceCleared = resData?.cleared_price !== false
+                                      setDetailAppt(prev => prev ? { ...prev, service: newSvcId, ...(priceCleared ? { payment_amount: null, size_tier: null } : {}) } : prev)
+                                      setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, service: newSvcId, ...(priceCleared ? { payment_amount: null, size_tier: null } : {}) } : a))
                                       setDetailBasePrice('')
                                       setDetailBaseTier('')
-                                      showToast('✓ Service updated')
+                                      setTotalSaved(false)
+                                      showToast(priceCleared ? '✓ Service updated — pick a size below and Save Total' : '✓ Service updated')
                                     } else {
                                       showToast('⚠️ Failed to update service')
                                     }
@@ -4119,6 +4122,11 @@ export default function DeskAdmin() {
                           <>
                             {tiers.length > 0 && (
                               <>
+                                {!detailBaseTier && !detailBasePrice && (
+                                  <p className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mb-2">
+                                    👇 Pick a size, then scroll down and tap Save Total to set the price for {svcName}.
+                                  </p>
+                                )}
                                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Select Size</p>
                                 <div className={`grid gap-2 mb-3 ${tiers.length <= 2 ? 'grid-cols-2' : tiers.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                   {tiers.map((tier, i) => {

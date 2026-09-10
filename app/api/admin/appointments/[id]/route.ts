@@ -314,12 +314,34 @@ export async function PATCH(
   if (action === 'change-service') {
     const { service } = body
     if (!service) return NextResponse.json({ error: 'Service required' }, { status: 400 })
+
+    // Changing the service invalidates whatever price/size was set for the OLD
+    // service -- its tiers and starting price almost never match the new one
+    // (e.g. Simply Cute's $70 vs Asian Fusion's $110). Leaving payment_amount /
+    // size_tier untouched meant the appointment silently kept the old service's
+    // price everywhere (cashier, reports, payroll) until someone happened to
+    // reselect a size and click Save Total -- easy to miss, and a real risk of
+    // charging the wrong amount. Clear both so nothing shows a stale price for
+    // the new service. Skip this once a payment is already recorded, so a
+    // completed/paid visit's history isn't rewritten by a later relabel.
+    const { data: existing } = await supabase
+      .from('appointments')
+      .select('payment_status')
+      .eq('id', id)
+      .single()
+
+    const updates: Record<string, unknown> = { service }
+    if (existing?.payment_status !== 'paid') {
+      updates.payment_amount = null
+      updates.size_tier = null
+    }
+
     const { error } = await supabase
       .from('appointments')
-      .update({ service })
+      .update(updates)
       .eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, cleared_price: existing?.payment_status !== 'paid' })
   }
 
   // Assign groomer/bather
