@@ -3120,27 +3120,73 @@ export default function DeskAdmin() {
                                     {w.end < CAL_END && <div className="absolute left-0 right-0" style={{ top: `${(w.end - CAL_START) * CAL_PX}px`, height: `${(CAL_END - w.end) * CAL_PX}px`, background: 'repeating-linear-gradient(45deg,#f9fafb,#f9fafb 6px,#f3f4f6 6px,#f3f4f6 12px)' }} />}
                                   </>
                                 )}
-                                {colAppts.map(a => {
-                                  const d = parseApptTime(a.appointment_date, a.appointment_time)
-                                  const startMin = d.getHours() * 60 + d.getMinutes()
-                                  const dur = serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier)
-                                  const top = (startMin - CAL_START) * CAL_PX
-                                  const h = dur * CAL_PX
-                                  const isDone = a.status === 'completed' || !!a.checked_out_at
-                                  const isCheckedIn = !!a.checked_in_at && !a.checked_out_at
-                                  const cls = isDone ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : isCheckedIn ? 'bg-sky-50 border-sky-200 text-sky-700' : 'bg-amber-50 border-amber-200 text-amber-700'
-                                  return (
-                                    <div key={a.id}
-                                      onClick={(e) => { e.stopPropagation(); openApptDetail(a) }}
-                                      className={`absolute left-1 right-1 rounded-lg border px-1.5 py-1 text-[10px] leading-tight overflow-hidden cursor-pointer ${cls}`}
-                                      style={{ top: `${Math.max(top, 0)}px`, height: `${Math.max(h, 20)}px` }}
-                                      title={`${a.pets?.name ?? ''} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(startMin)}–${fmtCalMin(startMin + dur)}`}>
-                                      <p className="font-bold truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'}</p>
-                                      <p className="truncate opacity-80">{fmtCalMin(startMin)}–{fmtCalMin(startMin + dur)}</p>
-                                      <p className="truncate opacity-80">{serviceMap[a.service] ?? a.service}</p>
-                                    </div>
-                                  )
-                                })}
+                                {(() => {
+                                  // Two appointments for the same groomer at overlapping times (e.g. a
+                                  // group booking's two dogs both assigned to Wylie at 9:00 AM) used to
+                                  // render as identically-positioned full-width blocks, so one completely
+                                  // covered the other. Lay overlapping appointments out side-by-side
+                                  // instead: cluster mutually-overlapping appointments, then greedily
+                                  // assign each a column within its cluster (classic calendar-event
+                                  // layout), and size/position each block to its share of the column width.
+                                  const timed = colAppts.map(a => {
+                                    const d = parseApptTime(a.appointment_date, a.appointment_time)
+                                    const startMin = d.getHours() * 60 + d.getMinutes()
+                                    const dur = serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier)
+                                    return { a, startMin, endMin: startMin + dur, dur }
+                                  }).sort((x, y) => x.startMin - y.startMin)
+
+                                  type TimedAppt = typeof timed[number]
+                                  const clusters: TimedAppt[][] = []
+                                  let currentCluster: TimedAppt[] = []
+                                  let clusterEnd = -Infinity
+                                  for (const item of timed) {
+                                    if (currentCluster.length === 0 || item.startMin < clusterEnd) {
+                                      currentCluster.push(item)
+                                      clusterEnd = Math.max(clusterEnd, item.endMin)
+                                    } else {
+                                      clusters.push(currentCluster)
+                                      currentCluster = [item]
+                                      clusterEnd = item.endMin
+                                    }
+                                  }
+                                  if (currentCluster.length > 0) clusters.push(currentCluster)
+
+                                  const laidOut: { item: TimedAppt; col: number; totalCols: number }[] = []
+                                  for (const cluster of clusters) {
+                                    const colEnds: number[] = []
+                                    for (const item of cluster) {
+                                      let col = colEnds.findIndex(end => end <= item.startMin)
+                                      if (col === -1) { col = colEnds.length; colEnds.push(item.endMin) }
+                                      else { colEnds[col] = item.endMin }
+                                      laidOut.push({ item, col, totalCols: 0 })
+                                    }
+                                    const totalCols = colEnds.length
+                                    for (let i = laidOut.length - cluster.length; i < laidOut.length; i++) laidOut[i].totalCols = totalCols
+                                  }
+
+                                  return laidOut.map(({ item, col, totalCols }) => {
+                                    const a = item.a
+                                    const { startMin, dur } = item
+                                    const top = (startMin - CAL_START) * CAL_PX
+                                    const h = dur * CAL_PX
+                                    const isDone = a.status === 'completed' || !!a.checked_out_at
+                                    const isCheckedIn = !!a.checked_in_at && !a.checked_out_at
+                                    const cls = isDone ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : isCheckedIn ? 'bg-sky-50 border-sky-200 text-sky-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+                                    const left = totalCols === 1 ? '4px' : `calc(4px + (100% - 8px) * ${col} / ${totalCols})`
+                                    const width = totalCols === 1 ? 'calc(100% - 8px)' : `calc((100% - 8px) / ${totalCols} - 2px)`
+                                    return (
+                                      <div key={a.id}
+                                        onClick={(e) => { e.stopPropagation(); openApptDetail(a) }}
+                                        className={`absolute rounded-lg border px-1.5 py-1 text-[10px] leading-tight overflow-hidden cursor-pointer ${cls}`}
+                                        style={{ top: `${Math.max(top, 0)}px`, height: `${Math.max(h, 20)}px`, left, width }}
+                                        title={`${a.pets?.name ?? ''} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(startMin)}–${fmtCalMin(startMin + dur)}`}>
+                                        <p className="font-bold truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'}</p>
+                                        <p className="truncate opacity-80">{fmtCalMin(startMin)}–{fmtCalMin(startMin + dur)}</p>
+                                        <p className="truncate opacity-80">{serviceMap[a.service] ?? a.service}</p>
+                                      </div>
+                                    )
+                                  })
+                                })()}
                                 {isTodayCal && nowMinCal >= CAL_START && nowMinCal <= CAL_END && (
                                   <div className="absolute left-0 right-0 border-t-2 border-rose-500 z-10" style={{ top: `${(nowMinCal - CAL_START) * CAL_PX}px` }}>
                                     <div className="w-2 h-2 rounded-full bg-rose-500 -mt-1 -ml-1" />
