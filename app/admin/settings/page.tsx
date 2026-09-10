@@ -146,6 +146,11 @@ export default function SettingsPage() {
   const [specialOpenDates, setSpecialOpenDates] = useState<string[]>([])
   const [newSpecialOpenDate, setNewSpecialOpenDate] = useState('')
   const [savingSpecialOpenDates, setSavingSpecialOpenDates] = useState(false)
+  // Which groomers to schedule (and what hours) for the special open date being added —
+  // lets Semira set both in one step instead of separately visiting Recent Confirmed.
+  const [newSpecialOpenGroomerIds, setNewSpecialOpenGroomerIds] = useState<string[]>([])
+  const [newSpecialOpenStart, setNewSpecialOpenStart] = useState('09:00')
+  const [newSpecialOpenEnd, setNewSpecialOpenEnd] = useState('17:00')
   const [selectedServiceTier, setSelectedServiceTier] = useState<Record<string, number>>({})
   const [slotInterval, setSlotInterval] = useState<15 | 30 | 45>(30)
 
@@ -326,11 +331,45 @@ export default function SettingsPage() {
     }
   }
 
+  const toggleNewSpecialOpenGroomer = (id: string) => {
+    setNewSpecialOpenGroomerIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
   const addSpecialOpenDate = async () => {
     if (!newSpecialOpenDate) return
-    if (specialOpenDates.includes(newSpecialOpenDate)) { setNewSpecialOpenDate(''); return }
-    await saveSpecialOpenDates([...specialOpenDates, newSpecialOpenDate])
+    const date = newSpecialOpenDate
+
+    if (!specialOpenDates.includes(date)) {
+      await saveSpecialOpenDates([...specialOpenDates, date])
+    }
+
+    // Also set working hours for whichever groomers were picked for this date —
+    // a one-day override on their record, same as Recent Confirmed's per-day editor,
+    // so this single step covers both "open the store" and "who's working."
+    if (newSpecialOpenGroomerIds.length > 0 && newSpecialOpenStart && newSpecialOpenEnd) {
+      setSavingSpecialOpenDates(true)
+      try {
+        await Promise.all(newSpecialOpenGroomerIds.map(async id => {
+          const s = staff.find(st => st.id === id)
+          const merged = { ...(s?.special_hours || {}), [date]: { start: newSpecialOpenStart, end: newSpecialOpenEnd } }
+          const res = await fetch(`/api/admin/staff/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ special_hours: merged }),
+          })
+          if (!res.ok) throw new Error(`Failed to set hours for ${s?.name || 'groomer'}`)
+        }))
+        await loadStaff() // refresh so the list below reflects the saved hours
+      } catch (err) {
+        setSavingMessage({ type: 'error', text: `❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}` })
+        setTimeout(() => setSavingMessage(null), 5000)
+      } finally {
+        setSavingSpecialOpenDates(false)
+      }
+    }
+
     setNewSpecialOpenDate('')
+    setNewSpecialOpenGroomerIds([])
   }
 
   const removeSpecialOpenDate = async (date: string) => {
@@ -1610,9 +1649,50 @@ export default function SettingsPage() {
                       disabled={!newSpecialOpenDate || savingSpecialOpenDates}
                       className="text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
                     >
-                      + Add
+                      {savingSpecialOpenDates ? 'Saving...' : '+ Add'}
                     </button>
                   </div>
+
+                  {/* Optional: pick who's working that date right here, instead of a separate
+                      trip to Recent Confirmed. Purely optional -- leaving no groomer checked
+                      just opens the date, same as before. */}
+                  {staff.filter(s => s.is_active && s.role === 'groomer').length > 0 && (
+                    <div className="mb-3 pl-1">
+                      <p className="text-xs text-gray-500 mb-1.5">Who&apos;s working that day? (optional -- you can also set this later in Recent Confirmed)</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {staff.filter(s => s.is_active && s.role === 'groomer').map(g => {
+                          const selected = newSpecialOpenGroomerIds.includes(g.id)
+                          return (
+                            <button
+                              key={g.id}
+                              onClick={() => toggleNewSpecialOpenGroomer(g.id)}
+                              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${selected ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}`}
+                            >
+                              {selected ? '✓ ' : ''}{g.name}
+                            </button>
+                          )
+                        })}
+                        {newSpecialOpenGroomerIds.length > 0 && (
+                          <>
+                            <input
+                              type="time"
+                              value={newSpecialOpenStart}
+                              onChange={e => setNewSpecialOpenStart(e.target.value)}
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1"
+                            />
+                            <span className="text-gray-400 text-xs">-</span>
+                            <input
+                              type="time"
+                              value={newSpecialOpenEnd}
+                              onChange={e => setNewSpecialOpenEnd(e.target.value)}
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1"
+                            />
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {specialOpenDates.length === 0 ? (
                     <p className="text-xs text-gray-400 italic py-1">No one-off open dates added.</p>
                   ) : (
@@ -1620,9 +1700,19 @@ export default function SettingsPage() {
                       {specialOpenDates.map(date => {
                         const [y, m, d] = date.split('-').map(Number)
                         const label = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })
+                        const workingGroomers = staff.filter(s => s.is_active && s.role === 'groomer' && s.special_hours?.[date])
                         return (
                           <div key={date} className="flex items-center gap-2 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2">
-                            <span className="text-xs font-semibold text-sky-700">{label}</span>
+                            <div>
+                              <span className="text-xs font-semibold text-sky-700 block">{label}</span>
+                              {workingGroomers.length > 0 ? (
+                                <span className="text-[11px] text-sky-600">
+                                  {workingGroomers.map(g => `${g.name} ${g.special_hours![date].start}-${g.special_hours![date].end}`).join(', ')}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-amber-600">No groomer hours set yet -- set above or in Recent Confirmed</span>
+                              )}
+                            </div>
                             <button
                               onClick={() => removeSpecialOpenDate(date)}
                               disabled={savingSpecialOpenDates}
