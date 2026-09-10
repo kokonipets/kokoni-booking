@@ -135,24 +135,27 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Create appointment
+    const apptFields: Record<string, unknown> = {
+      client_phone: phone,
+      pet_id: resolvedPetId,
+      service,
+      appointment_date: date,
+      appointment_time: time,
+      notes: notes || null,
+      // Walk-ins are seen right away — no pending review step, they're already standing there.
+      status: isWalkIn ? 'confirmed' : 'pending',
+      is_walk_in: !!isWalkIn,
+      tos_agreed_at: tosAgreedAt,
+    }
+    // Links this appointment to sibling appointments for other dogs the same client
+    // booked together at (roughly) the same time — see supabase/migrations/
+    // 20260910_add_group_id_to_appointments.sql. Only set when actually booking a
+    // group, so an ordinary single-dog booking never depends on that column existing.
+    if (groupId) apptFields.group_id = groupId
+
     const { data: appointment, error: apptError } = await supabase
       .from('appointments')
-      .insert({
-        client_phone: phone,
-        pet_id: resolvedPetId,
-        service,
-        appointment_date: date,
-        appointment_time: time,
-        notes: notes || null,
-        // Walk-ins are seen right away — no pending review step, they're already standing there.
-        status: isWalkIn ? 'confirmed' : 'pending',
-        is_walk_in: !!isWalkIn,
-        tos_agreed_at: tosAgreedAt,
-        // Links this appointment to sibling appointments for other dogs the same
-        // client booked together at (roughly) the same time — see supabase/migrations/
-        // 20260910_add_group_id_to_appointments.sql. Optional.
-        group_id: groupId || null,
-      })
+      .insert(apptFields)
       .select('id')
       .single()
 
