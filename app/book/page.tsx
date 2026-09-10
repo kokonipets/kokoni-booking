@@ -234,6 +234,15 @@ export default function BookPage() {
   // Service
   const [service, setService] = useState('')
 
+  // Optional: a returning client with more than one dog on file can add up to 2 more
+  // dogs to book at the SAME requested time (existing pets only — keeps this additive;
+  // new-pet creation and vaccine records stay limited to the primary dog for now).
+  const [groupExtraPets, setGroupExtraPets] = useState<{ petId: string; service: string }[]>([])
+  const [groupSlots, setGroupSlots] = useState<string[] | null>(null)
+  const [groupSlotsLoading, setGroupSlotsLoading] = useState(false)
+  const [groupAssignments, setGroupAssignments] = useState<Record<string, { index: number; start: string }[]>>({})
+  const isGroupBooking = groupExtraPets.length > 0
+
   // Date/Time
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -254,6 +263,7 @@ export default function BookPage() {
 
   // Confirmation
   const [appointmentId, setAppointmentId] = useState('')
+  const [groupBookingWarning, setGroupBookingWarning] = useState('')
   const [needsVaccineEmail, setNeedsVaccineEmail] = useState(false)
   const [vaccineContactMethod, setVaccineContactMethod] = useState<'email' | 'text' | null>(null)
 
@@ -333,6 +343,31 @@ export default function BookPage() {
     selectedDateRef.current = selectedDate
     fetchDateSlots(selectedDate, service, newPetWeight)
   }, [selectedDate, service, newPetWeight, fetchDateSlots])
+
+  // When booking 2-3 dogs at the same requested time, availability comes from the
+  // group feasibility check instead of the plain per-dog slot list — it also returns
+  // each dog's own real assigned start time (assignments), used at submit time.
+  useEffect(() => {
+    if (!isGroupBooking || !selectedDate || !service) { setGroupSlots(null); setGroupAssignments({}); return }
+    const yyyy = selectedDate.getFullYear()
+    const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
+    const dd = String(selectedDate.getDate()).padStart(2, '0')
+    const dateStr = `${yyyy}-${mm}-${dd}`
+    const dogs = [{ service }, ...groupExtraPets.map(g => ({ service: g.service }))]
+    setGroupSlotsLoading(true)
+    fetch('/api/slots/group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: dateStr, dogs }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        setGroupSlots(Array.isArray(data.slots) ? data.slots : [])
+        setGroupAssignments(data.assignments || {})
+      })
+      .catch(() => { setGroupSlots([]); setGroupAssignments({}) })
+      .finally(() => setGroupSlotsLoading(false))
+  }, [isGroupBooking, selectedDate, service, groupExtraPets])
 
   // ─── Step: Phone ────────────────────────────────────────
   const handlePhoneLookup = async () => {
@@ -441,6 +476,18 @@ export default function BookPage() {
     setStep('service')
   }
 
+  // ─── Booking multiple dogs at the same time (existing pets only) ──────
+  const addGroupExtraPet = () => {
+    if (groupExtraPets.length >= 2 || !selectedPet) return
+    const used = new Set([selectedPet.id, ...groupExtraPets.map(g => g.petId)])
+    const next = pets.find(p => !used.has(p.id))
+    if (!next) return
+    setGroupExtraPets(prev => [...prev, { petId: next.id, service }])
+  }
+  const removeGroupExtraPet = (idx: number) => setGroupExtraPets(prev => prev.filter((_, i) => i !== idx))
+  const updateGroupExtraPet = (idx: number, patch: Partial<{ petId: string; service: string }>) =>
+    setGroupExtraPets(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p))
+
   // ─── Step: Service ──────────────────────────────────────
   const handleServiceContinue = () => {
     if (!service) { setError('Please select a service.'); return }
@@ -489,16 +536,29 @@ export default function BookPage() {
 
     try {
       const digits = phone.replace(/\D/g, '')
+
+      // Group booking: the nominal time the customer picked isn't necessarily any one
+      // dog's real start time — /api/slots/group already worked out a real, staffable
+      // start per dog for this slot when the time grid was loaded. Re-check it's still
+      // there (availability can shift between loading the grid and submitting).
+      const groupId = isGroupBooking ? `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : null
+      const assignment = isGroupBooking ? groupAssignments[selectedTime] : null
+      if (isGroupBooking && !assignment) {
+        throw new Error("Sorry, that time is no longer available for all of your dogs — please pick another time.")
+      }
+      const primaryTime = assignment ? (assignment.find(a => a.index === 0)?.start ?? selectedTime) : selectedTime
+
       const payload: Record<string, unknown> = {
         phone: digits,
         service,
         date: formatDateShort(selectedDate!),
-        time: selectedTime,
+        time: primaryTime,
         notes,
         tosAgreedAt: new Date().toISOString(),
         smsConsent: smsConsentChecked,
         smsConsentAt: smsConsentChecked ? new Date().toISOString() : null,
         isWalkIn,
+        groupId,
       }
 
       // New client → create client + pet
@@ -568,6 +628,40 @@ export default function BookPage() {
             body: JSON.stringify({ petId: data.petId, fileBase64: base64, contentType: 'image/jpeg', ext: 'jpg' }),
           })
         } catch { /* photo upload failure shouldn't block booking */ }
+      }
+
+      // Book any additional dogs from the same group, each at its own real assigned
+      // time — the primary dog above is already confirmed either way, so a problem
+      // here surfaces as a warning rather than failing the whole booking.
+      if (isGroupBooking && assignment) {
+        const failedNames: string[] = []
+        for (let i = 0; i < groupExtraPets.length; i++) {
+          const extra = groupExtraPets[i]
+          const extraPet = pets.find(p => p.id === extra.petId)
+          const extraTime = assignment.find(a => a.index === i + 1)?.start ?? primaryTime
+          try {
+            const extraRes = await fetch('/api/appointments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone: digits,
+                petId: extra.petId,
+                service: extra.service,
+                date: formatDateShort(selectedDate!),
+                time: extraTime,
+                tosAgreedAt: new Date().toISOString(),
+                isWalkIn: false,
+                groupId,
+              }),
+            })
+            if (!extraRes.ok) failedNames.push(extraPet?.name || 'your other dog')
+          } catch {
+            failedNames.push(extraPet?.name || 'your other dog')
+          }
+        }
+        if (failedNames.length > 0) {
+          setGroupBookingWarning(`We couldn't automatically book ${failedNames.join(', ')} — please call the salon so we can add ${failedNames.length > 1 ? 'them' : 'them'} to the same time.`)
+        }
       }
 
       setAppointmentId(data.id)
@@ -1073,6 +1167,44 @@ export default function BookPage() {
               })()}
             </div>
 
+            {/* ── Book another dog at the same time (returning clients with 2+ dogs on file) ── */}
+            {!isNewClient && !isAddingNewPet && selectedPet && pets.filter(p => p.id !== selectedPet.id).length > 0 && !isWalkIn && (
+              <div className="mt-5 space-y-3">
+                {groupExtraPets.map((extra, idx) => {
+                  const usedIds = new Set([selectedPet.id, ...groupExtraPets.filter((_, i) => i !== idx).map(g => g.petId)])
+                  const options = pets.filter(p => p.id === extra.petId || !usedIds.has(p.id))
+                  return (
+                    <div key={idx} className="p-3 bg-violet-50 border border-violet-100 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Also booking</span>
+                        <button onClick={() => removeGroupExtraPet(idx)}
+                          className="text-violet-400 hover:text-violet-600 text-lg leading-none">×</button>
+                      </div>
+                      <select value={extra.petId} onChange={e => updateGroupExtraPet(idx, { petId: e.target.value })}
+                        className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                        {options.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <select value={extra.service} onChange={e => updateGroupExtraPet(idx, { service: e.target.value })}
+                        className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
+                        {dynamicServices.filter((s: any) => s.visible !== false && !s.skipCapacity).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                  )
+                })}
+                {groupExtraPets.length < 2 && groupExtraPets.length < pets.filter(p => p.id !== selectedPet.id).length && (
+                  <button onClick={addGroupExtraPet}
+                    className="w-full text-sm font-medium text-violet-600 hover:text-violet-700 border border-dashed border-violet-300 rounded-xl py-2.5 hover:bg-violet-50">
+                    + Book another dog at the same time
+                  </button>
+                )}
+                {groupExtraPets.length > 0 && (
+                  <p className="text-xs text-gray-500">
+                    We&apos;ll do our best to fit every dog within 1 hour of the time you pick on the next step — exact start times may be staggered slightly, and we&apos;ll confirm with you.
+                  </p>
+                )}
+              </div>
+            )}
+
             {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
             <button
               onClick={handleServiceContinue}
@@ -1104,7 +1236,13 @@ export default function BookPage() {
                   Available Times — {formatDate(selectedDate)}
                 </p>
                 <p className="text-xs text-gray-500 mb-3">🕒 All times are in Pacific Time (Los Angeles).</p>
-                {dateSlotsLoading ? (
+                {isGroupBooking && (
+                  <div className="mb-3 p-3 bg-sky-50 border border-sky-100 rounded-xl text-xs text-sky-800 leading-relaxed">
+                    💡 You&apos;re booking {1 + groupExtraPets.length} dogs together. We&apos;ll pick real start times so every
+                    dog gets a groomer within 1 hour of the time you choose — we&apos;ll confirm the exact order at check-in.
+                  </div>
+                )}
+                {(isGroupBooking ? groupSlotsLoading : dateSlotsLoading) ? (
                   <p className="text-sm text-gray-400 text-center py-4">Checking availability…</p>
                 ) : (() => {
                   // Use the salon's timezone (Pacific/LA) for "today" + current time,
@@ -1119,7 +1257,7 @@ export default function BookPage() {
                   // The server already accounts for this service's real duration — whether it
                   // would run into closing time or into another appointment further out — so
                   // nothing needs to be re-filtered here beyond hiding times already in the past.
-                  const baseSlots = dateSlots ?? dynamicTimeSlots
+                  const baseSlots = isGroupBooking ? (groupSlots ?? []) : (dateSlots ?? dynamicTimeSlots)
 
                   const availableSlots = baseSlots.filter(t => {
                     if (isSelectedToday && parseTimeMins(t) <= nowMins) return false
@@ -1361,6 +1499,12 @@ export default function BookPage() {
               </div>
             )}
 
+            {groupBookingWarning && (
+              <div className="bg-red-50 border-2 border-red-200 rounded-2xl px-5 py-4 mb-5 text-left">
+                <p className="text-red-700 text-sm">⚠️ {groupBookingWarning}</p>
+              </div>
+            )}
+
             {/* Request summary */}
             <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm text-left mb-4 space-y-2">
               <p className="font-semibold text-gray-700 mb-1">📝 Your Request</p>
@@ -1372,9 +1516,18 @@ export default function BookPage() {
                 <span>✂️</span>
                 <span>{dynamicServices.find(s => s.id === service)?.name}</span>
               </div>
+              {isGroupBooking && groupExtraPets.map((extra, idx) => {
+                const extraPet = pets.find(p => p.id === extra.petId)
+                return (
+                  <div key={idx} className="flex items-center gap-2 text-gray-600 pl-6">
+                    <span>+ 🐾</span>
+                    <span>{extraPet?.name} — {dynamicServices.find(s => s.id === extra.service)?.name}</span>
+                  </div>
+                )
+              })}
               <div className="flex items-center gap-2 text-gray-600">
                 <span>📅</span>
-                <span>{isWalkIn ? 'Right now (walk-in)' : `${selectedDate ? formatDate(selectedDate) : ''} @ ${selectedTime}`}</span>
+                <span>{isWalkIn ? 'Right now (walk-in)' : `${selectedDate ? formatDate(selectedDate) : ''} @ ${selectedTime}${isGroupBooking ? ' (start times may be staggered slightly)' : ''}`}</span>
               </div>
               <div className="flex items-center gap-2 text-gray-600">
                 <span>📱</span>

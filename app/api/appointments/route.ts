@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     vaccineEmailOnly,
     vaccineSmsOnly,
     isWalkIn,
+    groupId,
   } = body
 
   // Defense-in-depth: never accept a booking on a closed day or blocked date,
@@ -147,6 +148,10 @@ export async function POST(req: NextRequest) {
         status: isWalkIn ? 'confirmed' : 'pending',
         is_walk_in: !!isWalkIn,
         tos_agreed_at: tosAgreedAt,
+        // Links this appointment to sibling appointments for other dogs the same
+        // client booked together at (roughly) the same time — see supabase/migrations/
+        // 20260910_add_group_id_to_appointments.sql. Optional.
+        group_id: groupId || null,
       })
       .select('id')
       .single()
