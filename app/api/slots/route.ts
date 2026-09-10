@@ -103,6 +103,20 @@ export async function GET(req: NextRequest) {
     return allDurations.length ? Math.max(...allDurations) : 45
   }
 
+  // Real duration for an EXISTING appointment already on the books. Mirrors the admin
+  // staff calendar's own fallback (first tier) when no size_tier was recorded — e.g. an
+  // appointment added directly by staff without picking a weight/size — so a booking
+  // occupies the SAME length of time here as it visibly does on the calendar staff see.
+  // (serviceDurationMin above stays on the conservative "longest tier" fallback for a
+  // NEW booking's own requested duration, since that guards against under-booking when a
+  // customer-facing weight label doesn't exactly match this service's tier labels.)
+  const existingApptDurationMin = (svcId: string, sizeTier?: string | null): number => {
+    const svc = allServices.find(s => s.id === svcId)
+    if (!svc?.tiers?.length) return 45
+    const tier = (sizeTier ? svc.tiers.find(t => t.label === sizeTier) : undefined) || svc.tiers[0]
+    return parseDurationStr(tier?.duration) ?? 45
+  }
+
   // Walk-in quick services (e.g. Nail Trim, Top Dog) can be flagged in Settings to skip
   // the per-slot groomer capacity check entirely — they're in-and-out in minutes, so they
   // shouldn't be blocked just because the slot looks "full" of longer grooming appointments.
@@ -221,7 +235,7 @@ export async function GET(req: NextRequest) {
   // started in, so the next slot or two could look wide open even though nobody was free.
   const apptWindows: { start: number; end: number }[] = (apptRows || []).map(a => {
     const start = parseTime((a.appointment_time as string).trim())
-    const dur = serviceDurationMin(a.service as string, (a as { size_tier?: string | null }).size_tier)
+    const dur = existingApptDurationMin(a.service as string, (a as { size_tier?: string | null }).size_tier)
     return { start, end: start + dur }
   }).filter(w => !isNaN(w.start))
 

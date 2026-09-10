@@ -580,6 +580,24 @@ export default function DeskAdmin() {
     } catch {/**/}
     finally { setSmsConsentSaving(false) }
   }
+
+  // Staff-recorded SMS opt-out (e.g. the client asked at checkout to stop getting
+  // texts). Only ever turns consent OFF — the counterpart to grantSmsConsent above.
+  const revokeSmsConsent = async (phone: string) => {
+    setSmsConsentSaving(true)
+    try {
+      const res = await fetch('/api/admin/clients', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, sms_consent: false }),
+      })
+      if (res.ok) {
+        setDetailClient(prev => prev ? { ...prev, sms_consent: false, sms_consent_at: null } : prev)
+        setClients(prev => prev.map(c => c.phone === phone ? { ...c, sms_consent: false, sms_consent_at: null } : c))
+      }
+    } catch {/**/}
+    finally { setSmsConsentSaving(false) }
+  }
   const [detailFutureAppts, setDetailFutureAppts] = useState<Appointment[]>([])
   const [detailFutureLoading, setDetailFutureLoading] = useState(false)
   const [detailNotes, setDetailNotes] = useState('')
@@ -6544,6 +6562,39 @@ export default function DeskAdmin() {
                                               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
                                           </div>
                                         ))}
+                                        {/* SMS consent is a separate, immediate action (not part of the
+                                            batched Save above) — same as the read-only view — so it's
+                                            still reachable while editing owner info, including opting
+                                            someone back OUT, which previously wasn't available here. */}
+                                        <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+                                          <div>
+                                            <label className="text-xs text-gray-400 block mb-1">SMS Consent</label>
+                                            {client.sms_consent ? (
+                                              <p className="text-sm font-semibold text-emerald-700">✓ Opted in{client.sms_consent_at ? ` · ${new Date(client.sms_consent_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : ''}</p>
+                                            ) : (
+                                              <p className="text-sm font-semibold text-amber-700">⚠ Not opted in</p>
+                                            )}
+                                          </div>
+                                          {!client.sms_consent ? (
+                                            <button
+                                              onClick={() => grantSmsConsent(client.phone)}
+                                              disabled={smsConsentSaving}
+                                              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-600 text-white disabled:opacity-50 hover:bg-sky-700 flex-shrink-0"
+                                              title="Use only after the client has verbally confirmed they want to receive SMS notifications"
+                                            >
+                                              {smsConsentSaving ? 'Saving…' : 'Mark opted-in'}
+                                            </button>
+                                          ) : (
+                                            <button
+                                              onClick={() => { if (confirm(`Mark ${client.name || client.phone} as opted out of SMS? They will stop receiving text notifications.`)) revokeSmsConsent(client.phone) }}
+                                              disabled={smsConsentSaving}
+                                              className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 disabled:opacity-50 hover:bg-gray-50 flex-shrink-0"
+                                              title="Use only after the client has asked to stop receiving SMS notifications"
+                                            >
+                                              {smsConsentSaving ? 'Saving…' : 'Mark opted-out'}
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
                                     ) : (
                                       <div className="px-4 py-4 space-y-3">
@@ -6586,7 +6637,7 @@ export default function DeskAdmin() {
                                                 <p className="text-sm font-semibold text-amber-700">⚠ Not opted in — no texts sent</p>
                                               )}
                                             </div>
-                                            {!client.sms_consent && (
+                                            {!client.sms_consent ? (
                                               <button
                                                 onClick={() => grantSmsConsent(client.phone)}
                                                 disabled={smsConsentSaving}
@@ -6594,6 +6645,15 @@ export default function DeskAdmin() {
                                                 title="Use only after the client has verbally confirmed they want to receive SMS notifications"
                                               >
                                                 {smsConsentSaving ? 'Saving…' : 'Mark opted-in'}
+                                              </button>
+                                            ) : (
+                                              <button
+                                                onClick={() => { if (confirm(`Mark ${client.name || client.phone} as opted out of SMS? They will stop receiving text notifications.`)) revokeSmsConsent(client.phone) }}
+                                                disabled={smsConsentSaving}
+                                                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 disabled:opacity-50 hover:bg-gray-50 flex-shrink-0"
+                                                title="Use only after the client has asked to stop receiving SMS notifications"
+                                              >
+                                                {smsConsentSaving ? 'Saving…' : 'Mark opted-out'}
                                               </button>
                                             )}
                                           </div>

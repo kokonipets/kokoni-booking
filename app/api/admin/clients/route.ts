@@ -236,11 +236,17 @@ export async function PATCH(req: NextRequest) {
   if (email !== undefined) updates.email = email || null
   if (address !== undefined) updates.address = address || null
   // Staff can record SMS opt-in on the client's behalf (e.g. customer verbally
-  // agreed at checkout but didn't check the box during booking). Never used to
-  // turn consent OFF from this endpoint — only to capture a true opt-in.
+  // agreed at checkout but didn't check the box during booking), or record an
+  // explicit opt-OUT (e.g. the client asked to stop receiving texts). Both are
+  // only ever driven by an explicit boolean sent from the staff UI — never
+  // implied by omission — so a partial update elsewhere (e.g. saving just a
+  // name change) can never silently change consent either way.
   if (sms_consent === true) {
     updates.sms_consent = true
     updates.sms_consent_at = new Date().toISOString()
+  } else if (sms_consent === false) {
+    updates.sms_consent = false
+    updates.sms_consent_at = null
   }
 
   // `name` is NOT NULL on the clients table. Postgres validates NOT NULL on the
