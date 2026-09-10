@@ -9118,6 +9118,20 @@ export default function DeskAdmin() {
             const prevMonth = () => { const d=new Date(year,month-2); setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); setSelectedDay(null) }
             const nextMonth = () => { const d=new Date(year,month); setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); setSelectedDay(null) }
             const totalCells = Math.ceil((firstDay+daysInMonth)/7)*7
+            const CAL_MONTH_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+            const activeGroomers = staff.filter(s => s.is_active && s.role === 'groomer')
+            // Mirrors the staff calendar's own workFor()/groomerWindows logic (and the /api/slots
+            // route's), so "no staff" on this month view means the same thing it means everywhere
+            // else — a real, bookable-hours gap, not just "nobody happens to have an appointment".
+            const isStaffWorking = (s: StaffMember, dateStr: string, dow: number): boolean => {
+              if (s.days_off?.includes(dateStr)) return false
+              const special = s.special_hours?.[dateStr]
+              if (special?.start && special?.end) return special.end > special.start
+              const workHours = s.work_hours || {}
+              if (Object.keys(workHours).length === 0) return true // no schedule configured → assume working
+              const wh = workHours[CAL_MONTH_DAY_NAMES[dow]]
+              return !!(wh?.start && wh?.end && wh.end > wh.start)
+            }
             return (
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -9150,14 +9164,25 @@ export default function DeskAdmin() {
                       const dayBlockedCount=blockedTimes.filter(b=>b.date===dateStr).length
                       const isToday=dateStr===today
                       const isSelected=dateStr===selectedDay
+                      const dayDow = new Date(dateStr+'T12:00:00').getDay()
+                      const isStoreClosedDay = !openDays.includes(dayDow)
+                      // Only flag "no staff" on a day the store is actually open — a closed day
+                      // (e.g. Tue/Sat) gets its own label instead, so the two reasons a day looks
+                      // empty (closed vs. open-but-unstaffed) are never confused for each other.
+                      const noStaffThisDay = !isStoreClosedDay && activeGroomers.length > 0 && !activeGroomers.some(s => isStaffWorking(s, dateStr, dayDow))
                       return (
                         <div key={dayNum} onClick={()=>setSelectedDay(isSelected?null:dateStr)}
                           className={`min-h-16 md:min-h-28 p-1 md:p-2 border-r border-b border-gray-100 last:border-r-0 transition-colors cursor-pointer ${i%7===6?'border-r-0':''}
-                            ${isSelected?'bg-sky-50 ring-2 ring-inset ring-sky-300':isToday?'bg-sky-50/50':'bg-white hover:bg-gray-50'}`}>
+                            ${isSelected?'bg-sky-50 ring-2 ring-inset ring-sky-300':isToday?'bg-sky-50/50':isStoreClosedDay?'bg-gray-50':'bg-white hover:bg-gray-50'}`}>
                           <div className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full mb-1
-                            ${isToday?'bg-sky-600 text-white':isSelected?'bg-sky-500 text-white':'text-gray-700'}`}>
+                            ${isToday?'bg-sky-600 text-white':isSelected?'bg-sky-500 text-white':isStoreClosedDay?'text-gray-400':'text-gray-700'}`}>
                             {dayNum}
                           </div>
+                          {isStoreClosedDay ? (
+                            <div className="text-xs text-gray-400 font-medium mb-0.5">Closed</div>
+                          ) : noStaffThisDay ? (
+                            <div className="text-xs text-rose-500 font-semibold mb-0.5" title="No groomer is scheduled to work this day">⚠️ No staff</div>
+                          ) : null}
                           {dayAppts.length>0 && (
                             <div className="flex items-center gap-1 mb-0.5">
                               <span className="text-xs text-sky-600 font-semibold">{dayAppts.length} appt{dayAppts.length!==1?'s':''}</span>
