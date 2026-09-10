@@ -1296,12 +1296,6 @@ export default function BookPage() {
                   Available Times — {formatDate(selectedDate)}
                 </p>
                 <p className="text-xs text-gray-500 mb-3">🕒 All times are in Pacific Time (Los Angeles).</p>
-                {isGroupBooking && (
-                  <div className="mb-3 p-3 bg-sky-50 border border-sky-100 rounded-xl text-xs text-sky-800 leading-relaxed">
-                    💡 You&apos;re booking {1 + groupExtraPets.length} dogs together. We&apos;ll pick real start times so every
-                    dog gets a groomer within 1 hour of the time you choose — we&apos;ll confirm the exact order at check-in.
-                  </div>
-                )}
                 {(isGroupBooking ? groupSlotsLoading : dateSlotsLoading) ? (
                   <p className="text-sm text-gray-400 text-center py-4">Checking availability…</p>
                 ) : (() => {
