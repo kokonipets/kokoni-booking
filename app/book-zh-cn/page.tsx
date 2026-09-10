@@ -986,11 +986,6 @@ export default function BookPageZhCn() {
               </p>
             )}
 
-            {isGroupBooking && !isWalkIn && (
-              <p className="text-xs text-gray-500 mt-3">
-                我们会尽量将每只狗狗安排在您稍后选择时间的 1 小时内 — 实际开始时间可能略有错开，我们会与您确认。
-              </p>
-            )}
             {isAddingNewPet && (
               <div className="mt-4 space-y-3">
                 <input type="text" placeholder="狗狗名字 *" value={newPetName} onChange={e => setNewPetName(e.target.value)}
@@ -1074,12 +1069,6 @@ export default function BookPageZhCn() {
                 </div>
               )
             })}
-
-            {isGroupBooking && !isWalkIn && (
-              <p className="text-xs text-gray-500 mt-5">
-                我们会尽量将每只狗狗安排在您下一步选择时间的 1 小时内 — 实际开始时间可能略有错开，我们会与您确认。
-              </p>
-            )}
 
             {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
             <button onClick={handleServiceContinue}

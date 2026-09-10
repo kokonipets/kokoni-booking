@@ -1144,12 +1144,6 @@ export default function BookPage() {
               </p>
             )}
 
-            {isGroupBooking && !isWalkIn && (
-              <p className="text-xs text-gray-500 mt-3">
-                We&apos;ll do our best to fit every dog within 1 hour of the time you pick later — exact start times may be staggered slightly, and we&apos;ll confirm with you.
-              </p>
-            )}
-
             {isAddingNewPet && (
               <div className="mt-4 space-y-3">
                 <input
@@ -1260,12 +1254,6 @@ export default function BookPage() {
                 </div>
               )
             })}
-
-            {isGroupBooking && !isWalkIn && (
-              <p className="text-xs text-gray-500 mt-5">
-                We&apos;ll do our best to fit every dog within 1 hour of the time you pick on the next step — exact start times may be staggered slightly, and we&apos;ll confirm with you.
-              </p>
-            )}
 
             {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
             <button
