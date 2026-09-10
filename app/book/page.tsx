@@ -509,6 +509,65 @@ export default function BookPage() {
   const removeGroupExtraPet = (idx: number) => setGroupExtraPets(prev => prev.filter((_, i) => i !== idx))
   const updateGroupExtraPet = (idx: number, patch: Partial<{ petId: string; service: string }>) =>
     setGroupExtraPets(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p))
+  // Renders the same rich service-picker (icon, name, price, hover description,
+  // checkmark) for any dog in the booking — used for the primary dog and for every
+  // extra dog in a group booking, so all dogs get an equally full treatment.
+  const renderServiceOptions = (selectedServiceId: string, onSelect: (id: string) => void) => {
+    // Group by service type using keyword matching
+    const grouped: Record<string, any[]> = { 'Bath & Brush': [], 'Simply Cute': [], 'Asian Fusion': [], 'Other': [] }
+    dynamicServices.forEach(s => {
+      if (!s.visible && s.visible !== undefined) return // skip hidden services
+      // Walk-in mode only offers services flagged "⚡ Walk-in Anytime" in Settings —
+      // those are the quick ones that don't need a real time slot.
+      if (isWalkIn && !s.skipCapacity) return
+      const n = s.name.toLowerCase()
+      if (n.includes('bath') || n.includes('brush')) grouped['Bath & Brush'].push(s)
+      else if (n.includes('simply') || n.includes('cute')) grouped['Simply Cute'].push(s)
+      else if (n.includes('asian') || n.includes('fusion')) grouped['Asian Fusion'].push(s)
+      else grouped['Other'].push(s) // catch-all so new services still show up
+    })
+    // Define order: Bath & Brush first, then Simply Cute, then Asian Fusion, then anything else
+    const order = ['Bath & Brush', 'Simply Cute', 'Asian Fusion', 'Other']
+    const serviceButton = (s: any) => (
+      <button
+        key={s.id}
+        onClick={() => onSelect(s.id)}
+        className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-all text-left group ${selectedServiceId === s.id ? 'border-sky-500 bg-sky-50' : 'border-gray-100 hover:border-sky-200'}`}
+      >
+        <span className="text-2xl mt-0.5">{s.icon}</span>
+        <div className="flex-1">
+          <p className="font-semibold text-gray-800">
+            {s.name.includes('-') ? (
+              <>
+                {s.name.split('-')[0].trim()}
+                <span className="text-sky-400 ml-1">-{s.name.split('-')[1]}</span>
+              </>
+            ) : s.name.includes('$') ? (
+              <>
+                {s.name.split('$')[0].trim()}
+                <span className="text-sky-400 ml-1">${s.name.split('$')[1].trim()}</span>
+              </>
+            ) : (
+              s.name
+            )}
+          </p>
+          <p className="text-sm text-gray-400 mt-0.5 max-h-0 overflow-hidden group-hover:max-h-20 transition-all duration-200">{s.desc}</p>
+        </div>
+        {selectedServiceId === s.id && <CheckCircle2 className="w-5 h-5 text-sky-500 mt-1" />}
+      </button>
+    )
+    const buttons = order.flatMap(groupName =>
+      (grouped[groupName] || []).map(serviceButton)
+    )
+    if (isWalkIn && buttons.length === 0) {
+      return (
+        <p className="text-sm text-gray-400 text-center py-6">
+          No walk-in services are set up yet. Please check in with the front desk.
+        </p>
+      )
+    }
+    return buttons
+  }
   // An extra dog picked before a service was chosen for the primary dog starts with
   // no service of its own — default it to match once the primary service is picked,
   // without ever overwriting a choice the customer already made for that dog.
@@ -1180,87 +1239,30 @@ export default function BookPage() {
             )}
 
             <div className="space-y-4">
-              {(() => {
-                // Group by service type using keyword matching
-                const grouped: Record<string, any[]> = { 'Bath & Brush': [], 'Simply Cute': [], 'Asian Fusion': [], 'Other': [] }
-                dynamicServices.forEach(s => {
-                  if (!s.visible && s.visible !== undefined) return // skip hidden services
-                  // Walk-in mode only offers services flagged "⚡ Walk-in Anytime" in Settings —
-                  // those are the quick ones that don't need a real time slot.
-                  if (isWalkIn && !s.skipCapacity) return
-                  const n = s.name.toLowerCase()
-                  if (n.includes('bath') || n.includes('brush')) grouped['Bath & Brush'].push(s)
-                  else if (n.includes('simply') || n.includes('cute')) grouped['Simply Cute'].push(s)
-                  else if (n.includes('asian') || n.includes('fusion')) grouped['Asian Fusion'].push(s)
-                  else grouped['Other'].push(s) // catch-all so new services still show up
-                })
-                // Define order: Bath & Brush first, then Simply Cute, then Asian Fusion, then anything else
-                const order = ['Bath & Brush', 'Simply Cute', 'Asian Fusion', 'Other']
-                const serviceButton = (s: any) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setService(s.id)}
-                    className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-all text-left group ${service === s.id ? 'border-sky-500 bg-sky-50' : 'border-gray-100 hover:border-sky-200'}`}
-                  >
-                    <span className="text-2xl mt-0.5">{s.icon}</span>
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-800">
-                        {s.name.includes('-') ? (
-                          <>
-                            {s.name.split('-')[0].trim()}
-                            <span className="text-sky-400 ml-1">-{s.name.split('-')[1]}</span>
-                          </>
-                        ) : s.name.includes('$') ? (
-                          <>
-                            {s.name.split('$')[0].trim()}
-                            <span className="text-sky-400 ml-1">${s.name.split('$')[1].trim()}</span>
-                          </>
-                        ) : (
-                          s.name
-                        )}
-                      </p>
-                      <p className="text-sm text-gray-400 mt-0.5 max-h-0 overflow-hidden group-hover:max-h-20 transition-all duration-200">{s.desc}</p>
-                    </div>
-                    {service === s.id && <CheckCircle2 className="w-5 h-5 text-sky-500 mt-1" />}
-                  </button>
-                )
-                const buttons = order.flatMap(groupName =>
-                  (grouped[groupName] || []).map(serviceButton)
-                )
-                if (isWalkIn && buttons.length === 0) {
-                  return (
-                    <p className="text-sm text-gray-400 text-center py-6">
-                      No walk-in services are set up yet. Please check in with the front desk.
-                    </p>
-                  )
-                }
-                return buttons
-              })()}
+              {renderServiceOptions(service, setService)}
             </div>
 
-            {/* ── Other dogs in this group already picked on the previous step — just need a service each ── */}
+            {/* ── Other dogs in this group already picked on the previous step — same rich picker, one section per dog, so no dog's service choice looks like an afterthought ── */}
+            {isGroupBooking && !isWalkIn && groupExtraPets.map((extra, idx) => {
+              const extraPet = pets.find(p => p.id === extra.petId)
+              return (
+                <div key={idx} className="mt-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm text-gray-500">For {extraPet?.name}</p>
+                    <button onClick={() => removeGroupExtraPet(idx)}
+                      className="text-xs text-gray-400 hover:text-red-500">Remove dog ×</button>
+                  </div>
+                  <div className="space-y-4">
+                    {renderServiceOptions(extra.service, (id: string) => updateGroupExtraPet(idx, { service: id }))}
+                  </div>
+                </div>
+              )
+            })}
+
             {isGroupBooking && !isWalkIn && (
-              <div className="mt-5 space-y-3">
-                {groupExtraPets.map((extra, idx) => {
-                  const extraPet = pets.find(p => p.id === extra.petId)
-                  return (
-                    <div key={idx} className="p-3 bg-violet-50 border border-violet-100 rounded-xl space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Also booking — {extraPet?.name}</span>
-                        <button onClick={() => removeGroupExtraPet(idx)}
-                          className="text-violet-400 hover:text-violet-600 text-lg leading-none">×</button>
-                      </div>
-                      <select value={extra.service} onChange={e => updateGroupExtraPet(idx, { service: e.target.value })}
-                        className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300">
-                        {dynamicServices.filter((s: any) => s.visible !== false && !s.skipCapacity).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                    </div>
-                  )
-                })}
-                <p className="text-xs text-gray-500">
-                  We&apos;ll do our best to fit every dog within 1 hour of the time you pick on the next step — exact start times may be staggered slightly, and we&apos;ll confirm with you.
-                </p>
-              </div>
+              <p className="text-xs text-gray-500 mt-5">
+                We&apos;ll do our best to fit every dog within 1 hour of the time you pick on the next step — exact start times may be staggered slightly, and we&apos;ll confirm with you.
+              </p>
             )}
 
             {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
