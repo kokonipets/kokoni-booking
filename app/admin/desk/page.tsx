@@ -2888,6 +2888,25 @@ export default function DeskAdmin() {
     { bg: 'bg-teal-100', border: 'border-b-teal-400', text: 'text-teal-800' },
   ]
 
+  // Distinct colors per SERVICE so e.g. Asian Fusion vs. Simply Cute pop out on the
+  // Staff Schedule grid at a glance instead of every appointment looking the same.
+  // Looked up by the service's position in Settings (stable as long as services
+  // aren't reordered); falls back to a simple hash of the service id for anything
+  // not found there, so a custom/legacy service still gets a consistent color.
+  const SERVICE_BLOCK_COLORS = [
+    { bg: 'bg-sky-50', border: 'border-sky-300', text: 'text-sky-800' },
+    { bg: 'bg-violet-50', border: 'border-violet-300', text: 'text-violet-800' },
+    { bg: 'bg-amber-50', border: 'border-amber-300', text: 'text-amber-800' },
+    { bg: 'bg-emerald-50', border: 'border-emerald-300', text: 'text-emerald-800' },
+    { bg: 'bg-rose-50', border: 'border-rose-300', text: 'text-rose-800' },
+    { bg: 'bg-teal-50', border: 'border-teal-300', text: 'text-teal-800' },
+  ]
+  const serviceBlockColor = (serviceId: string) => {
+    const idx = services.findIndex(s => s.id === serviceId)
+    const key = idx >= 0 ? idx : Array.from(serviceId).reduce((h, ch) => h + ch.charCodeAt(0), 0)
+    return SERVICE_BLOCK_COLORS[key % SERVICE_BLOCK_COLORS.length]
+  }
+
   const renderStaffCalendar = (showConfirmedList: boolean = true) => {
             const dayStr = todayViewDate
             const isTodayCal = dayStr === salonDayStr()
@@ -3177,7 +3196,10 @@ export default function DeskAdmin() {
                                     const h = dur * CAL_PX
                                     const isDone = a.status === 'completed' || !!a.checked_out_at
                                     const isCheckedIn = !!a.checked_in_at && !a.checked_out_at
-                                    const cls = isDone ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : isCheckedIn ? 'bg-sky-50 border-sky-200 text-sky-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+                                    // Color = service (so different services are easy to tell apart at a
+                                    // glance); a dashed border marks an appointment that hasn't checked in yet.
+                                    const svcColor = serviceBlockColor(a.service)
+                                    const cls = `${svcColor.bg} ${svcColor.border} ${svcColor.text} ${isDone || isCheckedIn ? 'border-solid' : 'border-dashed'}`
                                     const wasPushed = displayStart !== startMin
                                     return (
                                       <div key={a.id}
