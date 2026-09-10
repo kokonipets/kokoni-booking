@@ -1228,7 +1228,7 @@ export default function BookPage() {
               Select a Service
             </h2>
             <p className="text-sm text-gray-500 mb-5">
-              For {isNewClient ? newPetName : (isAddingNewPet ? newPetName : selectedPet?.name)}
+              For <span className="font-bold text-sky-600">{isNewClient ? newPetName : (isAddingNewPet ? newPetName : selectedPet?.name)}</span>
             </p>
 
             {isWalkIn && (
@@ -1248,7 +1248,7 @@ export default function BookPage() {
               return (
                 <div key={idx} className="mt-6">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm text-gray-500">For {extraPet?.name}</p>
+                    <p className="text-sm text-gray-500">For <span className="font-bold text-sky-600">{extraPet?.name}</span></p>
                     <button onClick={() => removeGroupExtraPet(idx)}
                       className="text-xs text-gray-400 hover:text-red-500">Remove dog ×</button>
                   </div>
