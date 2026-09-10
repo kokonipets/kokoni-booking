@@ -208,6 +208,15 @@ export default function BookPageZhCn() {
 
   const [service, setService] = useState('')
 
+  // Optional: a returning client with more than one dog on file can add up to 2 more
+  // dogs to book at the SAME requested time (existing pets only — keeps this additive;
+  // new-pet creation and vaccine records stay limited to the primary dog for now).
+  const [groupExtraPets, setGroupExtraPets] = useState<{ petId: string; service: string }[]>([])
+  const [groupSlots, setGroupSlots] = useState<string[] | null>(null)
+  const [groupSlotsLoading, setGroupSlotsLoading] = useState(false)
+  const [groupAssignments, setGroupAssignments] = useState<Record<string, { index: number; start: string }[]>>({})
+  const isGroupBooking = groupExtraPets.length > 0
+
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const [calMonth, setCalMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
@@ -224,6 +233,7 @@ export default function BookPageZhCn() {
   const tosRef = useRef<HTMLDivElement>(null)
 
   const [appointmentId, setAppointmentId] = useState('')
+  const [groupBookingWarning, setGroupBookingWarning] = useState('')
   const [needsVaccineEmail, setNeedsVaccineEmail] = useState(false)
   const [vaccineContactMethod, setVaccineContactMethod] = useState<'email' | 'text' | null>(null)
 
@@ -306,6 +316,31 @@ export default function BookPageZhCn() {
     selectedDateRef.current = selectedDate
     fetchDateSlots(selectedDate, service, newPetWeight)
   }, [selectedDate, service, newPetWeight, fetchDateSlots])
+
+  // When booking 2-3 dogs at the same requested time, availability comes from the
+  // group feasibility check instead of the plain per-dog slot list — it also returns
+  // each dog's own real assigned start time (assignments), used at submit time.
+  useEffect(() => {
+    if (!isGroupBooking || !selectedDate || !service) { setGroupSlots(null); setGroupAssignments({}); return }
+    const yyyy = selectedDate.getFullYear()
+    const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
+    const dd = String(selectedDate.getDate()).padStart(2, '0')
+    const dateStr = `${yyyy}-${mm}-${dd}`
+    const dogs = [{ service }, ...groupExtraPets.map(g => ({ service: g.service }))]
+    setGroupSlotsLoading(true)
+    fetch('/api/slots/group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: dateStr, dogs }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        setGroupSlots(Array.isArray(data.slots) ? data.slots : [])
+        setGroupAssignments(data.assignments || {})
+      })
+      .catch(() => { setGroupSlots([]); setGroupAssignments({}) })
+      .finally(() => setGroupSlotsLoading(false))
+  }, [isGroupBooking, selectedDate, service, groupExtraPets])
 
   const handlePhoneLookup = async () => {
     const digits = phone.replace(/\D/g, '')
@@ -406,6 +441,102 @@ export default function BookPageZhCn() {
     setStep('service')
   }
 
+  // ─── Booking multiple dogs at the same time (existing pets only) ──────
+  // Tapping a pet card on the "Which dog" step toggles it in/out of this booking —
+  // the first one picked is the primary dog, up to 2 more can join as a group.
+  const toggleGroupPetSelection = (pet: Pet) => {
+    setIsAddingNewPet(false)
+    // Walk-ins are seen immediately and skip the date/time step entirely, so there's
+    // no slot to check group feasibility against — keep walk-in selection single-pet.
+    if (isWalkIn) { setSelectedPet(pet); setGroupExtraPets([]); return }
+    if (selectedPet?.id === pet.id) {
+      // Deselecting the primary dog — promote the first extra (if any) to primary
+      // so the booking doesn't just vanish out from under the other selected dogs.
+      if (groupExtraPets.length > 0) {
+        const [head, ...rest] = groupExtraPets
+        setSelectedPet(pets.find(p => p.id === head.petId) || null)
+        setGroupExtraPets(rest)
+      } else {
+        setSelectedPet(null)
+      }
+      return
+    }
+    const extraIdx = groupExtraPets.findIndex(g => g.petId === pet.id)
+    if (extraIdx > -1) {
+      setGroupExtraPets(groupExtraPets.filter((_, i) => i !== extraIdx))
+      return
+    }
+    if (!selectedPet) { setSelectedPet(pet); return }
+    if (groupExtraPets.length < 2) {
+      setGroupExtraPets([...groupExtraPets, { petId: pet.id, service }])
+    }
+  }
+  const removeGroupExtraPet = (idx: number) => setGroupExtraPets(prev => prev.filter((_, i) => i !== idx))
+  const updateGroupExtraPet = (idx: number, patch: Partial<{ petId: string; service: string }>) =>
+    setGroupExtraPets(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p))
+  // Renders the same rich service-picker (icon, name, price, hover description,
+  // checkmark) for any dog in the booking — used for the primary dog and for every
+  // extra dog in a group booking, so all dogs get an equally full treatment.
+  const renderServiceOptions = (selectedServiceId: string, onSelect: (id: string) => void) => {
+    const grouped: Record<string, any[]> = { 'Bath & Brush': [], 'Simply Cute': [], 'Asian Fusion': [], 'Other': [] }
+    dynamicServices.forEach(s => {
+      if (!s.visible && s.visible !== undefined) return
+      if (isWalkIn && !s.skipCapacity) return
+      const n = s.name.toLowerCase()
+      if (n.includes('bath') || n.includes('brush')) grouped['Bath & Brush'].push(s)
+      else if (n.includes('simply') || n.includes('cute')) grouped['Simply Cute'].push(s)
+      else if (n.includes('asian') || n.includes('fusion')) grouped['Asian Fusion'].push(s)
+      else grouped['Other'].push(s)
+    })
+    const order = ['Bath & Brush', 'Simply Cute', 'Asian Fusion', 'Other']
+    const serviceButton = (s: any) => (
+      <button
+        key={s.id}
+        onClick={() => onSelect(s.id)}
+        className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-all text-left group ${selectedServiceId === s.id ? 'border-sky-500 bg-sky-50' : 'border-gray-100 hover:border-sky-200'}`}
+      >
+        <span className="text-2xl mt-0.5">{s.icon}</span>
+        <div className="flex-1">
+          <p className="font-semibold text-gray-800">
+            {s.name.includes('-') ? (
+              <>
+                {s.name.split('-')[0].trim()}
+                <span className="text-sky-400 ml-1">-{s.name.split('-')[1]}</span>
+              </>
+            ) : s.name.includes('$') ? (
+              <>
+                {s.name.split('$')[0].trim()}
+                <span className="text-sky-400 ml-1">${s.name.split('$')[1].trim()}</span>
+              </>
+            ) : (
+              s.name
+            )}
+          </p>
+          <p className="text-sm text-gray-400 mt-0.5 max-h-0 overflow-hidden group-hover:max-h-20 transition-all duration-200">{s.desc}</p>
+        </div>
+        {selectedServiceId === s.id && <CheckCircle2 className="w-5 h-5 text-sky-500 mt-1" />}
+      </button>
+    )
+    const buttons = order.flatMap(groupName =>
+      (grouped[groupName] || []).map(serviceButton)
+    )
+    if (isWalkIn && buttons.length === 0) {
+      return (
+        <p className="text-sm text-gray-400 text-center py-6">
+          目前尚未设置现场报到服务，请咨询前台。
+        </p>
+      )
+    }
+    return buttons
+  }
+  // An extra dog picked before a service was chosen for the primary dog starts with
+  // no service of its own — default it to match once the primary service is picked,
+  // without ever overwriting a choice the customer already made for that dog.
+  useEffect(() => {
+    if (!service) return
+    setGroupExtraPets(prev => prev.map(p => p.service ? p : { ...p, service }))
+  }, [service])
+
   const handleServiceContinue = () => {
     if (!service) { setError('请选择服务项目。'); return }
     setError('')
@@ -449,14 +580,29 @@ export default function BookPageZhCn() {
     setLoading(true)
     try {
       const digits = phone.replace(/\D/g, '')
+
+      // Group booking: the nominal time the customer picked isn't necessarily any one
+      // dog's real start time — /api/slots/group already worked out a real, staffable
+      // start per dog for this slot when the time grid was loaded. Re-check it's still
+      // there (availability can shift between loading the grid and submitting).
+      const groupId = isGroupBooking ? `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : null
+      const assignment = isGroupBooking ? groupAssignments[selectedTime] : null
+      if (isGroupBooking && !assignment) {
+        throw new Error("抱歉，该时段已无法容纳所有狗狗，请选择其他时间。")
+      }
+      const primaryTime = assignment ? (assignment.find(a => a.index === 0)?.start ?? selectedTime) : selectedTime
+
       const payload: Record<string, unknown> = {
-        phone: digits, service,
+        phone: digits,
+        service,
         date: formatDateShort(selectedDate!),
-        time: selectedTime, notes,
+        time: primaryTime,
+        notes,
         tosAgreedAt: new Date().toISOString(),
         smsConsent: smsConsentChecked,
         smsConsentAt: smsConsentChecked ? new Date().toISOString() : null,
         isWalkIn,
+        groupId,
       }
       if (isNewClient) {
         payload.isNewClient = true
@@ -518,6 +664,40 @@ export default function BookPageZhCn() {
           })
         } catch { /* photo upload failure shouldn't block booking */ }
       }
+      // Book any additional dogs from the same group, each at its own real assigned
+      // time — the primary dog above is already confirmed either way, so a problem
+      // here surfaces as a warning rather than failing the whole booking.
+      if (isGroupBooking && assignment) {
+        const failedNames: string[] = []
+        for (let i = 0; i < groupExtraPets.length; i++) {
+          const extra = groupExtraPets[i]
+          const extraPet = pets.find(p => p.id === extra.petId)
+          const extraTime = assignment.find(a => a.index === i + 1)?.start ?? primaryTime
+          try {
+            const extraRes = await fetch('/api/appointments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone: digits,
+                petId: extra.petId,
+                service: extra.service,
+                date: formatDateShort(selectedDate!),
+                time: extraTime,
+                tosAgreedAt: new Date().toISOString(),
+                isWalkIn: false,
+                groupId,
+              }),
+            })
+            if (!extraRes.ok) failedNames.push(extraPet?.name || '您的其他狗狗')
+          } catch {
+            failedNames.push(extraPet?.name || '您的其他狗狗')
+          }
+        }
+        if (failedNames.length > 0) {
+          setGroupBookingWarning(`我们无法自动为 ${failedNames.join('、')} 预约 — 请致电沙龙，我们会协助安排同一时段。`)
+        }
+      }
+
       setAppointmentId(data.id)
       setNeedsVaccineEmail(vaccineEmailOnly || vaccineSmsOnly)
       setVaccineContactMethod(vaccineSmsOnly ? 'text' : vaccineEmailOnly ? 'email' : null)
@@ -723,12 +903,24 @@ export default function BookPageZhCn() {
             <h2 className="text-xl font-bold text-sky-900 mb-1">
               {clientName && !/^\d+$/.test(clientName.trim()) ? `您好，${clientName.split(' ')[0]}！👋` : '您好！👋'}
             </h2>
-            <p className="text-sm text-gray-500 mb-5">今天哪只狗狗要来美容？</p>
+            <p className="text-sm text-gray-500 mb-5">
+              {pets.length > 1 ? '今天哪些狗狗要来美容？最多可同时预约 3 只。' : '今天哪只狗狗要来美容？'}
+            </p>
+
             <div className="space-y-3">
-              {pets.map(pet => (
-                <div key={pet.id} className={`rounded-xl border-2 transition-all ${selectedPet?.id === pet.id && !isAddingNewPet ? 'border-sky-500 bg-sky-50' : 'border-gray-100'}`}>
-                  <button onClick={() => { setSelectedPet(pet); setIsAddingNewPet(false) }}
-                    className="w-full flex items-center gap-4 p-4 text-left">
+              {pets.map(pet => {
+                const isPrimary = selectedPet?.id === pet.id && !isAddingNewPet
+                const isExtra = groupExtraPets.some(g => g.petId === pet.id)
+                const isChecked = isPrimary || isExtra
+                const totalSelected = (selectedPet && !isAddingNewPet ? 1 : 0) + groupExtraPets.length
+                const disabled = !isChecked && totalSelected >= 3
+                return (
+                <div key={pet.id} className={`rounded-xl border-2 transition-all ${isChecked ? 'border-sky-500 bg-sky-50' : disabled ? 'border-gray-100 opacity-40' : 'border-gray-100'}`}>
+                  <button
+                    onClick={() => toggleGroupPetSelection(pet)}
+                    disabled={disabled}
+                    className="w-full flex items-center gap-4 p-4 text-left disabled:cursor-not-allowed"
+                  >
                     {pet.photo_url ? (
                       <img src={pet.photo_url} alt={pet.name} className="w-12 h-12 rounded-full object-cover border-2 border-sky-100 shrink-0" />
                     ) : (
@@ -738,9 +930,16 @@ export default function BookPageZhCn() {
                       <p className="font-semibold text-gray-800">{pet.name}</p>
                       {pet.breed && <p className="text-sm text-gray-400">{pet.breed}</p>}
                     </div>
-                    {selectedPet?.id === pet.id && !isAddingNewPet && <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0" />}
+                    {pets.length > 1 && !isWalkIn ? (
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${isChecked ? 'bg-sky-500 border-sky-500' : 'border-gray-300'}`}>
+                        {isChecked && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>}
+                      </div>
+                    ) : (
+                      isChecked && <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0" />
+                    )}
                   </button>
-                  {selectedPet?.id === pet.id && !isAddingNewPet && (
+
+                  {isPrimary && (
                     <div className="px-4 pb-3 flex items-center gap-2 border-t border-sky-100">
                       <label className={`flex items-center gap-1.5 text-white text-xs font-semibold px-3 py-1.5 rounded-lg cursor-pointer transition-colors ${
                         uploadingPetPhotoId === pet.id ? 'bg-sky-400' : uploadDonePetId === pet.id ? 'bg-green-500' : 'bg-sky-500 hover:bg-sky-600'}`}>
@@ -752,14 +951,46 @@ export default function BookPageZhCn() {
                     </div>
                   )}
                 </div>
-              ))}
-              <button onClick={() => { setIsAddingNewPet(true); setSelectedPet(null) }}
-                className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${isAddingNewPet ? 'border-sky-500 bg-sky-50' : 'border-dashed border-gray-200 hover:border-sky-300'}`}>
+                )
+              })}
+
+              {/* Add new pet — a brand-new dog books alone, not as part of a group */}
+              <button
+                onClick={() => { setIsAddingNewPet(true); setSelectedPet(null); setGroupExtraPets([]) }}
+                className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${isAddingNewPet ? 'border-sky-500 bg-sky-50' : 'border-dashed border-gray-200 hover:border-sky-300'}`}
+              >
                 <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-xl">➕</div>
                 <p className="font-medium text-gray-600">添加一只狗狗</p>
                 {isAddingNewPet && <CheckCircle2 className="w-5 h-5 text-sky-500 ml-auto" />}
               </button>
+              {pets.length > 0 && (
+                <p className="text-xs text-gray-400 px-1">
+                  在这里添加的新狗狗会单独预约。若要将新狗狗加入群组预约，请先
+                  <a href="/profile" className="text-sky-600 hover:underline">在个人资料中添加它</a>，
+                  再回来一起选择所有狗狗。
+                </p>
+              )}
             </div>
+
+            {pets.length > 1 && !isAddingNewPet && !isWalkIn && (
+              <p className="text-xs font-semibold text-sky-700 mt-3">
+                已选择 {(selectedPet ? 1 : 0) + groupExtraPets.length} / 最多 3 只
+              </p>
+            )}
+
+            {/* Online booking tops out at 3 dogs together — a bigger group needs a real
+                person to work out the confirmation timing. */}
+            {!isWalkIn && (selectedPet ? 1 : 0) + groupExtraPets.length >= 3 && pets.length > 3 && (
+              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 mt-2">
+                需要一次预约 3 只以上的狗狗吗？请发短信至 <span className="font-semibold text-gray-700">(626) 621-4646</span>，我们将协助您安排时间。
+              </p>
+            )}
+
+            {isGroupBooking && !isWalkIn && (
+              <p className="text-xs text-gray-500 mt-3">
+                我们会尽量将每只狗狗安排在您稍后选择时间的 1 小时内 — 实际开始时间可能略有错开，我们会与您确认。
+              </p>
+            )}
             {isAddingNewPet && (
               <div className="mt-4 space-y-3">
                 <input type="text" placeholder="狗狗名字 *" value={newPetName} onChange={e => setNewPetName(e.target.value)}
@@ -824,39 +1055,31 @@ export default function BookPageZhCn() {
             )}
 
             <div className="space-y-4">
-              {(() => {
-                const visibleServices = dynamicServices.filter(s => (s.visible !== false) && (!isWalkIn || s.skipCapacity))
-                if (isWalkIn && visibleServices.length === 0) {
-                  return (
-                    <p className="text-sm text-gray-400 text-center py-6">目前尚未设置现场报到服务，请咨询前台。</p>
-                  )
-                }
-                return visibleServices.map(s => (
-                <button key={s.id} onClick={() => setService(s.id)}
-                  className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-all text-left group ${service === s.id ? 'border-sky-500 bg-sky-50' : 'border-gray-100 hover:border-sky-200'}`}>
-                  <span className="text-2xl mt-0.5">{s.icon}</span>
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-800">
-                      {s.name.includes('-') ? (
-                        <>
-                          {s.name.split('-')[0].trim()}
-                          <span className="text-sky-400 ml-1">-{s.name.split('-')[1]}</span>
-                        </>
-                      ) : s.name.includes('$') ? (
-                        <>
-                          {s.name.split('$')[0].trim()}
-                          <span className="text-sky-400 ml-1">${s.name.split('$')[1].trim()}</span>
-                        </>
-                      ) : s.name}
-                    </p>
-                    <p className="text-sm text-gray-400 mt-0.5 max-h-0 overflow-hidden group-hover:max-h-20 transition-all duration-200">{s.desc}</p>
-                  </div>
-                  {service === s.id && <CheckCircle2 className="w-5 h-5 text-sky-500 mt-1" />}
-                </button>
-                ))
-              })()}
+              {renderServiceOptions(service, setService)}
             </div>
 
+            {/* ── Other dogs in this group already picked on the previous step — same rich picker, one section per dog, so no dog's service choice looks like an afterthought ── */}
+            {isGroupBooking && !isWalkIn && groupExtraPets.map((extra, idx) => {
+              const extraPet = pets.find(p => p.id === extra.petId)
+              return (
+                <div key={idx} className="mt-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm text-gray-500">为 <span className="font-bold text-base text-sky-600">{extraPet?.name}</span> 选择</p>
+                    <button onClick={() => removeGroupExtraPet(idx)}
+                      className="text-xs text-gray-400 hover:text-red-500">移除这只狗狗 ×</button>
+                  </div>
+                  <div className="space-y-4">
+                    {renderServiceOptions(extra.service, (id: string) => updateGroupExtraPet(idx, { service: id }))}
+                  </div>
+                </div>
+              )
+            })}
+
+            {isGroupBooking && !isWalkIn && (
+              <p className="text-xs text-gray-500 mt-5">
+                我们会尽量将每只狗狗安排在您下一步选择时间的 1 小时内 — 实际开始时间可能略有错开，我们会与您确认。
+              </p>
+            )}
 
             {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
             <button onClick={handleServiceContinue}
@@ -881,7 +1104,7 @@ export default function BookPageZhCn() {
                   <Clock className="w-4 h-4" />可预约时段 — {formatDate(selectedDate)}
                 </p>
                 <p className="text-xs text-gray-500 mb-3">🕒 所有时间均为太平洋时间（洛杉矶）。</p>
-                {dateSlotsLoading ? (
+                {(isGroupBooking ? groupSlotsLoading : dateSlotsLoading) ? (
                   <p className="text-sm text-gray-400 text-center py-4">查询可用时段中…</p>
                 ) : (() => {
                   // 使用沙龙所在时区（洛杉矶/太平洋时间）判断"今天"与当前时间，
@@ -895,7 +1118,7 @@ export default function BookPageZhCn() {
                   // The server already accounts for this service's real duration — whether it
                   // would run into closing time or another appointment further out — so nothing
                   // needs to be re-filtered here beyond hiding times already in the past.
-                  const baseSlots = dateSlots ?? dynamicTimeSlots
+                  const baseSlots = isGroupBooking ? (groupSlots ?? []) : (dateSlots ?? dynamicTimeSlots)
                   const availableSlots = baseSlots.filter(t => {
                     if (isSelectedToday && parseTimeMins(t) <= nowMins) return false
                     return true
@@ -1045,11 +1268,26 @@ export default function BookPageZhCn() {
               <p className="text-amber-700 text-sm mt-1">我们将审核您的申请，确认后将以<strong>短信</strong>通知您。</p>
             </div>
             )}
+            {groupBookingWarning && (
+              <div className="bg-red-50 border-2 border-red-200 rounded-2xl px-5 py-4 mb-5 text-left">
+                <p className="text-red-700 text-sm">⚠️ {groupBookingWarning}</p>
+              </div>
+            )}
+
             <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm text-left mb-4 space-y-2">
               <p className="font-semibold text-gray-700 mb-1">📝 您的预约</p>
               <div className="flex items-center gap-2 text-gray-600"><span>🐾</span><span>{isNewClient || isAddingNewPet ? newPetName : selectedPet?.name}</span></div>
               <div className="flex items-center gap-2 text-gray-600"><span>✂️</span><span>{dynamicServices.find(s => s.id === service)?.name}</span></div>
-              <div className="flex items-center gap-2 text-gray-600"><span>📅</span><span>{isWalkIn ? '现在（现场报到）' : `${selectedDate ? formatDate(selectedDate) : ''} @ ${selectedTime}`}</span></div>
+              {isGroupBooking && groupExtraPets.map((extra, idx) => {
+                const extraPet = pets.find(p => p.id === extra.petId)
+                return (
+                  <div key={idx} className="flex items-center gap-2 text-gray-600 pl-6">
+                    <span>+ 🐾</span>
+                    <span>{extraPet?.name} — {dynamicServices.find(s => s.id === extra.service)?.name}</span>
+                  </div>
+                )
+              })}
+              <div className="flex items-center gap-2 text-gray-600"><span>📅</span><span>{isWalkIn ? '现在（现场报到）' : `${selectedDate ? formatDate(selectedDate) : ''} @ ${selectedTime}${isGroupBooking ? '（实际开始时间可能略有错开）' : ''}`}</span></div>
               <div className="flex items-center gap-2 text-gray-600"><span>📱</span><span>{phone}</span></div>
             </div>
             {needsVaccineEmail && (
