@@ -1197,6 +1197,15 @@ export default function BookPage() {
                     + Book another dog at the same time
                   </button>
                 )}
+                {/* Online booking tops out at 3 dogs together — a bigger group needs a real
+                    person to work out the confirmation timing, so we hand off to a text
+                    instead of pretending the picker supports it. */}
+                {groupExtraPets.length >= 2 && pets.filter(p => p.id !== selectedPet.id).length > groupExtraPets.length && (
+                  <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+                    Booking more than 3 dogs together? Text us at <span className="font-semibold text-gray-700">(626) 621-4646</span> and
+                    we&apos;ll help arrange the times.
+                  </p>
+                )}
                 {groupExtraPets.length > 0 && (
                   <p className="text-xs text-gray-500">
                     We&apos;ll do our best to fit every dog within 1 hour of the time you pick on the next step — exact start times may be staggered slightly, and we&apos;ll confirm with you.
