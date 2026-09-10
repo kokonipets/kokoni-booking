@@ -865,12 +865,19 @@ export default function DeskAdmin() {
     setCalDayLoading(false)
   }, [])
 
+  // Bumped after any action that can change what the Staff Schedule widget shows
+  // (assign staff, delete, confirm/decline, reschedule, etc.) so its snapshot of
+  // calDayAppts -- otherwise only refetched on tab/date change -- picks up the
+  // change immediately instead of looking stale until the user switches away and back.
+  const [calRefreshTick, setCalRefreshTick] = useState(0)
+  const refreshCalDayAppts = useCallback(() => setCalRefreshTick(t => t + 1), [])
+
   // Staff calendar widget: shown inside both Recent Confirmed and Pending Request, so it
   // loads whenever either tab is open (or the viewed day changes) rather than piggybacking
   // on the Today tab's fetch.
   useEffect(() => {
     if (tab === 'staff_cal' || tab === 'requests') fetchCalDayAppts(todayViewDate)
-  }, [tab, todayViewDate, fetchCalDayAppts])
+  }, [tab, todayViewDate, fetchCalDayAppts, calRefreshTick])
 
   const fetchCalendar = useCallback(async () => {
     setLoading(true)
@@ -1175,6 +1182,7 @@ export default function DeskAdmin() {
         setDetailAppt(prev => prev ? { ...prev, status: newStatus } : prev)
         setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, status: newStatus } : a))
         setCalendarAppts(prev => prev.map(a => a.id === detailAppt.id ? { ...a, status: newStatus } : a))
+        setCalDayAppts(prev => prev.map(a => a.id === detailAppt.id ? { ...a, status: newStatus } : a))
         showToast(action === 'confirm' ? '✓ Confirmed! SMS sent.' : action === 'decline' ? 'Declined.' : action === 'start' ? 'Checked in!' : 'Completed!')
         if (action === 'confirm' || action === 'decline') setDetailAppt(null)
       }
@@ -1429,6 +1437,7 @@ export default function DeskAdmin() {
       const data = await res.json()
       if (data.success) {
         setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, assigned_groomer: staffName, assigned_bather: staffName } : a))
+        refreshCalDayAppts()
         showToast(`✓ Assigned to ${staffName}`)
       } else {
         showToast('⚠️ Assign failed')
@@ -1458,6 +1467,8 @@ export default function DeskAdmin() {
         setDetailAppt(prev => prev ? { ...prev, appointment_date: detailRescheduleDate, appointment_time: detailRescheduleTime, status: 'pending', groomer_confirmed: false } : prev)
         setAppointments(prev => prev.map(updater))
         setCalendarAppts(prev => prev.map(updater))
+        setCalDayAppts(prev => prev.map(updater))
+        refreshCalDayAppts()
         showToast('✓ Rescheduled! Groomer needs to re-confirm.')
       } else {
         showToast('⚠️ Reschedule failed')
@@ -1533,6 +1544,7 @@ export default function DeskAdmin() {
         setDetailAppt(null)
         setAppointments(prev => prev.filter(a => a.id !== id))
         setCalendarAppts(prev => prev.filter(a => a.id !== id))
+        setCalDayAppts(prev => prev.filter(a => a.id !== id))
         showToast('Appointment deleted.')
       } else {
         showToast('⚠️ Delete failed')
@@ -2840,6 +2852,7 @@ export default function DeskAdmin() {
         if (tab==='today'||tab==='checkout') fetchAppointments('today')
         else if (tab==='requests') fetchAppointments('requests')
         else if (tab==='intake') fetchAppointments('pending')
+        refreshCalDayAppts()
       }
     } catch { showToast('Something went wrong.') }
     setActionLoading(null)
