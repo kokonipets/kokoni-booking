@@ -671,6 +671,11 @@ export default function DeskAdmin() {
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [timezone, setTimezone] = useState('America/Los_Angeles')
   const [openDays, setOpenDays] = useState<number[]>([1,2,3,4,5,6])
+  // One-off dates the store opens even though that weekday is normally closed
+  // (set in admin Business Settings > Special Open Days) — must be checked
+  // everywhere a "store closed today" decision is made in this file, or the
+  // admin calendar/staff views keep showing a special-open date as Closed.
+  const [specialOpenDates, setSpecialOpenDates] = useState<string[]>([])
   const [openTime, setOpenTime] = useState('9:00 AM')
   const [closeTime, setCloseTime] = useState('5:00 PM')
   const [appointmentInterval, setAppointmentInterval] = useState<15 | 30>(30)
@@ -1907,6 +1912,7 @@ export default function DeskAdmin() {
     const s = sData.settings || {}
     if (s.timezone) setTimezone(s.timezone)
     if (s.open_days) { try { setOpenDays(JSON.parse(s.open_days)) } catch {/**/} }
+    if (s.special_open_dates) { try { setSpecialOpenDates(JSON.parse(s.special_open_dates)) } catch {/**/} }
     if (s.open_time) setOpenTime(s.open_time)
     if (s.close_time) setCloseTime(s.close_time)
     if (s.appointment_interval) setAppointmentInterval(parseInt(s.appointment_interval) as 15 | 30)
@@ -2864,7 +2870,7 @@ export default function DeskAdmin() {
             const CAL_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
             const calDow = new Date(dayStr + 'T12:00:00').getDay()
             const calDayName = CAL_DAY_NAMES[calDow]
-            const storeClosedToday = !openDays.includes(calDow)
+            const storeClosedToday = !openDays.includes(calDow) && !specialOpenDates.includes(dayStr)
 
             const CAL_START = 8 * 60, CAL_END = 19 * 60, CAL_PX = 1.6
             const fmtCalMin = (mins: number) => {
@@ -3578,7 +3584,7 @@ export default function DeskAdmin() {
                         // regardless of what's saved in days_off / work_hours.
                         const [y, mo, d] = apptDate.split('-').map(Number)
                         const dow = new Date(y, mo - 1, d).getDay()
-                        return !openDays.includes(dow)
+                        return !openDays.includes(dow) && !specialOpenDates.includes(apptDate)
                       }
 
                       const StaffPicker = ({ icon, label, value, onChange }: { icon: string; label: string; value: string; onChange: (v: string) => void }) => (
@@ -9326,7 +9332,7 @@ export default function DeskAdmin() {
                       const isToday=dateStr===today
                       const isSelected=dateStr===selectedDay
                       const dayDow = new Date(dateStr+'T12:00:00').getDay()
-                      const isStoreClosedDay = !openDays.includes(dayDow)
+                      const isStoreClosedDay = !openDays.includes(dayDow) && !specialOpenDates.includes(dateStr)
                       // Only flag "no staff" on a day the store is actually open — a closed day
                       // (e.g. Tue/Sat) gets its own label instead, so the two reasons a day looks
                       // empty (closed vs. open-but-unstaffed) are never confused for each other.
