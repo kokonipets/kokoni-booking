@@ -141,6 +141,11 @@ export default function SettingsPage() {
   const [savingButton, setSavingButton] = useState<string | null>(null)
   const [closedDays, setClosedDays] = useState<Set<string>>(new Set())
   const [blockedHours, setBlockedHours] = useState<{ start: string; end: string }[]>([])
+  // One-off dates the salon opens even though that weekday is normally closed
+  // (e.g. a single Saturday) — does NOT change the regular weekly schedule.
+  const [specialOpenDates, setSpecialOpenDates] = useState<string[]>([])
+  const [newSpecialOpenDate, setNewSpecialOpenDate] = useState('')
+  const [savingSpecialOpenDates, setSavingSpecialOpenDates] = useState(false)
   const [selectedServiceTier, setSelectedServiceTier] = useState<Record<string, number>>({})
   const [slotInterval, setSlotInterval] = useState<15 | 30 | 45>(30)
 
@@ -246,6 +251,14 @@ export default function SettingsPage() {
         setClosedDays(new Set(closedArray))
       }
 
+      // Load special open dates (one-off exceptions to the weekly schedule)
+      if (settings.special_open_dates) {
+        try {
+          const parsed = JSON.parse(settings.special_open_dates)
+          if (Array.isArray(parsed)) setSpecialOpenDates(parsed)
+        } catch { setSpecialOpenDates([]) }
+      }
+
       // Load slot interval
       if (settings.appointment_interval) {
         const iv = parseInt(settings.appointment_interval)
@@ -291,6 +304,37 @@ export default function SettingsPage() {
     } catch (err) {
       console.error(err)
     }
+  }
+
+  const saveSpecialOpenDates = async (dates: string[]) => {
+    setSavingSpecialOpenDates(true)
+    try {
+      const sorted = Array.from(new Set(dates)).sort()
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'special_open_dates', value: JSON.stringify(sorted) })
+      })
+      if (!res.ok) throw new Error('Failed to save special open dates')
+      setSpecialOpenDates(sorted)
+      setBusinessSettings(prev => ({ ...prev, special_open_dates: JSON.stringify(sorted) }))
+    } catch (err) {
+      setSavingMessage({ type: 'error', text: `❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}` })
+      setTimeout(() => setSavingMessage(null), 5000)
+    } finally {
+      setSavingSpecialOpenDates(false)
+    }
+  }
+
+  const addSpecialOpenDate = async () => {
+    if (!newSpecialOpenDate) return
+    if (specialOpenDates.includes(newSpecialOpenDate)) { setNewSpecialOpenDate(''); return }
+    await saveSpecialOpenDates([...specialOpenDates, newSpecialOpenDate])
+    setNewSpecialOpenDate('')
+  }
+
+  const removeSpecialOpenDate = async (date: string) => {
+    await saveSpecialOpenDates(specialOpenDates.filter(d => d !== date))
   }
 
   const loadStaff = async () => {
@@ -1541,6 +1585,52 @@ export default function SettingsPage() {
                           >×</button>
                         </div>
                       ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Special Open Days -- one-off exceptions, e.g. opening a single Saturday
+                    without changing the regular weekly schedule for every other Saturday */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">📅 Special Open Days</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Open the store on one specific date even though that weekday is normally closed above. Doesn&apos;t change your regular weekly hours.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="date"
+                      value={newSpecialOpenDate}
+                      onChange={e => setNewSpecialOpenDate(e.target.value)}
+                      className="text-sm border border-gray-200 rounded-lg px-2 py-1.5"
+                    />
+                    <button
+                      onClick={addSpecialOpenDate}
+                      disabled={!newSpecialOpenDate || savingSpecialOpenDates}
+                      className="text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {specialOpenDates.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic py-1">No one-off open dates added.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {specialOpenDates.map(date => {
+                        const [y, m, d] = date.split('-').map(Number)
+                        const label = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })
+                        return (
+                          <div key={date} className="flex items-center gap-2 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2">
+                            <span className="text-xs font-semibold text-sky-700">{label}</span>
+                            <button
+                              onClick={() => removeSpecialOpenDate(date)}
+                              disabled={savingSpecialOpenDates}
+                              className="ml-auto text-sky-300 hover:text-rose-500 text-lg leading-none disabled:opacity-50"
+                            >×</button>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>

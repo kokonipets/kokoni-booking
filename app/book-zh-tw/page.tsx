@@ -230,6 +230,7 @@ export default function BookPageZhTw() {
   // Fail closed: no day bookable until real open days load from settings.
   const [allowedDays, setAllowedDays] = useState<number[]>([])
   const [blockedDates, setBlockedDates] = useState<string[]>([])
+  const [specialOpenDates, setSpecialOpenDates] = useState<string[]>([])
   const [dynamicTimeSlots, setDynamicTimeSlots] = useState<string[]>(TIME_SLOTS)
   const [openDaysLabel, setOpenDaysLabel] = useState('週一至週六')
   const [dynamicServices, setDynamicServices] = useState(SERVICES)
@@ -248,6 +249,7 @@ export default function BookPageZhTw() {
           setOpenDaysLabel(data.open_days.map((d: number) => '週' + DAY_ZH[d]).join('、'))
         }
         if (Array.isArray(data.blocked_dates)) setBlockedDates(data.blocked_dates)
+        if (Array.isArray(data.special_open_dates)) setSpecialOpenDates(data.special_open_dates)
         if (data.time_slots && data.time_slots.length > 0) setDynamicTimeSlots(data.time_slots)
         if (data.services && data.services.length > 0) {
           const withDurations = data.services.map((s: any) => {
@@ -561,7 +563,7 @@ export default function BookPageZhTw() {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
             const isToday = date.toDateString() === today.toDateString()
             const isPast = !isToday && date < today
-            const isClosed = !allowedDays.includes(date.getDay())
+            const isClosed = !allowedDays.includes(date.getDay()) && !specialOpenDates.includes(dateStr)
             const isBlockedDate = !isToday && blockedDates.includes(dateStr)
             const isDisabled = isPast || isClosed || isBlockedDate
             const isSelected = selectedDate?.toDateString() === date.toDateString()

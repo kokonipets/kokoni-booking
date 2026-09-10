@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     const { data: settingRows } = await supabase
       .from('salon_settings')
       .select('key, value')
-      .in('key', ['open_days', 'blocked_dates_list'])
+      .in('key', ['open_days', 'blocked_dates_list', 'special_open_dates'])
     const settings: Record<string, string> = {}
     for (const r of (settingRows ?? []) as { key: string; value: string }[]) settings[r.key] = r.value
     let openDays: number[] | null = null
@@ -52,6 +52,9 @@ export async function POST(req: NextRequest) {
       const list = settings.blocked_dates_list ? JSON.parse(settings.blocked_dates_list) : []
       blockedDates = list.map((b: { date: string }) => b.date)
     } catch { blockedDates = [] }
+    // One-off dates the salon opened even though that weekday is normally closed.
+    let specialOpenDates: string[] = []
+    try { specialOpenDates = settings.special_open_dates ? JSON.parse(settings.special_open_dates) : [] } catch { specialOpenDates = [] }
 
     // The booking pages send the date as "M/D/YYYY" (e.g. "6/28/2026"); other
     // callers may send ISO "YYYY-MM-DD". Parse both into a local-noon Date (no
@@ -69,7 +72,8 @@ export async function POST(req: NextRequest) {
     if (dt && !isNaN(dt.getTime())) {
       const dow = dt.getDay() // 0=Sun … 6=Sat
       const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-      if ((openDays && !openDays.includes(dow)) || blockedDates.includes(iso)) {
+      const isSpecialOpen = specialOpenDates.includes(iso)
+      if ((openDays && !openDays.includes(dow) && !isSpecialOpen) || blockedDates.includes(iso)) {
         return NextResponse.json(
           { error: 'Sorry, that date is not available for booking. Please pick another day.' },
           { status: 400 }

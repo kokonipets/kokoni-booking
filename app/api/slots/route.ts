@@ -163,7 +163,12 @@ export async function GET(req: NextRequest) {
   const closedDayNames = new Set(
     (settings.closed_days || '').split(',').map(d => d.trim()).filter(Boolean)
   )
-  const storeClosedToday = closedDayNames.has(dayName)
+  // One-off exceptions set in admin Business Settings ("Special Open Days") — lets the
+  // salon open a single date (e.g. one Saturday) without changing the regular weekly
+  // schedule for every other Saturday.
+  let specialOpenDates: string[] = []
+  try { specialOpenDates = settings.special_open_dates ? JSON.parse(settings.special_open_dates) : [] } catch { specialOpenDates = [] }
+  const storeClosedToday = closedDayNames.has(dayName) && !specialOpenDates.includes(dateStr)
 
   // 3. Load all staff (groomers) and count who's working that day
   const { data: staffRows } = await supabase

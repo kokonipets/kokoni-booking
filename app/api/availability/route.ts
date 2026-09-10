@@ -103,6 +103,11 @@ export async function GET() {
     blockedDates = blockedList.map(b => b.date)
   } catch { blockedDates = [] }
 
+  // One-off dates the salon has opened even though that weekday is normally closed
+  // (e.g. a single Saturday) — set in admin Business Settings.
+  let specialOpenDates: string[] = []
+  try { specialOpenDates = settings.special_open_dates ? JSON.parse(settings.special_open_dates) : [] } catch { specialOpenDates = [] }
+
   return NextResponse.json({
     open_days: openDays,
     open_time: openTime,
@@ -111,6 +116,7 @@ export async function GET() {
     blocked_hours: blockedHours,
     time_slots: generateSlots(openTime, closeTime, interval, blockedHours),
     blocked_dates: blockedDates,
+    special_open_dates: specialOpenDates,
     services,
   }, {
     headers: {
