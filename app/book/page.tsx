@@ -1059,6 +1059,13 @@ export default function BookPage() {
                 <p className="font-medium text-gray-600">Add a new dog</p>
                 {isAddingNewPet && <CheckCircle2 className="w-5 h-5 text-sky-500 ml-auto" />}
               </button>
+              {pets.length > 0 && (
+                <p className="text-xs text-gray-400 px-1">
+                  Adding a new dog here books them on their own. To include a new dog in a group
+                  booking, <a href="/profile" className="text-sky-600 hover:underline">add them to your profile</a> first,
+                  then come back and select all your dogs together.
+                </p>
+              )}
             </div>
 
             {pets.length > 1 && !isAddingNewPet && !isWalkIn && (
