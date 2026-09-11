@@ -160,10 +160,15 @@ export async function POST(req: NextRequest) {
   try { specialOpenDates = settings.special_open_dates ? JSON.parse(settings.special_open_dates) : [] } catch { specialOpenDates = [] }
   const storeClosedToday = closedDayNames.has(dayName) && !specialOpenDates.includes(dateStr)
 
+  // is_active excludes deactivated/former staff — otherwise a groomer who was let go (or
+  // simply never had work_hours configured) could still count toward capacity here even
+  // though the admin schedule (and everyone's actual staffing) has already moved on without
+  // them, silently opening slots nobody is really there to work.
   const { data: staffRows } = await supabase
     .from('staff')
     .select('id, name, role, work_hours, days_off, special_hours')
     .eq('role', 'groomer')
+    .eq('is_active', true)
 
   const totalGroomers = staffRows?.length ?? 0
 
