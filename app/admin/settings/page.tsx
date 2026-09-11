@@ -235,7 +235,20 @@ export default function SettingsPage() {
         try {
           const parsed = JSON.parse(settings.services)
           if (Array.isArray(parsed)) {
-            setServices((parsed as ServiceDef[]).map(s => ({ ...s, category: inferServiceCategory(s) })))
+            // A service's real tier prices sometimes live only in the separate legacy
+            // service_pricing map instead of on the service itself. The admin desk
+            // appointment panel already falls back to that map when a service has no
+            // tiers of its own — mirror that here, or this page can show different
+            // (stale) numbers than what's actually used to price real bookings.
+            let pricingMap: Record<string, PriceTier[]> = {}
+            if (settings.service_pricing) {
+              try { pricingMap = JSON.parse(settings.service_pricing as string) } catch {}
+            }
+            setServices((parsed as ServiceDef[]).map(s => ({
+              ...s,
+              tiers: (s.tiers && s.tiers.length ? s.tiers : pricingMap[s.id]) ?? DEFAULT_TIERS.map(t => ({...t})),
+              category: inferServiceCategory(s),
+            })))
           }
         } catch (e) {
           // Try to parse as simple text format and convert
