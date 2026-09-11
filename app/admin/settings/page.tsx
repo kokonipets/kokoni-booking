@@ -1879,7 +1879,7 @@ export default function SettingsPage() {
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={serviceFormData.usesSizeCategories ?? true}
+                        checked={(serviceFormData.usesSizeCategories ?? (serviceFormData.tiers?.length ?? 0) > 1)}
                         onChange={e => setServiceFormData(prev => ({
                           ...prev,
                           usesSizeCategories: e.target.checked,
@@ -1895,7 +1895,7 @@ export default function SettingsPage() {
 
                   {/* Price Tiers or Single Price */}
                   <div>
-                    {serviceFormData.usesSizeCategories ? (
+                    {(serviceFormData.usesSizeCategories ?? (serviceFormData.tiers?.length ?? 0) > 1) ? (
                       <>
                         <p className="text-xs font-semibold text-gray-600 mb-2">💰 Price by Size Category (Edit size labels too!)</p>
                     <div className="space-y-2">
@@ -2205,7 +2205,7 @@ export default function SettingsPage() {
                               <label className="flex items-center gap-2 cursor-pointer">
                                 <input
                                   type="checkbox"
-                                  checked={serviceFormData.usesSizeCategories ?? true}
+                                  checked={(serviceFormData.usesSizeCategories ?? (serviceFormData.tiers?.length ?? 0) > 1)}
                                   onChange={e => setServiceFormData(prev => ({
                                     ...prev,
                                     usesSizeCategories: e.target.checked,
@@ -2219,7 +2219,7 @@ export default function SettingsPage() {
 
                             {/* Price Tiers or Single Price */}
                             <div>
-                              {serviceFormData.usesSizeCategories ? (
+                              {(serviceFormData.usesSizeCategories ?? (serviceFormData.tiers?.length ?? 0) > 1) ? (
                                 <>
                                   <p className="text-xs font-semibold text-gray-600 mb-2">💰 Price by Size Category</p>
                                   <div className="space-y-2">

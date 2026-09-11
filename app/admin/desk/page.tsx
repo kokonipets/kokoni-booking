@@ -31,6 +31,7 @@ type ServiceDef = {
   name: string
   desc: string
   price: string
+  duration?: string
   tiers?: { label: string; price: string; duration: string }[]
   visible?: boolean   // true = shown to customers; false = admin-only
   category?: 'main' | 'addon'   // 'main' = base grooming style, 'addon' = extra add-on service
@@ -2942,7 +2943,11 @@ export default function DeskAdmin() {
             }
             const serviceDurationMin = (serviceId: string, sizeTier?: string | null): number => {
               const svc = services.find(sv => sv.id === serviceId)
-              const tier = svc?.tiers?.find(t => t.label === sizeTier) || svc?.tiers?.[0]
+              // A "single price" service (no per-size tiers) stores its duration directly on
+              // the service object instead of inside `tiers` — fall back to that before the
+              // generic 45-min default, matching /api/slots' calculation.
+              if (!svc?.tiers?.length) return parseDurationStr(svc?.duration) ?? 45
+              const tier = svc.tiers.find(t => t.label === sizeTier) || svc.tiers[0]
               return parseDurationStr(tier?.duration) ?? 45
             }
 
