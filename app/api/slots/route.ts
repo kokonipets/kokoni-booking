@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
   // services skip the capacity check entirely, and to know how long an EXISTING booked
   // appointment actually occupies a groomer (see step 4 below).
   type ServiceTierDef = { label: string; duration?: string }
-  type ServiceDef = { id: string; skipCapacity?: boolean; tiers?: ServiceTierDef[] }
+  type ServiceDef = { id: string; skipCapacity?: boolean; tiers?: ServiceTierDef[]; duration?: string }
   let allServices: ServiceDef[] = []
   try { allServices = settings.services ? JSON.parse(settings.services) : [] } catch { allServices = [] }
 
@@ -95,7 +95,11 @@ export async function GET(req: NextRequest) {
   // slot open a bit too conservatively than to under-book a groomer's real time.
   const serviceDurationMin = (svcId: string, sizeTier?: string | null): number => {
     const svc = allServices.find(s => s.id === svcId)
-    if (!svc?.tiers?.length) return 45
+    // A "single price" service (no per-size tiers) stores its duration directly on the
+    // service object instead of inside `tiers` — fall back to that before the generic
+    // 45-min default, or a service like this quietly gets treated as much shorter than it
+    // really is (e.g. a 1.5h Bath & Brush booked as if it only took 45 minutes).
+    if (!svc?.tiers?.length) return parseDurationStr(svc?.duration) ?? 45
     const exactTier = sizeTier ? svc.tiers.find(t => t.label === sizeTier) : undefined
     const exactDur = exactTier ? parseDurationStr(exactTier.duration) : null
     if (exactDur != null) return exactDur
@@ -112,7 +116,7 @@ export async function GET(req: NextRequest) {
   // customer-facing weight label doesn't exactly match this service's tier labels.)
   const existingApptDurationMin = (svcId: string, sizeTier?: string | null): number => {
     const svc = allServices.find(s => s.id === svcId)
-    if (!svc?.tiers?.length) return 45
+    if (!svc?.tiers?.length) return parseDurationStr(svc?.duration) ?? 45
     const tier = (sizeTier ? svc.tiers.find(t => t.label === sizeTier) : undefined) || svc.tiers[0]
     return parseDurationStr(tier?.duration) ?? 45
   }

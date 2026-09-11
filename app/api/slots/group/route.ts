@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
   try { blockedTimes = settings.blocked_times_list ? JSON.parse(settings.blocked_times_list) : [] } catch { blockedTimes = [] }
 
   type ServiceTierDef = { label: string; duration?: string }
-  type ServiceDef = { id: string; skipCapacity?: boolean; tiers?: ServiceTierDef[] }
+  type ServiceDef = { id: string; skipCapacity?: boolean; tiers?: ServiceTierDef[]; duration?: string }
   let allServices: ServiceDef[] = []
   try { allServices = settings.services ? JSON.parse(settings.services) : [] } catch { allServices = [] }
 
@@ -112,7 +112,11 @@ export async function POST(req: NextRequest) {
   // new booking in /api/slots, so a group dog's own requested time isn't under-counted.
   const serviceDurationMin = (svcId: string, sizeTier?: string | null): number => {
     const svc = allServices.find(s => s.id === svcId)
-    if (!svc?.tiers?.length) return 45
+    // A "single price" service (no per-size tiers) stores its duration directly on the
+    // service object instead of inside `tiers` — fall back to that before the generic
+    // 45-min default, or a service like this quietly gets treated as much shorter than it
+    // really is (e.g. a 1.5h Bath & Brush booked as if it only took 45 minutes).
+    if (!svc?.tiers?.length) return parseDurationStr(svc?.duration) ?? 45
     const exactTier = sizeTier ? svc.tiers.find(t => t.label === sizeTier) : undefined
     const exactDur = exactTier ? parseDurationStr(exactTier.duration) : null
     if (exactDur != null) return exactDur
@@ -124,7 +128,7 @@ export async function POST(req: NextRequest) {
   // calendar / /api/slots so this endpoint sees the SAME occupied windows admin does.
   const existingApptDurationMin = (svcId: string, sizeTier?: string | null): number => {
     const svc = allServices.find(s => s.id === svcId)
-    if (!svc?.tiers?.length) return 45
+    if (!svc?.tiers?.length) return parseDurationStr(svc?.duration) ?? 45
     const tier = (sizeTier ? svc.tiers.find(t => t.label === sizeTier) : undefined) || svc.tiers[0]
     return parseDurationStr(tier?.duration) ?? 45
   }
