@@ -9478,7 +9478,7 @@ export default function DeskAdmin() {
                   style={{maxHeight: '95vh'}}>
 
                   {/* Header */}
-                  <div className="bg-sky-50 border-b border-gray-200 px-5 py-4 flex items-center justify-between flex-shrink-0">
+                  <div className="bg-sky-50 border-b border-gray-200 px-5 py-3 flex items-center justify-between flex-shrink-0">
                     <div>
                       <h3 className="font-bold text-sky-800 text-base">
                         {new Date(selectedDay+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}
@@ -9501,7 +9501,7 @@ export default function DeskAdmin() {
 
                   {/* Staff filter chips */}
                   {staff.filter(s => s.is_active && s.role !== 'admin').length > 0 && (
-                    <div className="px-4 py-2.5 flex items-center gap-2 overflow-x-auto flex-shrink-0 border-b border-gray-100 bg-white">
+                    <div className="px-4 py-2 flex items-center gap-2 overflow-x-auto flex-shrink-0 border-b border-gray-100 bg-white">
                       <button
                         onClick={() => setCalendarStaffFilter('all')}
                         className={`shrink-0 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
@@ -9530,7 +9530,7 @@ export default function DeskAdmin() {
                       not every 15. Appointments starting on a quarter-hour still show, grouped
                       under the half-hour row they fall within, via the "between this slot and
                       the next" matching below. */}
-                  <div className="divide-y divide-gray-50 overflow-y-auto flex-1">
+                  <div className="divide-y divide-gray-50 overflow-y-auto overflow-x-hidden flex-1">
                     {(() => {
                       const toMinsOuter = (t: string) => {
                         const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
@@ -9569,7 +9569,7 @@ export default function DeskAdmin() {
                       const isBlocking = blockingSlot?.date === selectedDay && blockingSlot?.time === slot
 
                       return (
-                        <div key={slot} className={`flex items-stretch min-h-[56px] group transition-opacity ${
+                        <div key={slot} className={`flex items-stretch min-h-[48px] group transition-opacity ${
                           appts.length > 0 ? '' : blocked ? 'bg-rose-50/60' : 'hover:bg-gray-50/60'
                         }`}>
                           {/* Time label */}
@@ -9578,12 +9578,12 @@ export default function DeskAdmin() {
                           </div>
 
                           {/* Slot content */}
-                          <div className="flex-1 border-l border-gray-100 py-2 px-3 flex items-center gap-2">
+                          <div className="flex-1 min-w-0 border-l border-gray-100 py-2 px-3 flex items-center gap-2">
                             {appts.length > 0 ? (
                               <>
                                 {appts.map(appt => (
                                   <button key={appt.id} onClick={() => { openApptDetail(appt); setSelectedDay(null) }}
-                                    className={`flex-1 flex items-center gap-3 rounded-xl px-3 py-2 text-left transition-all hover:shadow-sm group/pill ${
+                                    className={`flex-1 min-w-0 flex items-center gap-3 rounded-xl px-3 py-2 text-left transition-all hover:shadow-sm group/pill ${
                                       appt.is_new_client
                                         ? 'bg-amber-50 border-2 border-amber-300 hover:bg-amber-100'
                                         : appt.service==='simply_cute' ? 'bg-sky-50 border border-sky-200 hover:bg-sky-100' :
