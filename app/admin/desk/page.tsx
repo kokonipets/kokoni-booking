@@ -9474,8 +9474,8 @@ export default function DeskAdmin() {
                   onClick={() => { setSelectedDay(null); setBlockingSlot(null); setBlockReason(''); setCalendarStaffFilter('all') }} />
 
                 {/* Modal */}
-                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden"
-                  style={{maxHeight: 'min(80vh, 700px)'}}>
+                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden"
+                  style={{maxHeight: '95vh'}}>
 
                   {/* Header */}
                   <div className="bg-sky-50 border-b border-gray-200 px-5 py-4 flex items-center justify-between flex-shrink-0">
@@ -9526,18 +9526,29 @@ export default function DeskAdmin() {
                     </div>
                   )}
 
-                  {/* Time slots timeline */}
+                  {/* Time slots timeline — every 30 min (matching the staff schedule grid),
+                      not every 15. Appointments starting on a quarter-hour still show, grouped
+                      under the half-hour row they fall within, via the "between this slot and
+                      the next" matching below. */}
                   <div className="divide-y divide-gray-50 overflow-y-auto flex-1">
-                    {TIME_OPTIONS.filter(slot => {
-                      const openIdx = TIME_OPTIONS.indexOf(openTime)
-                      const closeIdx = TIME_OPTIONS.indexOf(closeTime)
-                      const slotIdx = TIME_OPTIONS.indexOf(slot)
-                      if (openIdx === -1 || closeIdx === -1) return true
-                      return slotIdx >= openIdx && slotIdx <= closeIdx
-                    }).map(slot => {
+                    {(() => {
+                      const toMinsOuter = (t: string) => {
+                        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
+                        if (!m) return -1
+                        let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
+                        if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
+                        return h * 60 + min
+                      }
+                      const halfHourSlots = TIME_OPTIONS.filter(t => toMinsOuter(t) % 30 === 0)
+                      const openMins = toMinsOuter(openTime), closeMins = toMinsOuter(closeTime)
+                      return halfHourSlots.filter(slot => {
+                        const m = toMinsOuter(slot)
+                        if (openMins === -1 || closeMins === -1) return true
+                        return m >= openMins && m <= closeMins
+                      })
+                    })().map((slot, slotIdx, daySlots) => {
                       // Match exact slot OR any time that falls between this slot and the next
-                      const slotIdx = TIME_OPTIONS.indexOf(slot)
-                      const nextSlot = TIME_OPTIONS[slotIdx + 1]
+                      const nextSlot = daySlots[slotIdx + 1]
                       const toMins = (t: string) => {
                         const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
                         if (!m) return -1
