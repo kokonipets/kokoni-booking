@@ -9467,14 +9467,122 @@ export default function DeskAdmin() {
                 </div>
 
             {/* ── Day detail MODAL ─────────────────────────────────────────── */}
-            {selectedDay && (
+            {selectedDay && (() => {
+              const toMinsD = (t: string) => {
+                const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
+                if (!m) return -1
+                let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
+                if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
+                return h * 60 + min
+              }
+              const parseDurStr = (s?: string | null): number | null => {
+                if (!s) return null
+                const hMatch = s.match(/(\d+(?:\.\d+)?)\s*h/i)
+                if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60)
+                const mMatch = s.match(/(\d+)\s*m/i)
+                if (mMatch) return parseInt(mMatch[1])
+                const num = parseFloat(s)
+                return isNaN(num) ? null : Math.round(num)
+              }
+              // Real per-appointment length (mirrors /api/slots + the staff calendar), so a
+              // 1.5h Bath & Brush spans 3 half-hour rows instead of only showing at its start.
+              const apptDurationMin = (serviceId: string, sizeTier?: string | null): number => {
+                const svc = services.find(sv => sv.id === serviceId)
+                if (!svc?.tiers?.length) return parseDurStr(svc?.duration) ?? 45
+                const tier = svc.tiers.find(t => t.label === sizeTier) || svc.tiers[0]
+                return parseDurStr(tier?.duration) ?? 45
+              }
+              const openMinsD = toMinsD(openTime), closeMinsD = toMinsD(closeTime)
+              const halfHourSlots = TIME_OPTIONS.filter(t => toMinsD(t) % 30 === 0).filter(slot => {
+                const m = toMinsD(slot)
+                if (openMinsD === -1 || closeMinsD === -1) return true
+                return m >= openMinsD && m <= closeMinsD
+              })
+              const dayAppts = byDate[selectedDay] || []
+              const unassignedAppts = dayAppts.filter(a => !a.assigned_groomer && !a.assigned_bather)
+
+              const startAddAppt = (time: string) => {
+                const d = selectedDay
+                setSelectedDay(null) // close day popup first so its backdrop doesn't block modal
+                setBlockingSlot(null); setBlockReason('')
+                setAddApptPhone(''); setAddApptClientName(''); setAddApptEmail('')
+                setAddApptPetId(''); setAddApptPetName(''); setAddApptBreed(''); setAddApptWeight('')
+                setAddApptVaccine('pending'); setAddApptClientData(null)
+                setAddApptService(services[0]?.id ?? 'bath_brush')
+                setAddingApptSlot({date:d, time})
+              }
+
+              type Seg = { appt: Appointment; kind: 'solo' | 'top' | 'mid' | 'bottom' }
+              // Lays one groomer's appointments across every half-hour row each actually
+              // covers (by real duration), so a 1.5h appointment reads as one merged box
+              // spanning 3 rows instead of squeezing into a single row regardless of length.
+              const buildGrid = (colAppts: Appointment[]): (Seg[] | null)[] => {
+                const grid: (Seg[] | null)[] = halfHourSlots.map(() => null)
+                colAppts.forEach(appt => {
+                  const startMin = toMinsD(appt.appointment_time)
+                  if (startMin === -1) return
+                  const dur = apptDurationMin(appt.service, appt.size_tier)
+                  const endMin = startMin + dur
+                  const coveredIdx: number[] = []
+                  halfHourSlots.forEach((slot, idx) => {
+                    const sMin = toMinsD(slot)
+                    const nextMin = idx + 1 < halfHourSlots.length ? toMinsD(halfHourSlots[idx + 1]) : sMin + 30
+                    if (startMin < nextMin && endMin > sMin) coveredIdx.push(idx)
+                  })
+                  if (coveredIdx.length === 0) return
+                  coveredIdx.forEach((idx, i) => {
+                    const kind: Seg['kind'] = coveredIdx.length === 1 ? 'solo' : i === 0 ? 'top' : i === coveredIdx.length - 1 ? 'bottom' : 'mid'
+                    if (!grid[idx]) grid[idx] = []
+                    grid[idx]!.push({ appt, kind })
+                  })
+                })
+                return grid
+              }
+
+              const segShapeClass = (kind: Seg['kind']) =>
+                kind === 'solo' ? 'rounded-xl' :
+                kind === 'top' ? 'rounded-t-xl border-b-0' :
+                kind === 'bottom' ? 'rounded-b-xl border-t-0' :
+                'rounded-none border-t-0 border-b-0'
+              const segColorClass = (appt: Appointment) =>
+                appt.is_new_client
+                  ? 'bg-amber-50 border-2 border-amber-300'
+                  : appt.service==='simply_cute' ? 'bg-sky-50 border border-sky-200' :
+                    appt.service==='bath_brush'  ? 'bg-teal-50 border border-teal-200' :
+                    appt.service==='asian_fusion'? 'bg-pink-50 border border-pink-200' :
+                    'bg-gray-50 border border-gray-200'
+              const fmtRangeD = (mins: number) => {
+                let h = Math.floor(mins / 60), m = mins % 60
+                const ap = h >= 12 ? 'PM' : 'AM'
+                let h12 = h % 12; if (h12 === 0) h12 = 12
+                return `${h12}:${m.toString().padStart(2, '0')} ${ap}`
+              }
+
+              const columns: { key: string; label: string; icon: string; colorClass: string; appts: Appointment[] }[] = [
+                ...activeGroomers.map((s, i) => ({
+                  key: s.id,
+                  label: s.name.split(' ')[0],
+                  icon: s.name.slice(0,1).toUpperCase(),
+                  colorClass: i % 2 === 0 ? 'bg-sky-500' : 'bg-teal-500',
+                  appts: dayAppts.filter(a => a.assigned_groomer === s.name || a.assigned_bather === s.name),
+                })),
+                ...(unassignedAppts.length > 0 ? [{
+                  key: '__unassigned',
+                  label: 'Unassigned',
+                  icon: '?',
+                  colorClass: 'bg-gray-400',
+                  appts: unassignedAppts,
+                }] : []),
+              ]
+
+              return (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                 {/* Backdrop */}
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-                  onClick={() => { setSelectedDay(null); setBlockingSlot(null); setBlockReason(''); setCalendarStaffFilter('all') }} />
+                  onClick={() => { setSelectedDay(null); setBlockingSlot(null); setBlockReason('') }} />
 
                 {/* Modal */}
-                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden"
+                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden"
                   style={{maxHeight: '95vh'}}>
 
                   {/* Header */}
@@ -9484,205 +9592,132 @@ export default function DeskAdmin() {
                         {new Date(selectedDay+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}
                       </h3>
                       <p className="text-xs text-sky-500 mt-0.5">
-                        {(() => {
-                          const all = byDate[selectedDay]||[]
-                          const filtered = calendarStaffFilter === 'all'
-                            ? all
-                            : all.filter(a => a.assigned_groomer === calendarStaffFilter || a.assigned_bather === calendarStaffFilter)
-                          return `${filtered.length} appointment${filtered.length!==1?'s':''}`
-                        })()}
+                        {dayAppts.length} appointment{dayAppts.length!==1?'s':''}
                         {blockedTimes.filter(b=>b.date===selectedDay).length > 0 &&
                           <span className="ml-2 text-rose-400">· {blockedTimes.filter(b=>b.date===selectedDay).length} blocked</span>}
                       </p>
                     </div>
-                    <button onClick={() => { setSelectedDay(null); setBlockingSlot(null); setBlockReason(''); setCalendarStaffFilter('all') }}
+                    <button onClick={() => { setSelectedDay(null); setBlockingSlot(null); setBlockReason('') }}
                       className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-sky-100 text-gray-400 hover:text-gray-700 text-xl font-bold transition-colors">✕</button>
                   </div>
 
-                  {/* Staff filter chips */}
-                  {staff.filter(s => s.is_active && s.role !== 'admin').length > 0 && (
-                    <div className="px-4 py-2 flex items-center gap-2 overflow-x-auto flex-shrink-0 border-b border-gray-100 bg-white">
-                      <button
-                        onClick={() => setCalendarStaffFilter('all')}
-                        className={`shrink-0 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
-                          calendarStaffFilter === 'all'
-                            ? 'bg-sky-500 text-white'
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                        }`}>
-                        All
-                      </button>
-                      {staff.filter(s => s.is_active && s.role !== 'admin').map(s => (
-                        <button
-                          key={s.id}
-                          onClick={() => setCalendarStaffFilter(calendarStaffFilter === s.name ? 'all' : s.name)}
-                          className={`shrink-0 text-xs px-3 py-1.5 rounded-full font-medium transition-colors whitespace-nowrap ${
-                            calendarStaffFilter === s.name
-                              ? s.role === 'groomer' ? 'bg-sky-500 text-white' : 'bg-teal-500 text-white'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}>
-                          {s.role === 'groomer' ? '✂️' : '🛁'} {s.name.split(' ')[0]}
-                        </button>
-                      ))}
+                  {/* Groomer columns — each with its own every-30-min timeline. Appointments
+                      render as one merged box spanning the rows their real duration covers,
+                      and a small green "+" stays available on every covered row so admin can
+                      still deliberately overbook that exact time when needed. */}
+                  <div className="flex-1 overflow-auto">
+                    <div className="flex divide-x divide-gray-200" style={{minWidth: `${columns.length * 240}px`}}>
+                      {columns.map(col => {
+                        const grid = buildGrid(col.appts)
+                        return (
+                          <div key={col.key} className="flex-1 min-w-[220px] flex flex-col">
+                            <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-3 py-2 flex items-center gap-2">
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 ${col.colorClass}`}>{col.icon}</div>
+                              <span className="text-xs font-bold text-gray-800 truncate">{col.label}</span>
+                              <span className="text-[10px] font-semibold text-gray-400 ml-auto flex-shrink-0">{col.appts.length} appt{col.appts.length!==1?'s':''}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              {halfHourSlots.map((slot, idx) => {
+                                const segs = grid[idx]
+                                const blocked = blockedTimes.find(b => b.date === selectedDay && b.time === slot)
+                                const isBlocking = blockingSlot?.date === selectedDay && blockingSlot?.time === slot
+                                const noSep = !!segs?.some(s => s.kind === 'top' || s.kind === 'mid')
+                                return (
+                                  <div key={slot} className={`flex items-stretch min-h-[44px] group transition-opacity ${
+                                    noSep ? '' : 'border-b border-gray-50'
+                                  } ${segs ? '' : blocked ? 'bg-rose-50/60' : 'hover:bg-gray-50/60'}`}>
+                                    {/* Time label */}
+                                    <div className="w-16 flex-shrink-0 flex items-center justify-end pr-2 py-1">
+                                      <span className="text-[11px] font-semibold text-gray-400">{slot}</span>
+                                    </div>
+                                    {/* Slot content */}
+                                    <div className="flex-1 min-w-0 border-l border-gray-100 px-2 py-1 flex items-stretch gap-1.5">
+                                      {segs ? (
+                                        segs.map(({appt, kind}, si) => (
+                                          <div key={appt.id + '-' + si} className="flex-1 min-w-0 flex items-stretch gap-1.5">
+                                            <button onClick={() => { openApptDetail(appt); setSelectedDay(null) }}
+                                              className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-1 text-left transition-all hover:shadow-sm group/pill ${segColorClass(appt)} ${segShapeClass(kind)}`}>
+                                              {(kind === 'solo' || kind === 'top') && (
+                                                <>
+                                                  {appt.pets?.photo_url
+                                                    ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover flex-shrink-0" alt="" />
+                                                    : <div className="w-7 h-7 rounded-full bg-white/70 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="font-semibold text-gray-800 text-xs truncate">{appt.pets?.name}{appt.is_new_client && ' ⭐'}</p>
+                                                    <p className="text-[11px] text-gray-500 truncate">{serviceMap[appt.service]??appt.service} · {appt.clients?.name}</p>
+                                                    <p className="text-[10px] text-sky-600 font-semibold mt-0.5">
+                                                      {(() => {
+                                                        const st = toMinsD(appt.appointment_time)
+                                                        const dur = apptDurationMin(appt.service, appt.size_tier)
+                                                        return st === -1 ? appt.appointment_time : `${fmtRangeD(st)} – ${fmtRangeD(st+dur)}`
+                                                      })()}
+                                                    </p>
+                                                  </div>
+                                                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[appt.status]??'bg-gray-100 text-gray-500'}`}>{appt.status}</span>
+                                                  <span className="text-gray-300 group-hover/pill:text-sky-400 text-base flex-shrink-0">›</span>
+                                                </>
+                                              )}
+                                            </button>
+                                            {/* Even though this time is already covered, admin can still
+                                                deliberately overbook it on purpose. */}
+                                            <button onClick={() => startAddAppt(slot)}
+                                              className="self-center flex-shrink-0 w-[22px] h-[22px] rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold flex items-center justify-center"
+                                              title="Add another appointment at this time (overbook)">
+                                              +
+                                            </button>
+                                          </div>
+                                        ))
+                                      ) : blocked ? (
+                                        <div className="flex-1 flex items-center gap-2">
+                                          <span className="text-[11px] font-semibold text-rose-400 truncate">🚫 {blocked.reason || 'Blocked'}</span>
+                                          <button onClick={() => unblockTimeSlot(selectedDay, slot)}
+                                            className="ml-auto text-[10px] text-gray-400 hover:text-rose-500 font-medium px-1.5 py-0.5 rounded-lg hover:bg-rose-50 transition-colors flex-shrink-0"
+                                            title="Unblock">
+                                            ✕
+                                          </button>
+                                        </div>
+                                      ) : isBlocking ? (
+                                        <div className="flex-1 flex items-center gap-1">
+                                          <input type="text" value={blockReason} onChange={e => setBlockReason(e.target.value)}
+                                            placeholder="Reason"
+                                            className="flex-1 min-w-0 text-[11px] border border-rose-200 rounded-lg px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                                            autoFocus
+                                            onKeyDown={e => { if (e.key==='Enter') blockTimeSlot(selectedDay,slot,blockReason); if (e.key==='Escape') { setBlockingSlot(null); setBlockReason('') } }} />
+                                          <button onClick={() => blockTimeSlot(selectedDay,slot,blockReason)} disabled={savingBlock}
+                                            className="text-[10px] bg-rose-500 hover:bg-rose-600 text-white px-1.5 py-1 rounded-lg font-medium disabled:opacity-50 flex-shrink-0">
+                                            {savingBlock ? '…' : '✓'}
+                                          </button>
+                                          <button onClick={() => { setBlockingSlot(null); setBlockReason('') }}
+                                            className="text-[10px] text-gray-400 hover:text-gray-600 px-0.5 flex-shrink-0">✕</button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex-1 flex items-center gap-1.5">
+                                          <button onClick={() => startAddAppt(slot)}
+                                            className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold flex items-center justify-center"
+                                            title="Add appointment">
+                                            +
+                                          </button>
+                                          <button onClick={() => { setBlockingSlot({date:selectedDay,time:slot}); setBlockReason('') }}
+                                            className="flex-shrink-0 w-6 h-6 rounded-full bg-rose-100 hover:bg-rose-500 text-rose-500 hover:text-white text-sm font-bold flex items-center justify-center"
+                                            title="Block this slot">
+                                            −
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                  )}
-
-                  {/* Time slots timeline — every 30 min (matching the staff schedule grid),
-                      not every 15. Appointments starting on a quarter-hour still show, grouped
-                      under the half-hour row they fall within, via the "between this slot and
-                      the next" matching below. */}
-                  <div className="divide-y divide-gray-50 overflow-y-auto overflow-x-hidden flex-1">
-                    {(() => {
-                      const toMinsOuter = (t: string) => {
-                        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
-                        if (!m) return -1
-                        let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
-                        if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
-                        return h * 60 + min
-                      }
-                      const halfHourSlots = TIME_OPTIONS.filter(t => toMinsOuter(t) % 30 === 0)
-                      const openMins = toMinsOuter(openTime), closeMins = toMinsOuter(closeTime)
-                      return halfHourSlots.filter(slot => {
-                        const m = toMinsOuter(slot)
-                        if (openMins === -1 || closeMins === -1) return true
-                        return m >= openMins && m <= closeMins
-                      })
-                    })().map((slot, slotIdx, daySlots) => {
-                      // Match exact slot OR any time that falls between this slot and the next
-                      const nextSlot = daySlots[slotIdx + 1]
-                      const toMins = (t: string) => {
-                        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
-                        if (!m) return -1
-                        let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
-                        if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
-                        return h * 60 + min
-                      }
-                      const apptsAll = (byDate[selectedDay]||[]).filter(a => {
-                        if (a.appointment_time === slot) return true
-                        if (!nextSlot) return false
-                        const at = toMins(a.appointment_time), st = toMins(slot), nt = toMins(nextSlot)
-                        return at > st && at < nt
-                      })
-                      const appts = calendarStaffFilter === 'all'
-                        ? apptsAll
-                        : apptsAll.filter(a => a.assigned_groomer === calendarStaffFilter || a.assigned_bather === calendarStaffFilter)
-                      const blocked = blockedTimes.find(b => b.date === selectedDay && b.time === slot)
-                      const isBlocking = blockingSlot?.date === selectedDay && blockingSlot?.time === slot
-
-                      return (
-                        <div key={slot} className={`flex items-stretch min-h-[48px] group transition-opacity ${
-                          appts.length > 0 ? '' : blocked ? 'bg-rose-50/60' : 'hover:bg-gray-50/60'
-                        }`}>
-                          {/* Time label */}
-                          <div className="w-20 flex-shrink-0 flex items-center justify-end pr-3 py-2">
-                            <span className="text-xs font-semibold text-gray-400">{slot}</span>
-                          </div>
-
-                          {/* Slot content */}
-                          <div className="flex-1 min-w-0 border-l border-gray-100 py-2 px-3 flex items-center gap-2">
-                            {appts.length > 0 ? (
-                              <>
-                                {appts.map(appt => (
-                                  <button key={appt.id} onClick={() => { openApptDetail(appt); setSelectedDay(null) }}
-                                    className={`flex-1 min-w-0 flex items-center gap-3 rounded-xl px-3 py-2 text-left transition-all hover:shadow-sm group/pill ${
-                                      appt.is_new_client
-                                        ? 'bg-amber-50 border-2 border-amber-300 hover:bg-amber-100'
-                                        : appt.service==='simply_cute' ? 'bg-sky-50 border border-sky-200 hover:bg-sky-100' :
-                                          appt.service==='bath_brush'  ? 'bg-teal-50 border border-teal-200 hover:bg-teal-100' :
-                                          appt.service==='asian_fusion'? 'bg-pink-50 border border-pink-200 hover:bg-pink-100' :
-                                          'bg-gray-50 border border-gray-200 hover:bg-gray-100'}`}>
-                                    {appt.pets?.photo_url
-                                      ? <img src={appt.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
-                                      : <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base flex-shrink-0">🐶</div>}
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <p className="font-semibold text-gray-800 text-sm truncate">{appt.pets?.name} <span className="font-normal text-gray-400 text-xs">{appt.pets?.breed}</span></p>
-                                        {appt.is_new_client && (
-                                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-400 text-white font-bold flex-shrink-0">⭐ First Visit</span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-gray-500 truncate">{serviceMap[appt.service]??appt.service} · {appt.clients?.name}</p>
-                                      <p className="text-xs text-gray-400 mt-0.5">
-                                        <span>✂️ {firstName(appt.assigned_groomer) || <span className="text-gray-300">—</span>}</span>
-                                        <span className="mx-1">·</span>
-                                        <span>🛁 {firstName(appt.assigned_bather) || <span className="text-gray-300">—</span>}</span>
-                                      </p>
-                                    </div>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[appt.status]??'bg-gray-100 text-gray-500'}`}>{appt.status}</span>
-                                      <span className="text-gray-300 group-hover/pill:text-sky-400 text-lg">›</span>
-                                    </div>
-                                  </button>
-                                ))}
-                                {/* Add another appointment at this same time slot */}
-                                <button onClick={() => {
-                                    const d = selectedDay, t = slot
-                                    setSelectedDay(null)
-                                    setBlockingSlot(null); setBlockReason('')
-                                    setAddApptPhone(''); setAddApptClientName(''); setAddApptEmail('')
-                                    setAddApptPetId(''); setAddApptPetName(''); setAddApptBreed(''); setAddApptWeight('')
-                                    setAddApptVaccine('pending'); setAddApptClientData(null)
-                                    setAddApptService(services[0]?.id ?? 'bath_brush')
-                                    setAddingApptSlot({date:d, time:t})
-                                  }}
-                                  className="flex-shrink-0 text-xs bg-sky-100 hover:bg-sky-500 text-sky-600 hover:text-white w-7 h-7 rounded-lg font-bold flex items-center justify-center"
-                                  title="Add another appointment at this time">
-                                  +
-                                </button>
-                              </>
-                            ) : blocked ? (
-                              <div className="flex-1 flex items-center gap-3">
-                                <div className="flex-1 flex items-center gap-2">
-                                  <span className="text-xs font-semibold text-rose-400">🚫 Blocked</span>
-                                  {blocked.reason && <span className="text-xs text-rose-300">— {blocked.reason}</span>}
-                                </div>
-                                <button onClick={() => unblockTimeSlot(selectedDay, slot)}
-                                  className="text-xs text-gray-400 hover:text-rose-500 font-medium px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors">
-                                  ✕ Unblock
-                                </button>
-                              </div>
-                            ) : isBlocking ? (
-                              <div className="flex-1 flex items-center gap-2">
-                                <input type="text" value={blockReason} onChange={e => setBlockReason(e.target.value)}
-                                  placeholder="Reason (optional)"
-                                  className="flex-1 text-xs border border-rose-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rose-300"
-                                  autoFocus
-                                  onKeyDown={e => { if (e.key==='Enter') blockTimeSlot(selectedDay,slot,blockReason); if (e.key==='Escape') { setBlockingSlot(null); setBlockReason('') } }} />
-                                <button onClick={() => blockTimeSlot(selectedDay,slot,blockReason)} disabled={savingBlock}
-                                  className="text-xs bg-rose-500 hover:bg-rose-600 text-white px-2 py-1.5 rounded-lg font-medium disabled:opacity-50">
-                                  {savingBlock ? '…' : 'Block'}
-                                </button>
-                                <button onClick={() => { setBlockingSlot(null); setBlockReason('') }}
-                                  className="text-xs text-gray-400 hover:text-gray-600 px-1">Cancel</button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <button onClick={() => {
-                                  const d = selectedDay, t = slot
-                                  setSelectedDay(null) // close day popup first so its backdrop doesn't block modal
-                                  setBlockingSlot(null); setBlockReason('')
-                                  setAddApptPhone(''); setAddApptClientName(''); setAddApptEmail('')
-                                  setAddApptPetId(''); setAddApptPetName(''); setAddApptBreed(''); setAddApptWeight('')
-                                  setAddApptVaccine('pending'); setAddApptClientData(null)
-                                  setAddApptService(services[0]?.id ?? 'bath_brush')
-                                  setAddingApptSlot({date:d, time:t})
-                                }}
-                                  className="text-xs bg-sky-500 hover:bg-sky-600 text-white px-2.5 py-1 rounded-lg font-medium transition-colors">
-                                  + Appointment
-                                </button>
-                                <button onClick={() => { setBlockingSlot({date:selectedDay,time:slot}); setBlockReason('') }}
-                                  className="text-xs text-gray-300 hover:text-rose-400 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors font-medium">
-                                  Block
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
                   </div>
                 </div>
               </div>
-            )}
+              )
+            })()}
               </div>
             )
           })()}
