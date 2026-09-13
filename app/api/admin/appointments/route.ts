@@ -186,6 +186,13 @@ export async function GET(req: NextRequest) {
         })),
       }
     }
+  } else if (status === 'no_show') {
+    result = await supabase
+      .from('appointments')
+      .select(SELECT_FIELDS)
+      .eq('status', 'no_show')
+      .order('appointment_date', { ascending: false })
+      .order('appointment_time', { ascending: true })
   } else if (status === 'client') {
     // All appointments for a given clientPhone (for detail panel future appts)
     const clientPhone = searchParams.get('clientPhone')

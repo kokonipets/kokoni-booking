@@ -793,10 +793,32 @@ export async function DELETE(
   context: { params: { id: string } }
 ) {
   const supabase = getAdminClient()
+  const id = context.params.id
+
+  // Snapshot before it's gone. The delete below is still permanent — this just
+  // keeps a record of what existed, so admin can see (and search for) anything
+  // that was removed later, same as the deleted-clients log already does.
+  const { data: apptSnapshot } = await supabase
+    .from('appointments')
+    .select(`*, clients ( name, phone, email, sms_consent ), pets!pet_id ( id, name, breed, weight, vaccine_status, photo_url )`)
+    .eq('id', id)
+    .maybeSingle()
+  if (apptSnapshot) {
+    // If this table hasn't been migrated in yet, swallow the error rather than
+    // blocking the actual delete on a logging failure.
+    try {
+      await supabase.from('deleted_appointments_log').insert({
+        appointment_id: id,
+        client_phone: (apptSnapshot as { client_phone?: string }).client_phone ?? null,
+        appointment: apptSnapshot,
+      })
+    } catch { /* noop */ }
+  }
+
   const { error } = await supabase
     .from('appointments')
     .delete()
-    .eq('id', context.params.id)
+    .eq('id', id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })

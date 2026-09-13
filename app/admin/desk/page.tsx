@@ -305,6 +305,7 @@ const NAV = [
   { key: 'cashier',    label: 'Cashier',                 icon: '💰' },
   { key: 'reviews',    label: 'SMS Reviews',             icon: '⭐' },
   { key: 'reports',    label: 'Reports',                 icon: '📊' },
+  { key: 'deleted_noshow', label: 'Deleted & No-Shows',  icon: '🗑️' },
   { key: 'settings',   label: 'Settings',                icon: '⚙️' },
 ] as const
 
@@ -988,6 +989,36 @@ export default function DeskAdmin() {
   const [deletedClientsData, setDeletedClientsData] = useState<{ id: string; deleted_at: string; phone: string; client?: { name?: string; email?: string; address?: string }; pets?: { id: string; name: string; breed?: string; weight?: string }[]; appointments?: { id: string; appointment_date: string; service: string; payment_amount?: string }[] }[]>([])
   const [deletedClientsSearch, setDeletedClientsSearch] = useState('')
   const [expandedDeletedId, setExpandedDeletedId] = useState<string|null>(null)
+
+  // ── Deleted & No-Shows ── (appointments still in the table with status
+  // 'no_show', plus the snapshot log left behind whenever an appointment is
+  // permanently deleted — see supabase/migrations/20260913_add_deleted_appointments_log.sql)
+  const [delNoShowView, setDelNoShowView] = useState<'no_show' | 'deleted'>('no_show')
+  const [delNoShowSearch, setDelNoShowSearch] = useState('')
+  const [noShowAppts, setNoShowAppts] = useState<Appointment[]>([])
+  const [loadingNoShowAppts, setLoadingNoShowAppts] = useState(false)
+  const [deletedApptsData, setDeletedApptsData] = useState<{ id: string; deleted_at: string; appointment_id: string | null; client_phone: string | null; appointment: Partial<Appointment> }[]>([])
+  const [loadingDeletedAppts, setLoadingDeletedAppts] = useState(false)
+
+  const fetchNoShowAppts = useCallback(async () => {
+    setLoadingNoShowAppts(true)
+    try {
+      const res = await fetch('/api/admin/appointments?status=no_show')
+      const data = await res.json()
+      setNoShowAppts(data.appointments || [])
+    } catch { setNoShowAppts([]) }
+    setLoadingNoShowAppts(false)
+  }, [])
+
+  const fetchDeletedAppts = useCallback(async () => {
+    setLoadingDeletedAppts(true)
+    try {
+      const res = await fetch('/api/admin/deleted-appointments')
+      const data = await res.json()
+      setDeletedApptsData(data.records || [])
+    } catch { setDeletedApptsData([]) }
+    setLoadingDeletedAppts(false)
+  }, [])
 
   const openDeletedClients = async () => {
     setShowDeletedClients(true)
@@ -2768,7 +2799,8 @@ export default function DeskAdmin() {
       return () => clearInterval(iv)
     }
     else if (tab === 'reports') { fetchReports(); fetchPayroll() }
-  }, [authed, tab, fetchCalendar, fetchClients, fetchVaccineRecords, fetchPayroll, fetchSettings, fetchAppointments, fetchReports, fetchCashierLogins, calendarMonth])
+    else if (tab === 'deleted_noshow') { fetchNoShowAppts(); fetchDeletedAppts() }
+  }, [authed, tab, fetchCalendar, fetchClients, fetchVaccineRecords, fetchPayroll, fetchSettings, fetchAppointments, fetchReports, fetchCashierLogins, calendarMonth, fetchNoShowAppts, fetchDeletedAppts])
 
   // Poll pending count every 30s so badge always stays current
   useEffect(() => {
@@ -9718,6 +9750,100 @@ export default function DeskAdmin() {
               </div>
               )
             })()}
+              </div>
+            )
+          })()}
+
+          {/* ── DELETED & NO-SHOWS ───────────────────────────────────────── */}
+          {tab === 'deleted_noshow' && (() => {
+            const q = delNoShowSearch.trim().toLowerCase()
+            const qDigits = delNoShowSearch.replace(/\D/g, '')
+            const matchesQuery = (petName?: string | null, clientName?: string | null, phone?: string | null) => {
+              if (!q) return true
+              const phoneDigits = (phone || '').replace(/\D/g, '')
+              return (petName || '').toLowerCase().includes(q) ||
+                (clientName || '').toLowerCase().includes(q) ||
+                (!!qDigits && phoneDigits.includes(qDigits))
+            }
+            const filteredNoShow = noShowAppts.filter(a => matchesQuery(a.pets?.name, a.clients?.name, a.client_phone))
+            const filteredDeleted = deletedApptsData.filter(r => matchesQuery(r.appointment?.pets?.name, r.appointment?.clients?.name, r.client_phone))
+            return (
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                  <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+                    <button onClick={() => setDelNoShowView('no_show')}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${delNoShowView==='no_show' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
+                      🚫 No-Shows ({noShowAppts.length})
+                    </button>
+                    <button onClick={() => setDelNoShowView('deleted')}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${delNoShowView==='deleted' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
+                      🗑️ Deleted ({deletedApptsData.length})
+                    </button>
+                  </div>
+                  <div className="relative flex-1 max-w-xs">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                    <input type="text" placeholder="Search by pet, client, or phone..."
+                      value={delNoShowSearch} onChange={e => setDelNoShowSearch(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white shadow-sm" />
+                  </div>
+                </div>
+
+                {delNoShowView === 'no_show' ? (
+                  loadingNoShowAppts ? (
+                    <p className="text-gray-400 text-sm">Loading...</p>
+                  ) : filteredNoShow.length === 0 ? (
+                    <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center text-sm text-gray-400">
+                      No no-show appointments{q ? ' match your search' : ' on record'}.
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-50 overflow-hidden">
+                      {filteredNoShow.map(a => (
+                        <button key={a.id} onClick={() => openApptDetail(a)}
+                          className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-50 transition-colors">
+                          {a.pets?.photo_url
+                            ? <img src={a.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
+                            : <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base flex-shrink-0">🐶</div>}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{a.pets?.name ?? 'Pet'} <span className="font-normal text-gray-400">· {a.clients?.name ?? a.client_phone}</span></p>
+                            <p className="text-xs text-gray-500 truncate">{serviceMap[a.service] ?? a.service} · {formatDate(a.appointment_date)} · {a.appointment_time}</p>
+                          </div>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-100 text-rose-600 flex-shrink-0">no-show</span>
+                          <span className="text-gray-300 text-lg flex-shrink-0">›</span>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  loadingDeletedAppts ? (
+                    <p className="text-gray-400 text-sm">Loading...</p>
+                  ) : filteredDeleted.length === 0 ? (
+                    <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center text-sm text-gray-400">
+                      No deleted appointments{q ? ' match your search' : ' on record yet'}.
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-50 overflow-hidden">
+                      {filteredDeleted.map(r => {
+                        const a = r.appointment || {}
+                        return (
+                          <div key={r.id} className="flex items-center gap-3 px-5 py-3">
+                            {a.pets?.photo_url
+                              ? <img src={a.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0 opacity-70" alt="" />
+                              : <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base flex-shrink-0 opacity-70">🐶</div>}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'} <span className="font-normal text-gray-400">· {a.clients?.name ?? r.client_phone ?? '—'}</span></p>
+                              <p className="text-xs text-gray-500 truncate">
+                                {a.service ? (serviceMap[a.service] ?? a.service) : '—'}
+                                {a.appointment_date ? ` · ${formatDate(a.appointment_date)}` : ''}
+                                {a.appointment_time ? ` · ${a.appointment_time}` : ''}
+                              </p>
+                            </div>
+                            <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">Deleted {new Date(r.deleted_at).toLocaleDateString()}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                )}
               </div>
             )
           })()}
