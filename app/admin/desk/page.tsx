@@ -5439,7 +5439,7 @@ export default function DeskAdmin() {
             })()}</span>
             {!isBookMode && <ChatIconButton />}
             {!isBookMode && (
-              <a href="/admin" className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors font-medium">
+              <a href="/admin/mobile" className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors font-medium">
                 📱 Mobile View
               </a>
             )}
