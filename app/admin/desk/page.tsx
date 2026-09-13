@@ -4741,7 +4741,16 @@ export default function DeskAdmin() {
                                 {a.status === 'completed' ? '✓' : a.status === 'cancelled' ? '✕' : '📅'}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-gray-800">{serviceMap[a.service] ?? a.service}</p>
+                                <p className="text-sm font-semibold text-gray-800">
+                                  {serviceMap[a.service] ?? a.service}
+                                  {/* A client with multiple pets can have two visits that look
+                                      identical (same day/time/price/groomer) — show which pet
+                                      this row is actually for so they don't read as a duplicate. */}
+                                  {(() => {
+                                    const petName = detailClient?.pets.find(p => p.id === a.pet_id)?.name
+                                    return petName ? <span className="font-normal text-gray-400"> · {petName}</span> : null
+                                  })()}
+                                </p>
                                 <p className="text-xs text-gray-400">{formatDate(a.appointment_date)} · {a.appointment_time}</p>
                                 {(a.assigned_groomer || a.assigned_bather) && (
                                   <p className="text-xs text-gray-400 mt-0.5">
