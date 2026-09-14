@@ -1662,6 +1662,9 @@ export default function AdminPage() {
           </h1>
         </div>
         <div className="flex items-center gap-1">
+          <a href="/admin/desk" className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-full transition-colors font-medium mr-1">
+            🖥️ Desktop
+          </a>
           <ChatIconButton />
           <button
             onClick={() => { clearAuth('admin'); setAuthed(false); router.push('/login') }}
