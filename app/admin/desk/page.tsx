@@ -3204,32 +3204,49 @@ export default function DeskAdmin() {
                                   </>
                                 )}
                                 {(() => {
-                                  // One groomer can't actually work on two dogs at the same instant, so
-                                  // when two appointments both land on this same staff member at
-                                  // overlapping nominal times (e.g. a group booking's two dogs both
-                                  // assigned to Wylie at 9:00 AM), show them back-to-back instead of
-                                  // simultaneously -- reflow each later-booked appointment to start the
-                                  // moment the previous one on this same staff member ends, so the
-                                  // column reads as one continuous busy stretch (9:00-10:30) rather than
-                                  // two identical 9:00 boxes. This only changes what's DRAWN here; the
-                                  // appointment's actual booked/confirmed time is untouched everywhere
-                                  // else (Pending Request, customer notifications, etc.).
+                                  // One groomer can't actually be in two places at once, but shifting a
+                                  // later appointment's DISPLAYED time to right after an earlier one ends
+                                  // was misleading -- it showed a time the appointment was never actually
+                                  // booked at. Overlapping appointments for the same staff member are
+                                  // real (e.g. two dogs from the same family) and fine to show
+                                  // side-by-side at their true times, so lay overlapping ones out in
+                                  // side-by-side lanes instead of ever changing anyone's displayed time.
                                   const timed = colAppts.map(a => {
                                     const d = parseApptTime(a.appointment_date, a.appointment_time)
                                     const startMin = d.getHours() * 60 + d.getMinutes()
                                     const dur = serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier)
-                                    return { a, startMin, dur }
+                                    return { a, startMin, dur, endMin: startMin + dur }
                                   }).sort((x, y) => x.startMin - y.startMin)
 
-                                  let cursor = -Infinity
-                                  const laidOut = timed.map(item => {
-                                    const displayStart = Math.max(item.startMin, cursor)
-                                    cursor = displayStart + item.dur
-                                    return { ...item, displayStart }
+                                  type TimedItem = typeof timed[number]
+                                  const laidOut: (TimedItem & { lane: number; laneCount: number })[] = []
+                                  let cluster: TimedItem[] = []
+                                  let clusterEnd = -Infinity
+                                  const flushCluster = () => {
+                                    if (cluster.length === 0) return
+                                    // Greedy interval coloring: give each appointment the first lane whose
+                                    // last occupant has already ended by this one's start, else a new lane.
+                                    const laneEnds: number[] = []
+                                    const withLanes = cluster.map(item => {
+                                      let lane = laneEnds.findIndex(end => end <= item.startMin)
+                                      if (lane === -1) { lane = laneEnds.length; laneEnds.push(item.endMin) }
+                                      else { laneEnds[lane] = item.endMin }
+                                      return { ...item, lane }
+                                    })
+                                    const laneCount = laneEnds.length
+                                    withLanes.forEach(item => laidOut.push({ ...item, laneCount }))
+                                    cluster = []
+                                    clusterEnd = -Infinity
+                                  }
+                                  timed.forEach(item => {
+                                    if (cluster.length > 0 && item.startMin >= clusterEnd) flushCluster()
+                                    cluster.push(item)
+                                    clusterEnd = Math.max(clusterEnd, item.endMin)
                                   })
+                                  flushCluster()
 
-                                  return laidOut.map(({ a, startMin, dur, displayStart }) => {
-                                    const top = (displayStart - CAL_START) * CAL_PX
+                                  return laidOut.map(({ a, startMin, dur, lane, laneCount }) => {
+                                    const top = (startMin - CAL_START) * CAL_PX
                                     const h = dur * CAL_PX
                                     const isDone = a.status === 'completed' || !!a.checked_out_at
                                     const isCheckedIn = !!a.checked_in_at && !a.checked_out_at
@@ -3237,15 +3254,19 @@ export default function DeskAdmin() {
                                     // glance); a dashed border marks an appointment that hasn't checked in yet.
                                     const svcColor = serviceBlockColor(a.service)
                                     const cls = `${svcColor.bg} ${svcColor.border} ${svcColor.text} ${isDone || isCheckedIn ? 'border-solid' : 'border-dashed'}`
-                                    const wasPushed = displayStart !== startMin
+                                    const widthPct = 100 / laneCount
                                     return (
                                       <div key={a.id}
                                         onClick={(e) => { e.stopPropagation(); openApptDetail(a) }}
-                                        className={`absolute left-1 right-1 rounded-lg border px-1.5 py-1 text-[10px] leading-tight overflow-hidden cursor-pointer ${cls}`}
-                                        style={{ top: `${Math.max(top, 0)}px`, height: `${Math.max(h - 2, 20)}px` }}
-                                        title={`${a.pets?.name ?? ''} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(displayStart)}–${fmtCalMin(displayStart + dur)}${wasPushed ? ` (booked ${fmtCalMin(startMin)}, moved back-to-back)` : ''}`}>
+                                        className={`absolute rounded-lg border px-1.5 py-1 text-[10px] leading-tight overflow-hidden cursor-pointer ${cls}`}
+                                        style={{
+                                          top: `${Math.max(top, 0)}px`, height: `${Math.max(h - 2, 20)}px`,
+                                          left: `calc(${lane * widthPct}% + 2px)`,
+                                          width: `calc(${widthPct}% - 4px)`,
+                                        }}
+                                        title={`${a.pets?.name ?? ''} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(startMin)}–${fmtCalMin(startMin + dur)}`}>
                                         <p className="font-bold truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'}</p>
-                                        <p className="truncate opacity-80">{fmtCalMin(displayStart)}–{fmtCalMin(displayStart + dur)}</p>
+                                        <p className="truncate opacity-80">{fmtCalMin(startMin)}–{fmtCalMin(startMin + dur)}</p>
                                         <p className="truncate opacity-80">{serviceMap[a.service] ?? a.service}</p>
                                       </div>
                                     )
