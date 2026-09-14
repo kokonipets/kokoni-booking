@@ -3828,7 +3828,7 @@ export default function AdminPage() {
                                                            'rounded-none border-t-0 border-b-0'
                                     return (
                                       <button key={t.a.id + '-' + i} onClick={() => openApptDetail(t.a)}
-                                        className={`w-full flex items-center gap-2 border px-2.5 py-1.5 text-left ${svc.bg} ${svc.border} ${radiusCls}`}>
+                                        className={`w-full flex-1 flex items-center gap-2 border px-2.5 py-1.5 text-left ${svc.bg} ${svc.border} ${radiusCls}`}>
                                         {(role === 'solo' || role === 'top') && (
                                           <>
                                             {t.a.pets?.photo_url
