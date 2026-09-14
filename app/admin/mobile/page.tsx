@@ -3664,16 +3664,41 @@ export default function AdminPage() {
                     </div>
                   )}
 
-                  {/* Time slot timeline */}
+                  {/* Time slot timeline — every 30 min (matching the desktop admin
+                      calendar), not every 15. An appointment booked on a quarter-hour
+                      still shows, grouped under the half-hour row it falls within. */}
                   <div className="overflow-y-auto flex-1 divide-y divide-gray-50">
-                    {TIME_OPTIONS.filter(slot => {
-                      const openIdx = TIME_OPTIONS.indexOf(openTime)
-                      const closeIdx = TIME_OPTIONS.indexOf(closeTime)
-                      const slotIdx = TIME_OPTIONS.indexOf(slot)
-                      if (openIdx === -1 || closeIdx === -1) return true
-                      return slotIdx >= openIdx && slotIdx <= closeIdx
-                    }).map(slot => {
-                      const appts = (byDate[selectedDay] || []).filter(a => a.appointment_time === slot)
+                    {(() => {
+                      const toMinsOuter = (t: string) => {
+                        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
+                        if (!m) return -1
+                        let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
+                        if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
+                        return h * 60 + min
+                      }
+                      const halfHourSlots = TIME_OPTIONS.filter(t => toMinsOuter(t) % 30 === 0)
+                      const openMins = toMinsOuter(openTime), closeMins = toMinsOuter(closeTime)
+                      return halfHourSlots.filter(slot => {
+                        const m = toMinsOuter(slot)
+                        if (openMins === -1 || closeMins === -1) return true
+                        return m >= openMins && m <= closeMins
+                      })
+                    })().map((slot, slotIdx, daySlots) => {
+                      // Match exact slot OR any time that falls between this slot and the next
+                      const nextSlot = daySlots[slotIdx + 1]
+                      const toMins = (t: string) => {
+                        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
+                        if (!m) return -1
+                        let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
+                        if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
+                        return h * 60 + min
+                      }
+                      const appts = (byDate[selectedDay] || []).filter(a => {
+                        if (a.appointment_time === slot) return true
+                        if (!nextSlot) return false
+                        const at = toMins(a.appointment_time), st = toMins(slot), nt = toMins(nextSlot)
+                        return at > st && at < nt
+                      })
                       const blocked = blockedTimes.find(b => b.date === selectedDay && b.time === slot)
                       const isBlocking = blockingSlot?.date === selectedDay && blockingSlot?.time === slot
                       const visibleAppts = calendarStaffFilter === 'all'
