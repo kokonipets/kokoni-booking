@@ -173,6 +173,7 @@ type Appointment = {
   grooming_quality?: any | null
   clients: { name: string; phone: string; email: string | null } | null
   pets: { id?: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; photo_url: string | null } | null
+  is_new_client?: boolean
 }
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -2380,7 +2381,7 @@ export default function AdminPage() {
                       {/* Row 1: name + time */}
                       <div className="flex items-start justify-between gap-1">
                         <div className="flex items-baseline gap-1.5 flex-wrap">
-                          <span className="font-bold text-gray-900 text-sm">{petName}{appt.payment_amount ? <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[10px] font-bold leading-none">$</span> : null}</span>
+                          <span className="font-bold text-gray-900 text-sm">{petName}{appt.is_new_client && ' ⭐'}{appt.payment_amount ? <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[10px] font-bold leading-none">$</span> : null}</span>
                           <span className="text-xs text-gray-400">{ownerName.split(' ')[0]}</span>
                           {isLate && !gs && <span className="text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded">LATE</span>}
                           {appt.status === 'pending' && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">PENDING</span>}
@@ -2645,7 +2646,7 @@ export default function AdminPage() {
                                     ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
                                     : <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-gray-800">{appt.pets?.name}
+                                    <p className="font-bold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}
                                       <span className="font-normal text-gray-400 text-sm ml-1">{appt.pets?.breed}</span>
                                     </p>
                                     <p className="text-sm text-gray-600">{appt.clients?.name} · <span className="text-gray-400">{appt.clients?.phone}</span></p>
@@ -2711,7 +2712,7 @@ export default function AdminPage() {
                                     ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
                                     : <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-gray-800">{appt.pets?.name}
+                                    <p className="font-bold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}
                                       <span className="font-normal text-gray-400 text-sm ml-1">{appt.pets?.breed}</span>
                                     </p>
                                     <p className="text-sm text-gray-600">{appt.clients?.name}</p>
@@ -2768,7 +2769,7 @@ export default function AdminPage() {
                                     ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
                                     : <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-gray-800">{appt.pets?.name}
+                                    <p className="font-bold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}
                                       <span className="font-normal text-gray-400 text-sm ml-1">{appt.pets?.breed}</span>
                                     </p>
                                     <p className="text-sm text-gray-600">{appt.clients?.name}</p>
@@ -2841,7 +2842,7 @@ export default function AdminPage() {
               <div>
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="font-semibold text-gray-800 text-base">
-                    {appt.pets?.name ?? '—'}
+                    {appt.pets?.name ?? '—'}{appt.is_new_client && ' ⭐'}
                   </span>
                   {appt.pets?.vaccine_status && (
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${VACCINE_COLORS[appt.pets.vaccine_status] ?? 'bg-gray-100 text-gray-500'}`}>
@@ -3834,7 +3835,7 @@ export default function AdminPage() {
                                               ? <img src={t.a.pets.photo_url} className="w-8 h-8 rounded-full object-cover flex-shrink-0" alt="" />
                                               : <div className="w-8 h-8 rounded-full bg-white/70 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
                                             <div className="flex-1 min-w-0">
-                                              <p className="font-semibold text-gray-800 text-[12.5px] truncate">{t.a.pets?.name ?? 'Pet'}</p>
+                                              <p className="font-semibold text-gray-800 text-[12.5px] truncate">{t.a.pets?.name ?? 'Pet'}{t.a.is_new_client && ' ⭐'}</p>
                                               <p className="text-[10.5px] text-gray-500 truncate">
                                                 {serviceMap[t.a.service] ?? t.a.service}{t.a.clients?.name ? ` · ${t.a.clients.name}` : ''}
                                               </p>
@@ -3957,7 +3958,7 @@ export default function AdminPage() {
                       ? <img src={a.pets.photo_url} className="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow" alt="" />
                       : <div className="w-14 h-14 rounded-2xl bg-sky-100 flex items-center justify-center text-3xl">🐶</div>}
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-900 text-lg leading-tight">{a.pets?.name ?? '—'}</p>
+                      <p className="font-bold text-gray-900 text-lg leading-tight">{a.pets?.name ?? '—'}{a.is_new_client && ' ⭐'}</p>
                       <p className="text-sm text-gray-500">{a.pets?.breed}{a.pets?.weight ? ` · ${a.pets.weight}` : ''}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{a.clients?.name} · {new Date(a.appointment_date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})} {a.appointment_time}</p>
                     </div>
@@ -4338,7 +4339,7 @@ export default function AdminPage() {
                             ? <img src={a.pets.photo_url} className="w-16 h-16 rounded-2xl object-cover border-2 border-gray-100 shadow-sm flex-shrink-0" alt="" />
                             : <div className="w-16 h-16 rounded-2xl bg-sky-100 flex items-center justify-center text-3xl flex-shrink-0">🐶</div>}
                           <div className="flex-1 min-w-0 space-y-1">
-                            <p className="font-bold text-gray-900 text-base">{a.pets?.name ?? '—'}</p>
+                            <p className="font-bold text-gray-900 text-base">{a.pets?.name ?? '—'}{a.is_new_client && ' ⭐'}</p>
                             {a.pets?.breed && <p className="text-sm text-gray-500">{a.pets.breed}</p>}
                             {a.pets?.weight && (
                               <span className="inline-block text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">{a.pets.weight}</span>
@@ -4643,7 +4644,7 @@ export default function AdminPage() {
                                 ? <img src={f.pets.photo_url} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" alt="" />
                                 : <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-gray-800">{f.pets?.name}</p>
+                                <p className="text-sm font-semibold text-gray-800">{f.pets?.name}{f.is_new_client && ' ⭐'}</p>
                                 <p className="text-xs text-gray-500">{serviceMap[f.service]??f.service}</p>
                                 <p className="text-xs text-gray-400">{new Date(f.appointment_date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})} · {f.appointment_time}</p>
                               </div>
@@ -5339,7 +5340,7 @@ export default function AdminPage() {
                                     ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-xl object-cover shrink-0" alt="" />
                                     : <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-xl shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-gray-900 text-sm">{appt.pets?.name ?? '—'} <span className="font-normal text-gray-400">· {appt.clients?.name?.split(' ')[0] ?? '—'}</span></p>
+                                    <p className="font-semibold text-gray-900 text-sm">{appt.pets?.name ?? '—'}{appt.is_new_client && ' ⭐'} <span className="font-normal text-gray-400">· {appt.clients?.name?.split(' ')[0] ?? '—'}</span></p>
                                     <p className="text-xs text-gray-400">{serviceMap[appt.service] ?? appt.service} · {appt.appointment_time.replace(':00 ', ' ')}</p>
                                   </div>
                                   <div className="text-right shrink-0">
@@ -5412,7 +5413,7 @@ export default function AdminPage() {
                                   ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-xl object-cover shrink-0" alt="" />
                                   : <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-lg shrink-0">🐾</div>}
                                 <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-gray-800 text-sm">{appt.pets?.name ?? '—'} <span className="font-normal text-gray-400">· {appt.clients?.name?.split(' ')[0] ?? '—'}</span></p>
+                                  <p className="font-semibold text-gray-800 text-sm">{appt.pets?.name ?? '—'}{appt.is_new_client && ' ⭐'} <span className="font-normal text-gray-400">· {appt.clients?.name?.split(' ')[0] ?? '—'}</span></p>
                                   <p className="text-xs text-gray-400">{serviceMap[appt.service] ?? appt.service} · {appt.appointment_time.replace(':00 ', ' ')}</p>
                                   <p className="text-xs text-gray-400 mt-0.5">
                                     {appt.assigned_groomer && `✂️ ${appt.assigned_groomer.split(' ')[0]}`}

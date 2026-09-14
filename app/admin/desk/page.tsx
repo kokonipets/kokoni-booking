@@ -3096,7 +3096,7 @@ export default function DeskAdmin() {
                           {unassignedAppts.map(a => (
                             <div key={a.id} className={`flex-shrink-0 min-w-[160px] bg-white border rounded-xl px-3 py-2 ${staffCalSelectingId === a.id ? 'ring-2 ring-amber-400 border-amber-300' : 'border-amber-200'}`}>
                               <p className="text-xs font-bold text-amber-700">{a.appointment_time}</p>
-                              <p className="text-xs font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'} · {serviceMap[a.service] ?? a.service}</p>
+                              <p className="text-xs font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'} · {serviceMap[a.service] ?? a.service}</p>
                               <button
                                 onClick={() => setStaffCalSelectingId(prev => prev === a.id ? null : a.id)}
                                 disabled={staffCalAssigning === a.id}
@@ -3532,7 +3532,7 @@ export default function DeskAdmin() {
                 ? <img src={inlineRescheduleAppt.pets.photo_url} className="w-12 h-12 rounded-2xl object-cover flex-shrink-0" alt="" />
                 : <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-2xl flex-shrink-0">🐶</div>}
               <div>
-                <p className="font-black text-gray-800">{inlineRescheduleAppt.pets?.name} <span className="text-gray-400 font-normal text-sm">· {inlineRescheduleAppt.clients?.name}</span></p>
+                <p className="font-black text-gray-800">{inlineRescheduleAppt.pets?.name}{inlineRescheduleAppt.is_new_client && ' ⭐'} <span className="text-gray-400 font-normal text-sm">· {inlineRescheduleAppt.clients?.name}</span></p>
                 <p className="text-sm text-gray-500">{serviceMap[inlineRescheduleAppt.service] ?? inlineRescheduleAppt.service} · {inlineRescheduleAppt.appointment_time}</p>
               </div>
               <button onClick={() => setInlineRescheduleAppt(null)} className="ml-auto text-gray-300 hover:text-gray-500 text-2xl leading-none">✕</button>
@@ -3639,7 +3639,7 @@ export default function DeskAdmin() {
                     ? <img src={detailAppt.pets.photo_url} className="w-11 h-11 rounded-full object-cover border-2 border-white shadow" alt="" />
                     : <div className="w-11 h-11 rounded-full bg-white flex items-center justify-center text-2xl shadow">🐶</div>}
                   <div>
-                    <p className="font-bold text-gray-800 text-lg leading-tight">{detailAppt.pets?.name}</p>
+                    <p className="font-bold text-gray-800 text-lg leading-tight">{detailAppt.pets?.name}{detailAppt.is_new_client && ' ⭐'}</p>
                     <p className="text-xs text-gray-500">{detailAppt.pets?.breed} · {detailAppt.clients?.name}</p>
                   </div>
                 </div>
@@ -4488,7 +4488,7 @@ export default function DeskAdmin() {
                         ) : (
                           <button onClick={() => { setEditingApptName(true); setPetNameDraft(detailAppt.pets?.name || '') }}
                             className="flex items-center gap-1 font-bold text-gray-800 hover:text-sky-600 group">
-                            <span>{detailAppt.pets?.name}</span>
+                            <span>{detailAppt.pets?.name}{detailAppt.is_new_client && ' ⭐'}</span>
                             <span className="opacity-0 group-hover:opacity-100 text-gray-400 text-xs font-normal">✏️</span>
                           </button>
                         )}
@@ -5069,7 +5069,7 @@ export default function DeskAdmin() {
                                 ? <img src={a.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
                                 : <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-gray-800">{a.pets?.name}</p>
+                                <p className="text-sm font-semibold text-gray-800">{a.pets?.name}{a.is_new_client && ' ⭐'}</p>
                                 <p className="text-xs text-gray-500">{serviceMap[a.service]??a.service} · {formatDate(a.appointment_date)} · {a.appointment_time}</p>
                               </div>
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[a.status]??'bg-gray-100 text-gray-500'}`}>{a.status}</span>
@@ -5694,6 +5694,7 @@ export default function DeskAdmin() {
                                   <div>
                                     <p className="text-sm font-semibold text-gray-800">
                                       {appt.pets?.name ?? '—'}
+                                      {appt.is_new_client && ' ⭐'}
                                       {hasNotes && <span className="ml-1.5 text-xs bg-amber-100 text-amber-700 font-semibold px-1.5 py-0.5 rounded-md">📝</span>}
                                     </p>
                                     <p className="text-xs text-gray-400">{firstName(appt.clients?.name)} · {appt.client_phone}</p>
@@ -6003,7 +6004,7 @@ export default function DeskAdmin() {
                         ? <img src={groomingCelebrate.pets.photo_url} className="w-36 h-36 rounded-[32px] object-cover border-4 border-white shadow-2xl mx-auto mb-6" alt="" />
                         : <div className="w-36 h-36 rounded-[32px] bg-white/20 flex items-center justify-center text-7xl mx-auto mb-6">🐾</div>
                       }
-                      <h1 className="text-7xl font-black text-white mb-2 drop-shadow-2xl">{groomingCelebrate.pets?.name ?? 'Done!'}</h1>
+                      <h1 className="text-7xl font-black text-white mb-2 drop-shadow-2xl">{groomingCelebrate.pets?.name ?? 'Done!'}{groomingCelebrate.is_new_client && ' ⭐'}</h1>
                       <p className="text-2xl font-bold text-white/90 mb-2">is going home! 🏠</p>
                       <p className="text-base text-white/60">See you next time, {groomingCelebrate.clients?.name}! 💜</p>
                     </div>
@@ -6054,7 +6055,7 @@ export default function DeskAdmin() {
                             {/* Info */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-baseline gap-2 flex-wrap">
-                                <span className="text-lg font-black text-gray-800">{appt.pets?.name ?? '—'}</span>
+                                <span className="text-lg font-black text-gray-800">{appt.pets?.name ?? '—'}{appt.is_new_client && ' ⭐'}</span>
                                 <span className="text-sm text-gray-400">{appt.clients?.name}</span>
                               </div>
                               <p className="text-xs text-gray-500 mb-2">{serviceMap[appt.service] ?? appt.service} · {appt.appointment_time}</p>
@@ -6140,7 +6141,7 @@ export default function DeskAdmin() {
                                       : <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${stage.bg} flex-shrink-0`}>🐾</div>
                                     }
                                     <div className="min-w-0">
-                                      <p className="font-black text-sm text-gray-800 truncate">{appt.pets?.name ?? '—'}</p>
+                                      <p className="font-black text-sm text-gray-800 truncate">{appt.pets?.name ?? '—'}{appt.is_new_client && ' ⭐'}</p>
                                       <p className="text-xs text-gray-400 truncate">{appt.appointment_time} · {appt.clients?.name}</p>
                                     </div>
                                   </div>
@@ -6203,7 +6204,7 @@ export default function DeskAdmin() {
                         {appt.pets?.photo_url
                           ? <img src={appt.pets.photo_url} className="w-8 h-8 rounded-full object-cover" alt="" />
                           : <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm">🐶</div>}
-                        <span className="text-sm font-medium">{appt.pets?.name}</span>
+                        <span className="text-sm font-medium">{appt.pets?.name}{appt.is_new_client && ' ⭐'}</span>
                       </div>
                       <span className="text-sm text-gray-600">{appt.clients?.name}</span>
                       <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
@@ -6516,7 +6517,7 @@ export default function DeskAdmin() {
                                 ? <img src={appt.pets.photo_url} className="w-12 h-12 rounded-full object-cover border-2 border-gray-200 flex-shrink-0" alt="" />
                                 : <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
                               <div>
-                                <p className="font-semibold text-gray-800">{appt.pets?.name || '—'}</p>
+                                <p className="font-semibold text-gray-800">{appt.pets?.name || '—'}{appt.is_new_client && ' ⭐'}</p>
                                 <div className="flex flex-wrap gap-1.5 mt-1">
                                   {appt.pets?.breed ? <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{appt.pets.breed}</span> : <span className="text-xs text-amber-500">No breed</span>}
                                   {appt.pets?.weight ? <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">⚖️ {appt.pets.weight}</span> : <span className="text-xs text-amber-500">No weight</span>}
@@ -8098,7 +8099,7 @@ export default function DeskAdmin() {
                     )}
                     <span className="text-xs text-gray-400 w-16 shrink-0 tabular-nums">{timeStr}</span>
                     <div className="flex-1 min-w-0">
-                      <span className="text-sm font-semibold text-gray-800">{appt.pets?.name}</span>
+                      <span className="text-sm font-semibold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}</span>
                       <span className="text-xs text-gray-400 ml-2">{appt.clients?.name} · {serviceMap[appt.service] ?? appt.service}</span>
                       {appt.assigned_groomer && <span className="text-xs text-gray-300 ml-2">✂️ {firstName(appt.assigned_groomer)}</span>}
                     </div>
@@ -9041,7 +9042,7 @@ export default function DeskAdmin() {
                                   className="w-full text-left px-5 py-3 hover:bg-gray-50 transition-colors flex items-center justify-between gap-3"
                                 >
                                   <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-gray-800 truncate">{a.pets?.name ?? 'Pet'} <span className="text-gray-400 font-normal">· {a.clients?.name ?? ''}</span></p>
+                                    <p className="text-sm font-semibold text-gray-800 truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'} <span className="text-gray-400 font-normal">· {a.clients?.name ?? ''}</span></p>
                                     <p className="text-xs text-gray-500 mt-0.5">{a.appointment_date} · {a.appointment_time} · {serviceMap[a.service] ?? a.service}</p>
                                   </div>
                                   <span className="text-xs font-semibold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full whitespace-nowrap">{a.status === 'completed' ? 'Unpaid' : a.status}</span>
@@ -9141,7 +9142,7 @@ export default function DeskAdmin() {
                                   <div className="flex items-baseline gap-3 min-w-0">
                                     <span className="text-xs text-gray-400 w-16 shrink-0">{tStr}</span>
                                     <span className="truncate">
-                                      <span className="font-semibold text-gray-700">{a.pets?.name ?? 'Pet'}</span>
+                                      <span className="font-semibold text-gray-700">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'}</span>
                                       <span className="text-gray-400 text-xs ml-1.5">{serviceMap[a.service] ?? a.service}</span>
                                     </span>
                                   </div>
@@ -9834,7 +9835,7 @@ export default function DeskAdmin() {
                             ? <img src={a.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
                             : <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base flex-shrink-0">🐶</div>}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-800 truncate">{a.pets?.name ?? 'Pet'} <span className="font-normal text-gray-400">· {a.clients?.name ?? a.client_phone}</span></p>
+                            <p className="text-sm font-semibold text-gray-800 truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'} <span className="font-normal text-gray-400">· {a.clients?.name ?? a.client_phone}</span></p>
                             <p className="text-xs text-gray-500 truncate">{serviceMap[a.service] ?? a.service} · {formatDate(a.appointment_date)} · {a.appointment_time}</p>
                           </div>
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-100 text-rose-600 flex-shrink-0">no-show</span>
@@ -9860,7 +9861,7 @@ export default function DeskAdmin() {
                               ? <img src={a.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0 opacity-70" alt="" />
                               : <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base flex-shrink-0 opacity-70">🐶</div>}
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'} <span className="font-normal text-gray-400">· {a.clients?.name ?? r.client_phone ?? '—'}</span></p>
+                              <p className="text-sm font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'} <span className="font-normal text-gray-400">· {a.clients?.name ?? r.client_phone ?? '—'}</span></p>
                               <p className="text-xs text-gray-500 truncate">
                                 {a.service ? (serviceMap[a.service] ?? a.service) : '—'}
                                 {a.appointment_date ? ` · ${formatDate(a.appointment_date)}` : ''}
