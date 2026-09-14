@@ -3610,8 +3610,145 @@ export default function AdminPage() {
             )}
 
 
-            {/* Day detail MODAL — bottom sheet */}
-            {selectedDay && (
+            {/* Day detail MODAL — bottom sheet, one groomer's timeline at a
+                time via tabs (mirrors the desktop calendar's per-groomer
+                columns, adapted for a narrow screen: switch tabs instead of
+                showing columns side-by-side) */}
+            {selectedDay && (() => {
+              const toMins = (t: string) => {
+                const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
+                if (!m) return -1
+                let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
+                if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
+                return h * 60 + min
+              }
+              const fmtMin = (mins: number) => {
+                let h = Math.floor(mins / 60), m = mins % 60
+                const ap = h >= 12 ? 'PM' : 'AM'
+                let h12 = h % 12; if (h12 === 0) h12 = 12
+                return `${h12}:${m.toString().padStart(2, '0')} ${ap}`
+              }
+              const parseDurationStr = (s?: string | null): number | null => {
+                if (!s) return null
+                const hMatch = s.match(/(\d+(?:\.\d+)?)\s*h/i)
+                if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60)
+                const mMatch = s.match(/(\d+)\s*m/i)
+                if (mMatch) return parseInt(mMatch[1])
+                const num = parseFloat(s)
+                return isNaN(num) ? null : Math.round(num)
+              }
+              // Real per-appointment length, matching desktop's calendar: look up
+              // the actual service (and, when it's size-tiered, the matching
+              // size) from Settings' duration field, falling back to 45 min.
+              const serviceDurationMin = (serviceId: string, sizeTier?: string | null): number => {
+                const svc = services.find(sv => sv.id === serviceId) as { tiers?: { label: string; duration?: string }[]; duration?: string } | undefined
+                if (!svc?.tiers?.length) return parseDurationStr(svc?.duration) ?? 45
+                const tier = svc.tiers.find(t => t.label === sizeTier) || svc.tiers[0]
+                return parseDurationStr(tier?.duration) ?? 45
+              }
+              const svcVisual = (serviceId: string) => (
+                serviceId === 'simply_cute'  ? { bg: 'bg-sky-50',  border: 'border-sky-200'  } :
+                serviceId === 'bath_brush'   ? { bg: 'bg-teal-50', border: 'border-teal-200' } :
+                serviceId === 'asian_fusion' ? { bg: 'bg-pink-50', border: 'border-pink-200' } :
+                                                { bg: 'bg-gray-50', border: 'border-gray-200' }
+              )
+
+              const dayAppts = byDate[selectedDay] || []
+
+              // One tab per active groomer/bather who has an appointment today,
+              // plus an Unassigned tab when any appointment has no one assigned
+              // yet. A phone can't show groomers side-by-side like the desktop
+              // calendar does, so tabs stand in for columns -- pick a person,
+              // see their own full-day timeline.
+              const activeStaffDay = staff.filter(s => s.is_active && s.role !== 'admin')
+              const staffTabs = activeStaffDay.map(s => ({
+                key: s.name,
+                label: s.name,
+                icon: s.role === 'groomer' ? '✂️' : '🛁',
+                dot: s.role === 'groomer' ? 'bg-sky-500' : 'bg-teal-500',
+                count: dayAppts.filter(a => a.assigned_groomer === s.name || a.assigned_bather === s.name).length,
+              })).filter(t => t.count > 0)
+              const unassignedCount = dayAppts.filter(a => !a.assigned_groomer && !a.assigned_bather).length
+              const tabs = unassignedCount > 0
+                ? [...staffTabs, { key: '__unassigned', label: 'Unassigned', icon: '❔', dot: 'bg-gray-400', count: unassignedCount }]
+                : staffTabs
+              const activeTabKey = tabs.some(t => t.key === calendarStaffFilter) ? calendarStaffFilter : (tabs[0]?.key ?? 'all')
+
+              const daySlots = (() => {
+                const halfHourSlots = TIME_OPTIONS.filter(t => toMins(t) % 30 === 0)
+                const openMins = toMins(openTime), closeMins = toMins(closeTime)
+                return halfHourSlots.filter(t => {
+                  const m = toMins(t)
+                  if (openMins === -1 || closeMins === -1) return true
+                  return m >= openMins && m <= closeMins
+                })
+              })()
+
+              // Appointments for the active tab, resolved to their real booked
+              // start/end -- nothing here ever shifts a displayed time; two
+              // overlapping appointments for the same person just stack as
+              // separate pills within the same row instead.
+              const tabAppts = dayAppts.filter(a =>
+                activeTabKey === '__unassigned'
+                  ? (!a.assigned_groomer && !a.assigned_bather)
+                  : (a.assigned_groomer === activeTabKey || a.assigned_bather === activeTabKey)
+              ).map(a => {
+                const startMin = toMins(a.appointment_time)
+                const dur = serviceDurationMin(a.service, a.size_tier)
+                return { a, startMin, endMin: startMin + dur }
+              }).sort((x, y) => x.startMin - y.startMin)
+
+              // Which half-hour rows each appointment covers, so a multi-slot
+              // appointment draws as one continuous pill (top/mid/bottom
+              // segments) instead of repeating itself in every row.
+              const coveredByAppt = tabAppts.map(t => {
+                const idxs: number[] = []
+                daySlots.forEach((slot, i) => {
+                  const slotMin = toMins(slot)
+                  const nextMin = i + 1 < daySlots.length ? toMins(daySlots[i + 1]) : slotMin + 30
+                  if (slotMin < t.endMin && nextMin > t.startMin) idxs.push(i)
+                })
+                return { ...t, idxs }
+              })
+              type CoveredAppt = typeof coveredByAppt[number]
+              const rowSegs = new Map<number, { t: CoveredAppt; role: 'solo' | 'top' | 'mid' | 'bottom' }[]>()
+              coveredByAppt.forEach(t => {
+                t.idxs.forEach((rowIdx, pos) => {
+                  const role: 'solo' | 'top' | 'mid' | 'bottom' =
+                    t.idxs.length === 1 ? 'solo' : pos === 0 ? 'top' : pos === t.idxs.length - 1 ? 'bottom' : 'mid'
+                  if (!rowSegs.has(rowIdx)) rowSegs.set(rowIdx, [])
+                  rowSegs.get(rowIdx)!.push({ t, role })
+                })
+              })
+
+              const openApptDetail = (appt: Appointment) => {
+                const savedAddOns = (appt.notes_list ?? []).filter((n: {is_addon?:boolean}) => n.is_addon).map((n: {id:string;text:string;price?:string}) => ({ id: n.id, name: n.text, price: n.price ?? '' }))
+                const addonTotal = savedAddOns.reduce((s: number, x: {price:string}) => s + (parseFloat(x.price) || 0), 0)
+                const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0
+                setCalendarAddOns(savedAddOns)
+                setCalendarAddonDraft({ text: '', price: '' })
+                setCalendarBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : '')
+                setCalendarBaseTier((appt as { size_tier?: string | null }).size_tier || '')
+                setCalendarTotalSaved(!!appt.payment_amount)
+                setCalendarDetailAppt(appt); setDetailSheetTab('appt')
+                setCalendarPetTags([])
+                if (appt.pets?.id) {
+                  fetch(`/api/admin/pet-tags?pet_id=${appt.pets.id}`)
+                    .then(r => r.json())
+                    .then(d => setCalendarPetTags((d.tags ?? []) as PetTag[]))
+                    .catch(() => {/**/})
+                }
+              }
+
+              const openAddApptForm = (time: string) => {
+                setAddApptPhone(''); setAddApptFirstName(''); setAddApptLastName(''); setAddApptEmail('')
+                setAddApptPetId(''); setAddApptPetName(''); setAddApptBreed(''); setAddApptWeight('')
+                setAddApptVaccine('pending'); setAddApptClientData(null)
+                setAddApptService(services[0]?.id ?? 'bath_brush')
+                setAddingApptSlot({ date: selectedDay, time })
+              }
+
+              return (
               <div className="fixed inset-0 z-50 flex flex-col justify-end">
                 {/* Backdrop */}
                 <div className="absolute inset-0 bg-black/50"
@@ -3631,7 +3768,7 @@ export default function AdminPage() {
                         {new Date(selectedDay + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                       </h3>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {(byDate[selectedDay]?.length || 0)} appointment{(byDate[selectedDay]?.length || 0) !== 1 ? 's' : ''}
+                        {dayAppts.length} appointment{dayAppts.length !== 1 ? 's' : ''}
                         {blockedTimes.filter(b => b.date === selectedDay).length > 0 &&
                           <span className="ml-2 text-rose-400">· {blockedTimes.filter(b => b.date === selectedDay).length} blocked</span>}
                       </p>
@@ -3640,133 +3777,83 @@ export default function AdminPage() {
                       className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 text-lg font-bold">✕</button>
                   </div>
 
-                  {/* Staff filter chips */}
-                  {staff.filter(s => s.is_active && s.role !== 'admin').length > 0 && (
+                  {/* Groomer tabs — pick one, see their own full-day timeline */}
+                  {tabs.length > 0 && (
                     <div className="px-4 py-2.5 flex items-center gap-2 overflow-x-auto flex-shrink-0 border-b border-gray-100">
-                      <button
-                        onClick={() => setCalendarStaffFilter('all')}
-                        className={`shrink-0 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
-                          calendarStaffFilter === 'all'
-                            ? 'bg-sky-500 text-white'
-                            : 'bg-gray-100 text-gray-500'
-                        }`}>
-                        All
-                      </button>
-                      {staff.filter(s => s.is_active && s.role !== 'admin').map(s => (
+                      {tabs.map(t => (
                         <button
-                          key={s.id}
-                          onClick={() => setCalendarStaffFilter(calendarStaffFilter === s.name ? 'all' : s.name)}
-                          className={`shrink-0 text-xs px-3 py-1.5 rounded-full font-medium transition-colors whitespace-nowrap ${
-                            calendarStaffFilter === s.name
-                              ? s.role === 'groomer' ? 'bg-sky-500 text-white' : 'bg-teal-500 text-white'
-                              : 'bg-gray-100 text-gray-500'
+                          key={t.key}
+                          onClick={() => setCalendarStaffFilter(t.key)}
+                          className={`shrink-0 flex items-center gap-1.5 text-xs pl-1.5 pr-3 py-1 rounded-full font-semibold transition-colors whitespace-nowrap ${
+                            activeTabKey === t.key ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-500'
                           }`}>
-                          {s.role === 'groomer' ? '✂️' : '🛁'} {s.name}
+                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white flex-shrink-0 ${
+                            activeTabKey === t.key ? 'bg-white/25' : t.dot
+                          }`}>{t.icon}</span>
+                          {t.label}
+                          <span className="opacity-70">{t.count}</span>
                         </button>
                       ))}
                     </div>
                   )}
 
-                  {/* Time slot timeline — every 30 min (matching the desktop admin
-                      calendar), not every 15. An appointment booked on a quarter-hour
-                      still shows, grouped under the half-hour row it falls within. */}
+                  {/* Time slot timeline — every 30 min, this groomer's own day */}
                   <div className="overflow-y-auto flex-1 divide-y divide-gray-50">
-                    {(() => {
-                      const toMinsOuter = (t: string) => {
-                        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
-                        if (!m) return -1
-                        let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
-                        if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
-                        return h * 60 + min
-                      }
-                      const halfHourSlots = TIME_OPTIONS.filter(t => toMinsOuter(t) % 30 === 0)
-                      const openMins = toMinsOuter(openTime), closeMins = toMinsOuter(closeTime)
-                      return halfHourSlots.filter(slot => {
-                        const m = toMinsOuter(slot)
-                        if (openMins === -1 || closeMins === -1) return true
-                        return m >= openMins && m <= closeMins
-                      })
-                    })().map((slot, slotIdx, daySlots) => {
-                      // Match exact slot OR any time that falls between this slot and the next
-                      const nextSlot = daySlots[slotIdx + 1]
-                      const toMins = (t: string) => {
-                        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
-                        if (!m) return -1
-                        let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = m[3].toUpperCase() === 'PM'
-                        if (pm && h !== 12) h += 12; if (!pm && h === 12) h = 0
-                        return h * 60 + min
-                      }
-                      const appts = (byDate[selectedDay] || []).filter(a => {
-                        if (a.appointment_time === slot) return true
-                        if (!nextSlot) return false
-                        const at = toMins(a.appointment_time), st = toMins(slot), nt = toMins(nextSlot)
-                        return at > st && at < nt
-                      })
+                    {tabs.length === 0 ? (
+                      <div className="px-4 py-10 text-center text-sm text-gray-400">No active groomers set up yet.</div>
+                    ) : daySlots.map((slot, idx) => {
+                      const segs: { t: CoveredAppt; role: 'solo' | 'top' | 'mid' | 'bottom' }[] = rowSegs.get(idx) || []
                       const blocked = blockedTimes.find(b => b.date === selectedDay && b.time === slot)
                       const isBlocking = blockingSlot?.date === selectedDay && blockingSlot?.time === slot
-                      const visibleAppts = calendarStaffFilter === 'all'
-                        ? appts
-                        : appts.filter(a => a.assigned_groomer === calendarStaffFilter || a.assigned_bather === calendarStaffFilter)
 
                       return (
-                        <div key={slot} className={`flex items-stretch min-h-[58px] ${
-                          appts.length === 0 && blocked ? 'bg-rose-50/60' : ''
-                        }`}>
+                        <div key={slot} className={`flex items-stretch min-h-[52px] ${segs.length === 0 && blocked ? 'bg-rose-50/60' : ''}`}>
                           {/* Time label */}
-                          <div className="w-16 flex-shrink-0 flex items-start justify-end pr-3 pt-4">
+                          <div className="w-16 flex-shrink-0 flex items-start justify-end pr-3 pt-2.5">
                             <span className="text-xs font-semibold text-gray-400 whitespace-nowrap">{slot}</span>
                           </div>
 
                           {/* Slot content */}
-                          <div className="flex-1 border-l border-gray-100 py-2 px-3 flex flex-col gap-2">
-                            {visibleAppts.length > 0 ? (
-                              visibleAppts.map(appt => (
-                              <button key={appt.id} onClick={() => {
-                                const savedAddOns = (appt.notes_list ?? []).filter((n: {is_addon?:boolean}) => n.is_addon).map((n: {id:string;text:string;price?:string}) => ({ id: n.id, name: n.text, price: n.price ?? '' }))
-                                const addonTotal = savedAddOns.reduce((s: number, x: {price:string}) => s + (parseFloat(x.price) || 0), 0)
-                                const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0
-                                setCalendarAddOns(savedAddOns)
-                                setCalendarAddonDraft({ text: '', price: '' })
-                                setCalendarBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : '')
-                                setCalendarBaseTier((appt as { size_tier?: string | null }).size_tier || '')
-                                setCalendarTotalSaved(!!appt.payment_amount)
-                                setCalendarDetailAppt(appt); setDetailSheetTab('appt')
-                                setCalendarPetTags([])
-                                if (appt.pets?.id) {
-                                  fetch(`/api/admin/pet-tags?pet_id=${appt.pets.id}`)
-                                    .then(r => r.json())
-                                    .then(d => setCalendarPetTags((d.tags ?? []) as PetTag[]))
-                                    .catch(() => {/**/})
-                                }
-                              }}
-                                className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left active:scale-98 ${
-                                  appt.service === 'simply_cute' ? 'bg-sky-50 border border-sky-200' :
-                                  appt.service === 'bath_brush'  ? 'bg-teal-50 border border-teal-200' :
-                                  appt.service === 'asian_fusion'? 'bg-pink-50 border border-pink-200' :
-                                  'bg-gray-50 border border-gray-200'}`}>
-                                {appt.pets?.photo_url
-                                  ? <img src={appt.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
-                                  : <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base flex-shrink-0">🐶</div>}
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-gray-800 text-sm truncate">{appt.pets?.name}
-                                    <span className="font-normal text-gray-400 text-xs ml-1">{[appt.pets?.breed, appt.pets?.weight].filter(Boolean).join(' · ')}</span>
-                                  </p>
-                                  <p className="text-xs text-gray-500 truncate">{serviceMap[appt.service] ?? appt.service} · {appt.clients?.name}</p>
-                                  {(appt.assigned_groomer || appt.assigned_bather) && (
-                                    <p className="text-xs text-gray-400">
-                                      {appt.assigned_groomer && <span>✂️ {appt.assigned_groomer}</span>}
-                                      {appt.assigned_groomer && appt.assigned_bather && <span className="mx-1">·</span>}
-                                      {appt.assigned_bather && <span>🛁 {appt.assigned_bather}</span>}
-                                    </p>
-                                  )}
+                          <div className="flex-1 border-l border-gray-100 px-3 py-1.5 flex items-stretch gap-1.5">
+                            {segs.length > 0 ? (
+                              <>
+                                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                                  {segs.map(({ t, role }, i) => {
+                                    const svc = svcVisual(t.a.service)
+                                    const radiusCls =
+                                      role === 'solo'   ? 'rounded-xl' :
+                                      role === 'top'    ? 'rounded-t-xl border-b-0' :
+                                      role === 'bottom' ? 'rounded-b-xl border-t-0' :
+                                                           'rounded-none border-t-0 border-b-0'
+                                    return (
+                                      <button key={t.a.id + '-' + i} onClick={() => openApptDetail(t.a)}
+                                        className={`w-full flex items-center gap-2 border px-2.5 py-1.5 text-left ${svc.bg} ${svc.border} ${radiusCls}`}>
+                                        {(role === 'solo' || role === 'top') && (
+                                          <>
+                                            {t.a.pets?.photo_url
+                                              ? <img src={t.a.pets.photo_url} className="w-8 h-8 rounded-full object-cover flex-shrink-0" alt="" />
+                                              : <div className="w-8 h-8 rounded-full bg-white/70 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
+                                            <div className="flex-1 min-w-0">
+                                              <p className="font-semibold text-gray-800 text-[12.5px] truncate">{t.a.pets?.name ?? 'Pet'}</p>
+                                              <p className="text-[10.5px] text-gray-500 truncate">
+                                                {serviceMap[t.a.service] ?? t.a.service}{t.a.clients?.name ? ` · ${t.a.clients.name}` : ''}
+                                              </p>
+                                              <p className="text-[10px] font-semibold text-sky-600">{fmtMin(t.startMin)}–{fmtMin(t.endMin)}</p>
+                                            </div>
+                                            <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                                              t.a.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                                              t.a.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
+                                              t.a.status === 'completed' ? 'bg-gray-100 text-gray-500' :
+                                              'bg-red-100 text-red-500'}`}>{t.a.status}</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    )
+                                  })}
                                 </div>
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
-                                  appt.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                                  appt.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
-                                  appt.status === 'completed' ? 'bg-gray-100 text-gray-500' :
-                                  'bg-red-100 text-red-500'}`}>{appt.status}</span>
-                              </button>
-                              ))
+                                <button onClick={() => openAddApptForm(slot)}
+                                  className="self-center flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500 text-white text-sm font-bold flex items-center justify-center">+</button>
+                              </>
                             ) : blocked ? (
                               <div className="flex-1 flex items-center gap-2">
                                 <div className="flex-1">
@@ -3792,17 +3879,11 @@ export default function AdminPage() {
                                   className="text-xs text-gray-400 px-1">✕</button>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-2 py-1">
-                                <button onClick={() => {
-                                  setAddApptPhone(''); setAddApptFirstName(''); setAddApptLastName(''); setAddApptEmail('')
-                                  setAddApptPetId(''); setAddApptPetName(''); setAddApptBreed(''); setAddApptWeight('')
-                                  setAddApptVaccine('pending'); setAddApptClientData(null)
-                                  setAddApptService(services[0]?.id ?? 'bath_brush')
-                                  setAddingApptSlot({ date: selectedDay, time: slot })
-                                }}
-                                  className="text-xs bg-sky-500 text-white px-3 py-1.5 rounded-lg font-medium">
-                                  + Appointment
-                                </button>
+                              <div className="flex-1 flex items-center gap-2">
+                                <button onClick={() => openAddApptForm(slot)}
+                                  className="w-7 h-7 rounded-full bg-emerald-500 text-white text-base font-bold flex items-center justify-center leading-none">+</button>
+                                <button onClick={() => setBlockingSlot({ date: selectedDay, time: slot })}
+                                  className="w-7 h-7 rounded-full bg-red-500 text-white text-base font-bold flex items-center justify-center leading-none">−</button>
                               </div>
                             )}
                           </div>
@@ -3812,7 +3893,8 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
-            )}
+              )
+            })()}
           </div>
         )
           })()}
