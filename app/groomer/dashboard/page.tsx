@@ -2107,6 +2107,13 @@ export default function GroomerDashboard() {
                 const svcDef = serviceDefs.find(s => s.id === popupServiceVal)
                 const svcName = svcDef?.name ?? serviceMap[popupServiceVal] ?? popupServiceVal
                 const tiers = (svcDef?.tiers ?? []).filter(t => t.label)
+                // A saved size_tier only counts as "real" if it matches one of the
+                // service's CURRENT tier labels — if tier pricing/labels were edited
+                // since this appointment was saved, the stale label shouldn't block the
+                // price-based fallback match below (previously it did: a mismatched but
+                // non-empty popupBaseTier hid both the tier highlight AND the custom
+                // price field, so reopening the popup showed neither as selected).
+                const tierLabelMatches = !!popupBaseTier && tiers.some(t => t.label === popupBaseTier)
                 const addOnPriority = ['flea shampoo', 'hand stripping']
                 const otherServices = serviceDefs.filter(s => s.id !== popupServiceVal && inferServiceCategory(s) === 'addon').slice().sort((a, b) => {
                   const ai = addOnPriority.indexOf((a.name ?? '').trim().toLowerCase())
@@ -2229,9 +2236,9 @@ export default function GroomerDashboard() {
                         <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Select Size</p>
                         <div className={`grid gap-2 mb-3 ${tiers.length <= 2 ? 'grid-cols-2' : tiers.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                           {tiers.map((tier, i) => {
-                            const explicitMatch = !!popupBaseTier && popupBaseTier === tier.label && !!tier.price
-                            // On reopen the chosen tier label isn't saved; highlight when the price uniquely matches one tier.
-                            const uniquePriceMatch = !!tier.price && !popupBaseTier && popupBasePrice === tier.price
+                            const explicitMatch = tierLabelMatches && popupBaseTier === tier.label && !!tier.price
+                            // On reopen the chosen tier label isn't saved (or is stale); highlight when the price uniquely matches one tier.
+                            const uniquePriceMatch = !!tier.price && !tierLabelMatches && popupBasePrice === tier.price
                               && tiers.filter(t => t.price === tier.price).length === 1
                             const isSelected = explicitMatch || uniquePriceMatch
                             return (
@@ -2266,30 +2273,30 @@ export default function GroomerDashboard() {
                     {/* Custom price input */}
                     {!popupReadOnly && (
                       <>
-                        {popupBasePrice && !popupBaseTier && !selectedAppt.payment_amount && (
+                        {popupBasePrice && !tierLabelMatches && !selectedAppt.payment_amount && (
                           <p className="text-[11px] text-sky-500 font-medium mb-1 px-1">📋 Last payment — confirm or adjust before saving</p>
                         )}
-                        {popupBasePrice && !popupBaseTier && selectedAppt.payment_amount && popupTotalSaved && (
+                        {popupBasePrice && !tierLabelMatches && selectedAppt.payment_amount && popupTotalSaved && (
                           <p className="text-[11px] text-emerald-600 font-medium mb-1 px-1">✓ Price saved — tap to update if needed</p>
                         )}
                         <div className={`flex items-center rounded-2xl border-2 overflow-hidden mb-3 transition-all ${
-                          popupBasePrice && !popupBaseTier
+                          popupBasePrice && !tierLabelMatches
                             ? 'border-emerald-400 bg-emerald-50'
                             : 'border-gray-200 bg-gray-50'
                         }`}>
                           <span className={`text-base font-black px-4 py-3 border-r-2 ${
-                            popupBasePrice && !popupBaseTier
+                            popupBasePrice && !tierLabelMatches
                               ? 'border-emerald-300 text-emerald-600'
                               : 'border-gray-200 text-gray-400'
                           }`}>$</span>
                           <input
                             type="text" inputMode="numeric" pattern="[0-9]*"
                             placeholder={tiers.length > 0 ? 'or enter custom…' : 'enter price…'}
-                            value={popupBaseTier ? '' : popupBasePrice}
+                            value={tierLabelMatches ? '' : popupBasePrice}
                             onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setPopupBasePrice(v); setPopupBaseTier(''); setPopupTotalSaved(false) }}
-                            onFocus={() => { if (popupBaseTier) { setPopupBasePrice(''); setPopupTotalSaved(false) } }}
+                            onFocus={() => { if (tierLabelMatches) { setPopupBasePrice(''); setPopupTotalSaved(false) } }}
                             className={`flex-1 text-xl font-black py-3 px-4 bg-transparent focus:outline-none placeholder:text-gray-300 ${
-                              popupBasePrice && !popupBaseTier ? 'text-emerald-700' : 'text-gray-700'
+                              popupBasePrice && !tierLabelMatches ? 'text-emerald-700' : 'text-gray-700'
                             }`}
                           />
                         </div>
