@@ -1092,10 +1092,18 @@ export default function CashierPage() {
   // full itemized list; now it switches the summary boxes to that period
   // instead, and the itemized list becomes an optional "view list" beneath them.
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('today')
-  // Which day's appointments are loaded — lets staff step back to yesterday
-  // to fix a checkout they missed, while still being able to edit it fully
-  // (checkout/payment actions work the same regardless of which day is shown).
-  const [viewDay, setViewDay] = useState<'today' | 'yesterday'>('today')
+  // Which day's appointments are loaded — lets staff step back to any past
+  // date (via Yesterday or the calendar) to review/fix a checkout they
+  // missed, while still being able to edit it fully (checkout/payment
+  // actions work the same regardless of which day is shown). Pacific Time
+  // is used throughout so the date doesn't flip at 5 PM.
+  const pacificToday = () => { const d = new Date(); if (d.getHours() < 4) d.setDate(d.getDate() - 1); return d }
+  const fmtDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const todayDateStr = fmtDateStr(pacificToday())
+  const yesterdayDateStr = (() => { const d = pacificToday(); d.setDate(d.getDate() - 1); return fmtDateStr(d) })()
+  const [selectedDateStr, setSelectedDateStr] = useState(todayDateStr)
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => { const d = pacificToday(); return { year: d.getFullYear(), month: d.getMonth() } })
   const [periodRevenue, setPeriodRevenue] = useState<Record<string, { amount: number; tips: number; count: number }> | null>(null)
   const [alerts, setAlerts] = useState<{ id: string; pet: string; owner: string; method: string; amount: string | null; tip: string | null; time: string }[]>([])
   const [now, setNow] = useState(new Date())
@@ -1119,12 +1127,8 @@ export default function CashierPage() {
   const seenVZIds = useRef<Set<string>>(new Set())
   const isFirst = useRef(true)
 
-  // Derived lists — use Pacific Time so date doesn't flip at 5 PM
-  const today = (() => {
-    const d = new Date(); if (d.getHours() < 4) d.setDate(d.getDate() - 1)
-    if (viewDay === 'yesterday') d.setDate(d.getDate() - 1)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  })()
+  // Derived lists — whichever date is currently selected (Today, Yesterday, or any date from the calendar)
+  const today = selectedDateStr
   const todayAppts = allAppts.filter(a => a.appointment_date === today && a.status !== 'cancelled' && a.status !== 'no_show')
   const unpaid = todayAppts.filter(a =>
     (a.status === 'completed' || a.grooming_status === 'ready' || a.grooming_status === 'done')
@@ -1181,9 +1185,7 @@ export default function CashierPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const _now = new Date(); if (_now.getHours() < 4) _now.setDate(_now.getDate() - 1)
-      if (viewDay === 'yesterday') _now.setDate(_now.getDate() - 1)
-      const todayStr = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`
+      const todayStr = selectedDateStr
       const { data } = await supabase
         .from('appointments')
         .select('id, appointment_time, appointment_date, service, status, grooming_status, payment_method, payment_amount, tip_amount, payment_status, assigned_groomer, assigned_bather, pets(id, name, breed, photo_url), clients(name, phone)')
@@ -1193,9 +1195,13 @@ export default function CashierPage() {
       const list = (data ?? []) as Appt[]
 
       // The live chimes/auto-popups below are for front-desk activity as it
-      // happens right now — skip them entirely when browsing yesterday so
-      // reviewing/fixing an old checkout doesn't trigger sounds or popups.
-      const isLive = viewDay === 'today'
+      // happens right now — skip them entirely when browsing any past date
+      // (yesterday or an older date from the calendar) so reviewing/fixing
+      // an old checkout doesn't trigger sounds or popups. Computed fresh
+      // (not from the todayDateStr closure) so it stays correct if this
+      // page is left open across the daily rollover.
+      const _liveNow = new Date(); if (_liveNow.getHours() < 4) _liveNow.setDate(_liveNow.getDate() - 1)
+      const isLive = selectedDateStr === `${_liveNow.getFullYear()}-${String(_liveNow.getMonth()+1).padStart(2,'0')}-${String(_liveNow.getDate()).padStart(2,'0')}`
 
       // Detect newly paid (for chime + alert)
       const newlyPaid = isLive ? list.filter(a => a.payment_status === 'paid' && !seenIds.current.has(a.id)) : []
@@ -1287,7 +1293,7 @@ export default function CashierPage() {
       isFirst.current = false
       setAllAppts(list)
     } catch (e) { console.error(e) }
-  }, [viewDay])
+  }, [selectedDateStr])
 
   const fetchPeriodTotals = useCallback(async () => {
     try {
@@ -1467,9 +1473,8 @@ export default function CashierPage() {
   }
 
   const todayLabel = (() => {
-    const d = new Date(); if (d.getHours() < 4) d.setDate(d.getDate() - 1)
-    if (viewDay === 'yesterday') d.setDate(d.getDate() - 1)
-    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+    const [y, m, d] = selectedDateStr.split('-').map(Number)
+    return new Date(y, m - 1, d, 12).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   })()
 
   const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -1690,15 +1695,78 @@ export default function CashierPage() {
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             <p className="text-gray-400 text-sm">{todayLabel}</p>
-            <div className="flex items-center gap-1 bg-gray-100 rounded-full p-0.5">
-              <button onClick={() => setViewDay('today')}
-                className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${viewDay === 'today' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-                Today
-              </button>
-              <button onClick={() => setViewDay('yesterday')}
-                className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${viewDay === 'yesterday' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-                Yesterday
-              </button>
+            <div className="relative">
+              <div className="flex items-center gap-1 bg-gray-100 rounded-full p-0.5">
+                <button onClick={() => setSelectedDateStr(todayDateStr)}
+                  className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${selectedDateStr === todayDateStr ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+                  Today
+                </button>
+                <button onClick={() => setSelectedDateStr(yesterdayDateStr)}
+                  className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${selectedDateStr === yesterdayDateStr ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+                  Yesterday
+                </button>
+                <button
+                  onClick={() => {
+                    const [y, m] = selectedDateStr.split('-').map(Number)
+                    setCalendarMonth({ year: y, month: m - 1 })
+                    setShowDatePicker(v => !v)
+                  }}
+                  title="Pick a date"
+                  className={`text-xs font-bold px-2.5 py-1 rounded-full transition-colors ${
+                    showDatePicker || (selectedDateStr !== todayDateStr && selectedDateStr !== yesterdayDateStr)
+                      ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                  }`}>
+                  📅{selectedDateStr !== todayDateStr && selectedDateStr !== yesterdayDateStr ? ` ${todayLabel.split(',')[0].slice(0, 3)} ${selectedDateStr.slice(5)}` : ''}
+                </button>
+              </div>
+
+              {/* Calendar popover — pick any date to review/fix an older checkout */}
+              {showDatePicker && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowDatePicker(false)} />
+                  <div className="absolute top-full left-0 mt-2 bg-white rounded-2xl shadow-xl border border-gray-200 p-3 z-50 w-64">
+                    <div className="flex items-center justify-between mb-2">
+                      <button
+                        onClick={() => setCalendarMonth(cm => { const d = new Date(cm.year, cm.month - 1, 1); return { year: d.getFullYear(), month: d.getMonth() } })}
+                        className="text-gray-400 hover:text-gray-600 px-2 py-1 font-bold">‹</button>
+                      <p className="text-sm font-black text-gray-700">
+                        {new Date(calendarMonth.year, calendarMonth.month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                      </p>
+                      <button
+                        onClick={() => setCalendarMonth(cm => { const d = new Date(cm.year, cm.month + 1, 1); return { year: d.getFullYear(), month: d.getMonth() } })}
+                        className="text-gray-400 hover:text-gray-600 px-2 py-1 font-bold">›</button>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-gray-300 mb-1">
+                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <div key={i}>{d}</div>)}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">
+                      {(() => {
+                        const startWeekday = new Date(calendarMonth.year, calendarMonth.month, 1).getDay()
+                        const daysInMonth = new Date(calendarMonth.year, calendarMonth.month + 1, 0).getDate()
+                        const cells: (number | null)[] = [
+                          ...Array(startWeekday).fill(null),
+                          ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+                        ]
+                        return cells.map((day, i) => {
+                          if (day === null) return <div key={i} />
+                          const dateStr = `${calendarMonth.year}-${String(calendarMonth.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                          const isSelected = dateStr === selectedDateStr
+                          const isToday = dateStr === todayDateStr
+                          return (
+                            <button key={i}
+                              onClick={() => { setSelectedDateStr(dateStr); setShowDatePicker(false) }}
+                              className={`text-xs py-1.5 rounded-lg font-bold transition-colors ${
+                                isSelected ? 'bg-violet-600 text-white' : isToday ? 'bg-violet-100 text-violet-700' : 'text-gray-600 hover:bg-gray-100'
+                              }`}>
+                              {day}
+                            </button>
+                          )
+                        })
+                      })()}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
