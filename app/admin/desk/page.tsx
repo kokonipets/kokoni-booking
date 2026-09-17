@@ -776,6 +776,7 @@ export default function DeskAdmin() {
 
   // Delete confirmation
   const [deletingApptId, setDeletingApptId] = useState<string | null>(null)
+  const [restoringNoShowId, setRestoringNoShowId] = useState<string | null>(null)
   const [deletingPetId, setDeletingPetId] = useState<string | null>(null)
 
   // Vaccine status inline edit
@@ -1583,6 +1584,30 @@ export default function DeskAdmin() {
       }
     } catch { showToast('⚠️ Delete error') }
     finally { setDeletingApptId(null) }
+  }
+
+  // Undo a mistaken "No Show" click — restores the appointment (as completed
+  // if grooming actually happened, otherwise as a normal confirmed
+  // appointment) and reverses the client's no_show_count increment.
+  const restoreNoShow = async (id: string) => {
+    setRestoringNoShowId(id)
+    try {
+      const res = await fetch(`/api/admin/appointments/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'undo-no-show' }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const updater = (a: Appointment) => a.id === id ? { ...a, status: data.status, cancelled_at: null } : a
+        setDetailAppt(prev => prev && prev.id === id ? { ...prev, status: data.status, cancelled_at: null } : prev)
+        setAppointments(prev => prev.map(updater))
+        setNoShowAppts(prev => prev.filter(a => a.id !== id))
+        showToast('✓ Restored — no longer marked as a no-show')
+      } else {
+        showToast('⚠️ Restore failed')
+      }
+    } catch { showToast('⚠️ Restore error') }
+    finally { setRestoringNoShowId(null) }
   }
 
   const blockTimeSlot = async (date: string, time: string, reason: string) => {
@@ -5291,6 +5316,18 @@ export default function DeskAdmin() {
                 </div>
               ) : (
                 <div className="flex gap-2">
+                  {detailAppt.status === 'no_show' && (
+                    <button
+                      onClick={() => {
+                        if (confirm(`Restore ${detailAppt.pets?.name ?? 'this'}'s appointment on ${formatDate(detailAppt.appointment_date)}? Use this when "No Show" was clicked by mistake — it un-flags the visit and reverses the client's no-show count.`)) {
+                          restoreNoShow(detailAppt.id)
+                        }
+                      }}
+                      disabled={restoringNoShowId === detailAppt.id}
+                      className="flex-1 py-2.5 text-sm font-semibold rounded-xl border-2 border-emerald-400 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 transition-colors">
+                      {restoringNoShowId === detailAppt.id ? '⏳…' : '↩️ Restore'}
+                    </button>
+                  )}
                   <button onClick={() => { setShowRescheduleInputs(true); setDetailRescheduleDate(detailAppt.appointment_date); setDetailRescheduleTime(detailAppt.appointment_time) }}
                     className="flex-1 py-2.5 text-sm font-semibold rounded-xl border-2 border-amber-400 text-amber-600 hover:bg-amber-50 transition-colors">
                     📅 Reschedule

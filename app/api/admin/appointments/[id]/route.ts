@@ -112,6 +112,41 @@ export async function PATCH(
     return NextResponse.json({ success: true })
   }
 
+  // Undo a mistaken no-show: restore the appointment's status and reverse
+  // the client's no_show_count increment. If grooming actually progressed
+  // (health check / quality check / etc. were done), the visit clearly
+  // happened despite the no-show click, so restore it as completed rather
+  // than leaving it as an upcoming appointment.
+  if (action === 'undo-no-show') {
+    const { data: appt, error: fetchErr } = await supabase
+      .from('appointments')
+      .select('client_phone, grooming_status')
+      .eq('id', id)
+      .single()
+    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
+
+    const restoredStatus = appt?.grooming_status ? 'completed' : 'confirmed'
+
+    const { error: apptErr } = await supabase
+      .from('appointments')
+      .update({ status: restoredStatus, cancelled_at: null })
+      .eq('id', id)
+    if (apptErr) return NextResponse.json({ error: apptErr.message }, { status: 500 })
+
+    // Reverse the no_show_count increment made when it was marked no-show
+    if (appt?.client_phone) {
+      const { data: client } = await supabase
+        .from('clients')
+        .select('no_show_count')
+        .eq('phone', appt.client_phone)
+        .single()
+      const newCount = Math.max(0, ((client?.no_show_count as number) || 0) - 1)
+      await supabase.from('clients').update({ no_show_count: newCount }).eq('phone', appt.client_phone)
+    }
+
+    return NextResponse.json({ success: true, status: restoredStatus })
+  }
+
   // Cancel (same-day cancellation by staff)
   if (action === 'cancel-today') {
     const { error } = await supabase
