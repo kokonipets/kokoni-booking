@@ -2140,6 +2140,16 @@ export default function GroomerDashboard() {
                 const savePrice = async () => {
                   if (!selectedAppt || grandTotal <= 0) return
                   const amount = grandTotal.toString()
+                  // Guard: this appointment was already marked paid at a specific
+                  // amount. Tier prices can be edited later (e.g. a routine price
+                  // update), and this popup always recalculates its total from
+                  // CURRENT tier pricing — so re-saving here could silently overwrite
+                  // an already-collected payment with a different number. Confirm
+                  // before letting that happen instead of doing it silently.
+                  if (selectedAppt.payment_status === 'paid' && selectedAppt.payment_amount && parseFloat(selectedAppt.payment_amount) !== grandTotal) {
+                    const ok = confirm(`This appointment was already paid $${parseFloat(selectedAppt.payment_amount).toFixed(2)}. The price shown here now comes out to $${grandTotal.toFixed(2)} (pricing may have changed since checkout). Save $${grandTotal.toFixed(2)} anyway and overwrite the paid amount?`)
+                    if (!ok) return
+                  }
                   setSavingPopupPayment(true)
                   try {
                     const res = await fetch(`/api/admin/appointments/${selectedAppt.id}`, {
