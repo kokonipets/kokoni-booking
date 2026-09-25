@@ -872,6 +872,22 @@ export default function GroomerDashboard() {
         if (matchedCoupon) { setPopupCouponId(matchedCoupon.id); setPopupDiscount(false) }
         else { setPopupDiscount(true); setPopupCouponId(null) }
       }
+      // First-visit status is about the PET's visit history, not about whether
+      // THIS appointment already happens to have a price saved (e.g. a kiosk
+      // estimate at booking, or an earlier partial "Save Price" click before
+      // add-ons/discount were entered). Without this check, a genuine
+      // first-time pet loses access to the first-visit coupon the moment any
+      // price gets saved on their appointment, which is exactly the "adding
+      // an add-on blocks 20% off" symptom (Save Price got clicked once to
+      // lock in the tier price, then reopening to add the add-on + discount
+      // found popupIsFirstTime reset to its false default).
+      if (appt.pets?.id) {
+        try {
+          const fRes = await fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`)
+          const fData = await fRes.json()
+          setPopupIsFirstTime(!fData.amount)
+        } catch { /**/ }
+      }
     } else if (appt.pets?.id) {
       setPopupBasePrice('')
       setPopupBaseTier('')
