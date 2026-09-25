@@ -171,7 +171,7 @@ type Appointment = {
   checked_out_at?: string | null
   health_check?: any | null
   grooming_quality?: any | null
-  clients: { name: string; phone: string; email: string | null } | null
+  clients: { name: string; phone: string; email: string | null; sms_consent?: boolean | null } | null
   pets: { id?: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; photo_url: string | null } | null
   is_new_client?: boolean
 }
@@ -2600,7 +2600,7 @@ export default function AdminPage() {
                                       <p className="font-bold text-gray-800">{appt.pets?.name} <span className="font-normal text-gray-400 text-sm">{appt.pets?.breed}</span></p>
                                       {appt.pets?.weight && <span className="text-[11px] font-black text-white bg-orange-400 px-2 py-0.5 rounded-full">⚖️ {appt.pets.weight}</span>}
                                     </div>
-                                    <p className="text-sm text-gray-600">{appt.clients?.name}</p>
+                                    <p className="text-sm text-gray-600">{appt.clients?.name}{!appt.clients?.sms_consent && <span className="ml-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded align-middle whitespace-nowrap">🔕 No text opt-in</span>}</p>
                                     <p className="text-xs text-gray-400">{appt.clients?.phone}</p>
                                   </div>
                                   <span className="text-xs px-2 py-1 rounded-lg bg-sky-100 text-sky-700 font-semibold flex-shrink-0 max-w-[110px] truncate">{serviceMap[appt.service] ?? appt.service}</span>
@@ -2649,7 +2649,7 @@ export default function AdminPage() {
                                     <p className="font-bold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}
                                       <span className="font-normal text-gray-400 text-sm ml-1">{appt.pets?.breed}</span>
                                     </p>
-                                    <p className="text-sm text-gray-600">{appt.clients?.name} · <span className="text-gray-400">{appt.clients?.phone}</span></p>
+                                    <p className="text-sm text-gray-600">{appt.clients?.name} · <span className="text-gray-400">{appt.clients?.phone}</span>{!appt.clients?.sms_consent && <span className="ml-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded align-middle whitespace-nowrap">🔕 No text opt-in</span>}</p>
                                   </div>
                                   {appt.pets?.id && (
                                     quickVaxPetId === appt.pets.id ? (
@@ -2715,7 +2715,7 @@ export default function AdminPage() {
                                     <p className="font-bold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}
                                       <span className="font-normal text-gray-400 text-sm ml-1">{appt.pets?.breed}</span>
                                     </p>
-                                    <p className="text-sm text-gray-600">{appt.clients?.name}</p>
+                                    <p className="text-sm text-gray-600">{appt.clients?.name}{!appt.clients?.sms_consent && <span className="ml-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded align-middle whitespace-nowrap">🔕 No text opt-in</span>}</p>
                                   </div>
                                   <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">Confirmed</span>
                                 </div>
@@ -2772,7 +2772,7 @@ export default function AdminPage() {
                                     <p className="font-bold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}
                                       <span className="font-normal text-gray-400 text-sm ml-1">{appt.pets?.breed}</span>
                                     </p>
-                                    <p className="text-sm text-gray-600">{appt.clients?.name}</p>
+                                    <p className="text-sm text-gray-600">{appt.clients?.name}{!appt.clients?.sms_consent && <span className="ml-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded align-middle whitespace-nowrap">🔕 No text opt-in</span>}</p>
                                   </div>
                                   <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">Pending confirm</span>
                                 </div>
