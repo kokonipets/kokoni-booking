@@ -458,13 +458,13 @@ export default function GroomerDashboard() {
       setAvailableCoupons((d.coupons ?? []).filter((c: Coupon) => c.active))
     }).catch(() => {})
 
-    // Poll every 15 seconds for new pending appointments
+    // Poll every 25 seconds for new pending appointments (was 15s; eased off to reduce steady DB load)
     const interval = setInterval(() => {
       const latest = readAuthRaw('groomer')
       if (!latest) return
       const u = JSON.parse(latest) as AuthUser
       loadAppointments(u.name || u.staff_id, true)
-    }, 15000)
+    }, 25000)
     return () => clearInterval(interval)
   }, [router, loadAppointments])
 

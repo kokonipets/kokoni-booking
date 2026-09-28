@@ -2807,12 +2807,12 @@ export default function DeskAdmin() {
             return updated ?? prev
           })
         } catch {}
-      }, 20000)
+      }, 30000) // was 20000ms; eased off to reduce steady DB load
       return () => clearInterval(iv)
     }
     else if (tab === 'requests') {
       fetchAppointments('requests')
-      const iv = setInterval(() => fetchAppointments('requests'), 20000)
+      const iv = setInterval(() => fetchAppointments('requests'), 30000) // was 20000ms; eased off to reduce steady DB load
       return () => clearInterval(iv)
     }
     else if (tab === 'intake') fetchAppointments('pending')
@@ -2820,7 +2820,7 @@ export default function DeskAdmin() {
     else if (tab === 'cashier') {
       fetchReports()
       fetchCashierLogins()
-      const iv = setInterval(() => fetchReports(), 15000)
+      const iv = setInterval(() => fetchReports(), 25000) // was 15000ms; eased off to reduce steady DB load
       return () => clearInterval(iv)
     }
     else if (tab === 'reports') { fetchReports(); fetchPayroll() }

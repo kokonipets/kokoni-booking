@@ -158,7 +158,7 @@ export default function StaffCheckinPage() {
   useEffect(() => {
     fetchAppts()
     // Poll every 8s so cash popup appears within seconds of customer acting at kiosk
-    const id = setInterval(fetchAppts, 8000)
+    const id = setInterval(fetchAppts, 15000) // was 8000ms; eased off to reduce steady DB load from a screen left open all day
     // Load staff list
     fetch('/api/admin/staff').then(r => r.json()).then(d => {
       setStaffList((d.staff ?? []).map((s: { name: string }) => s.name).filter(Boolean))

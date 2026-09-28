@@ -194,7 +194,7 @@ export async function notifyClientConfirmed(data: {
   date: string
   time: string
 }) {
-  const body = `Appointment Confirmed!\nHi ${data.clientName}! ${data.petName}'s appointment is confirmed for ${data.date} at ${data.time}.\nKokoni Pet Grooming Salon - (626) 621-4646\nReply STOP to opt out.`
+  const body = `Appointment Confirmed!\nHi ${data.clientName}! ${data.petName}'s appointment is confirmed for ${data.date} at ${data.time}.\n📍 1381 E Las Tunas Dr, San Gabriel, CA 91776\nKokoni Pet Grooming Salon - (626) 621-4646\nReply STOP to opt out.`
   return sendSMS(data.to, body, 'notifyClientConfirmed')
 }
 

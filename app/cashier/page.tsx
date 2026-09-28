@@ -1390,7 +1390,7 @@ export default function CashierPage() {
   useEffect(() => {
     fetchData()
     fetchPeriodTotals()
-    const iv = setInterval(fetchData, 8000)
+    const iv = setInterval(fetchData, 15000) // was 8000ms; eased off to reduce steady DB load from a screen left open all day
     const ck = setInterval(() => setNow(new Date()), 30000)
     const wv = setInterval(fetchPeriodTotals, 60000) // refresh week/month every minute
     // Load staff list

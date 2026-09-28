@@ -74,7 +74,7 @@ export default function ClockKioskPage() {
   }
   useEffect(() => {
     loadStatus()
-    const iv = setInterval(loadStatus, 10000)
+    const iv = setInterval(loadStatus, 20000) // was 10000ms; eased off to reduce steady DB load from a screen that runs all day
     return () => clearInterval(iv)
   }, [])
 

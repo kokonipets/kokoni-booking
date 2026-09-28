@@ -72,7 +72,7 @@ export default function TVBoard() {
 
   useEffect(() => {
     fetchData()
-    const iv = setInterval(fetchData, 15000) // refresh every 15s
+    const iv = setInterval(fetchData, 30000) // refresh every 30s — was 15s; eased off to reduce steady DB load from a screen that runs all day
     // Load dynamic service definitions
     fetch('/api/admin/settings').then(r => r.json()).then(d => {
       const svcVal = (d.settings ?? {})['services']
