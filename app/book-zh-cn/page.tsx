@@ -247,6 +247,18 @@ export default function BookPageZhCn() {
   const [dateSlots, setDateSlots] = useState<string[] | null>(null)
   const [dateSlotsLoading, setDateSlotsLoading] = useState(false)
   const selectedDateRef = useRef<Date | null>(null)
+  // Services created later in Admin Settings (e.g. breed-specific tiers, add-ons)
+  // have no hardcoded Chinese name above — auto-translate those on the fly via
+  // the existing /api/translate endpoint, and cache results so we don't
+  // re-translate on every visit.
+  const [rawServices, setRawServices] = useState<any[]>([])
+  const [autoTranslated, setAutoTranslated] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {}
+    try {
+      const cached = localStorage.getItem('svc_name_zh_cn_v1')
+      return cached ? JSON.parse(cached) : {}
+    } catch { return {} }
+  })
 
   const DAY_ZH = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -261,27 +273,73 @@ export default function BookPageZhCn() {
         if (Array.isArray(data.blocked_dates)) setBlockedDates(data.blocked_dates)
         if (Array.isArray(data.special_open_dates)) setSpecialOpenDates(data.special_open_dates)
         if (data.time_slots && data.time_slots.length > 0) setDynamicTimeSlots(data.time_slots)
-        if (data.services && data.services.length > 0) {
-          const withDurations = data.services.map((s: any) => {
-            const serviceDef = SERVICES.find(srv => srv.id === s.id)
-            // Use Chinese name but preserve price suffix from DB name (e.g. "-Starting from $50")
-            let displayName = serviceDef?.name || s.name
-            if (serviceDef?.name && s.name?.includes('-')) {
-              const dashIdx = s.name.indexOf('-')
-              displayName = serviceDef.name + ' ' + s.name.slice(dashIdx)
-            }
-            return {
-              ...s,
-              name: displayName,
-              desc: serviceDef?.desc || s.desc,
-              durationMinutes: serviceDef?.durationMinutes || 0,
-            }
-          })
-          setDynamicServices(withDurations)
-        }
+        if (data.services && data.services.length > 0) setRawServices(data.services)
       })
       .catch(() => {})
   }, [])
+
+  // Recompute display names whenever fresh services load or a new auto-translation
+  // comes back, and kick off translation for any name we haven't seen before.
+  useEffect(() => {
+    if (rawServices.length === 0) return
+
+    const splitName = (name: string) => {
+      const dashIdx = name?.indexOf('-') ?? -1
+      const namePart = dashIdx >= 0 ? name.slice(0, dashIdx).trim() : (name ?? '').trim()
+      const suffix = dashIdx >= 0 ? ' ' + name.slice(dashIdx) : ''
+      return { namePart, suffix }
+    }
+
+    const withDurations = rawServices.map((s: any) => {
+      const serviceDef = SERVICES.find(srv => srv.id === s.id)
+      const { namePart, suffix } = splitName(s.name)
+      let displayName = s.name
+      if (serviceDef?.name) displayName = serviceDef.name + suffix
+      else if (autoTranslated[namePart]) displayName = autoTranslated[namePart] + suffix
+      return {
+        ...s,
+        name: displayName,
+        desc: serviceDef?.desc || s.desc,
+        durationMinutes: serviceDef?.durationMinutes || 0,
+      }
+    })
+    setDynamicServices(withDurations)
+
+    const missing = Array.from(new Set(
+      rawServices
+        .filter((s: any) => !SERVICES.find(srv => srv.id === s.id))
+        .map((s: any) => splitName(s.name).namePart)
+        .filter((namePart: string) => namePart && !autoTranslated[namePart])
+    )) as string[]
+
+    if (missing.length > 0) {
+      Promise.all(missing.map(async (namePart) => {
+        try {
+          const res = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: namePart }),
+          })
+          const data = await res.json()
+          return [namePart, data?.success ? data.simplified as string : null] as const
+        } catch {
+          return [namePart, null] as const
+        }
+      })).then(results => {
+        setAutoTranslated(prev => {
+          const next = { ...prev }
+          let changed = false
+          for (const [namePart, translated] of results) {
+            if (translated) { next[namePart] = translated; changed = true }
+          }
+          if (changed && typeof window !== 'undefined') {
+            try { localStorage.setItem('svc_name_zh_cn_v1', JSON.stringify(next)) } catch {}
+          }
+          return changed ? next : prev
+        })
+      })
+    }
+  }, [rawServices, autoTranslated])
 
   const fetchDateSlots = useCallback((date: Date | null, forService?: string, forSizeTier?: string) => {
     if (!date) { setDateSlots(null); return }
