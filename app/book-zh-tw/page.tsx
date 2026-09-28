@@ -77,6 +77,13 @@ const SERVICES = [
   { id: 'asian_fusion', name: '亞洲混搭造型', desc: '帶有現代亞洲風格的創意造型', icon: '🌸', durationMinutes: 180 },
 ]
 
+// Business-specific names that a generic auto-translation would get wrong or
+// too literal — checked before the AI translator, keyed by the English name
+// exactly as typed in Admin Settings (before any "-Starting from $" suffix).
+const MANUAL_TRANSLATIONS: Record<string, string> = {
+  'Top Dog': 'Top Dog 快速服務（不含洗澡及剪毛）',
+}
+
 const TIME_SLOTS = [
   '9:00 AM', '9:30 AM', '10:00 AM', '10:30 AM',
   '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM',
@@ -295,6 +302,7 @@ export default function BookPageZhTw() {
       const { namePart, suffix } = splitName(s.name)
       let displayName = s.name
       if (serviceDef?.name) displayName = serviceDef.name + suffix
+      else if (MANUAL_TRANSLATIONS[namePart]) displayName = MANUAL_TRANSLATIONS[namePart] + suffix
       else if (autoTranslated[namePart]) displayName = autoTranslated[namePart] + suffix
       return {
         ...s,
@@ -309,7 +317,7 @@ export default function BookPageZhTw() {
       rawServices
         .filter((s: any) => !SERVICES.find(srv => srv.id === s.id))
         .map((s: any) => splitName(s.name).namePart)
-        .filter((namePart: string) => namePart && !autoTranslated[namePart])
+        .filter((namePart: string) => namePart && !MANUAL_TRANSLATIONS[namePart] && !autoTranslated[namePart])
     )) as string[]
 
     if (missing.length > 0) {
