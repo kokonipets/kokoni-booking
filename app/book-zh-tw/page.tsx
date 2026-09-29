@@ -86,6 +86,21 @@ const MANUAL_TRANSLATIONS: Record<string, string> = {
   'Asian Fusion Style【Doodle】': '萌系精緻造型 (Doodle)',
 }
 
+// Explicit display order for the service picker — keyed by id (for the 3
+// hardcoded base services) or by the English name exactly as typed in Admin
+// Settings (for custom services, same key used for MANUAL_TRANSLATIONS above).
+// Needed because the old keyword-based grouping (checking for "bath"/"simply"/
+// "asian" etc.) stopped working once names started rendering in Chinese.
+const SORT_ORDER: Record<string, number> = {
+  'bath_brush': 0,
+  'simply_cute': 1,
+  'Simply Cute Style【Doodle】': 2,
+  'asian_fusion': 3,
+  'Asian Fusion Style【Doodle】': 4,
+  'Top Dog': 5,
+  'Nail trim': 6,
+}
+
 const TIME_SLOTS = [
   '9:00 AM', '9:30 AM', '10:00 AM', '10:30 AM',
   '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM',
@@ -319,11 +334,13 @@ export default function BookPageZhTw() {
       if (serviceDef?.name) displayName = serviceDef.name + suffix
       else if (MANUAL_TRANSLATIONS[namePart]) displayName = MANUAL_TRANSLATIONS[namePart] + suffix
       else if (autoTranslated[namePart]) displayName = autoTranslated[namePart] + suffix
+      const sortOrder = SORT_ORDER[s.id] ?? SORT_ORDER[namePart] ?? 999
       return {
         ...s,
         name: displayName,
         desc: serviceDef?.desc || s.desc,
         durationMinutes: serviceDef?.durationMinutes || 0,
+        sortOrder,
       }
     })
     setDynamicServices(withDurations)
@@ -559,17 +576,10 @@ export default function BookPageZhTw() {
   // checkmark) for any dog in the booking — used for the primary dog and for every
   // extra dog in a group booking, so all dogs get an equally full treatment.
   const renderServiceOptions = (selectedServiceId: string, onSelect: (id: string) => void) => {
-    const grouped: Record<string, any[]> = { 'Bath & Brush': [], 'Simply Cute': [], 'Asian Fusion': [], 'Other': [] }
-    dynamicServices.forEach(s => {
-      if (!s.visible && s.visible !== undefined) return
-      if (isWalkIn && !s.skipCapacity) return
-      const n = s.name.toLowerCase()
-      if (n.includes('bath') || n.includes('brush')) grouped['Bath & Brush'].push(s)
-      else if (n.includes('simply') || n.includes('cute')) grouped['Simply Cute'].push(s)
-      else if (n.includes('asian') || n.includes('fusion')) grouped['Asian Fusion'].push(s)
-      else grouped['Other'].push(s)
-    })
-    const order = ['Bath & Brush', 'Simply Cute', 'Asian Fusion', 'Other']
+    const visibleServices = dynamicServices
+      .filter(s => s.visible !== false && (!isWalkIn || s.skipCapacity))
+      .slice()
+      .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999))
     const serviceButton = (s: any) => (
       <button
         key={s.id}
@@ -598,9 +608,7 @@ export default function BookPageZhTw() {
         {selectedServiceId === s.id && <CheckCircle2 className="w-5 h-5 text-sky-500 mt-1" />}
       </button>
     )
-    const buttons = order.flatMap(groupName =>
-      (grouped[groupName] || []).map(serviceButton)
-    )
+    const buttons = visibleServices.map(serviceButton)
     if (isWalkIn && buttons.length === 0) {
       return (
         <p className="text-sm text-gray-400 text-center py-6">
