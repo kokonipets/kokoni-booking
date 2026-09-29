@@ -291,10 +291,16 @@ export default function BookPageZhCn() {
     if (rawServices.length === 0) return
 
     const splitName = (name: string) => {
-      const dashIdx = name?.indexOf('-') ?? -1
-      const namePart = dashIdx >= 0 ? name.slice(0, dashIdx).trim() : (name ?? '').trim()
-      const suffix = dashIdx >= 0 ? ' ' + name.slice(dashIdx) : ''
-      return { namePart, suffix }
+      if (!name) return { namePart: '', suffix: '' }
+      // Tier-priced services bake "-Starting from $X" into the name; check that
+      // first since it can itself contain a "$" that must stay part of the suffix.
+      const dashIdx = name.indexOf('-')
+      if (dashIdx >= 0) return { namePart: name.slice(0, dashIdx).trim(), suffix: ' ' + name.slice(dashIdx) }
+      // Flat-priced add-ons (e.g. "Top Dog $30") bake the price in after a "$"
+      // instead — split there so the translation lookup key is just the name.
+      const dollarIdx = name.indexOf('$')
+      if (dollarIdx >= 0) return { namePart: name.slice(0, dollarIdx).trim(), suffix: ' $' + name.slice(dollarIdx + 1).trim() }
+      return { namePart: name.trim(), suffix: '' }
     }
 
     const withDurations = rawServices.map((s: any) => {
