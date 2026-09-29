@@ -72,16 +72,18 @@ interface Pet {
 }
 
 const SERVICES = [
-  { id: 'simply_cute', name: '簡單可愛 – 日常造型', desc: '經典修剪、洗澡、吹乾及最後修飾', icon: '✂️', durationMinutes: 120 },
+  { id: 'simply_cute', name: '簡單可愛日常造型', desc: '經典修剪、洗澡、吹乾及最後修飾', icon: '✂️', durationMinutes: 120 },
   { id: 'bath_brush', name: '洗澡梳毛', desc: '全面洗澡、吹乾及梳毛', icon: '🛁', durationMinutes: 120 },
-  { id: 'asian_fusion', name: '亞洲混搭造型', desc: '帶有現代亞洲風格的創意造型', icon: '🌸', durationMinutes: 180 },
+  { id: 'asian_fusion', name: '萌系精緻造型', desc: '帶有現代亞洲風格的創意造型', icon: '🌸', durationMinutes: 180 },
 ]
 
 // Business-specific names that a generic auto-translation would get wrong or
 // too literal — checked before the AI translator, keyed by the English name
 // exactly as typed in Admin Settings (before any "-Starting from $" suffix).
 const MANUAL_TRANSLATIONS: Record<string, string> = {
-  'Top Dog': 'Top Dog 快速服務（不含洗澡及剪毛）',
+  'Top Dog': '基礎護理清潔（不含洗澡及剪毛）',
+  'Simply Cute Style【Doodle】': '簡單可愛日常造型 (Doodle)',
+  'Asian Fusion Style【Doodle】': '萌系精緻造型 (Doodle)',
 }
 
 const TIME_SLOTS = [
@@ -295,7 +297,14 @@ export default function BookPageZhTw() {
       // Tier-priced services bake "-Starting from $X" into the name; check that
       // first since it can itself contain a "$" that must stay part of the suffix.
       const dashIdx = name.indexOf('-')
-      if (dashIdx >= 0) return { namePart: name.slice(0, dashIdx).trim(), suffix: ' ' + name.slice(dashIdx) }
+      if (dashIdx >= 0) {
+        const rawSuffix = name.slice(dashIdx + 1)
+        // Admin types this in English ("Starting from $70") — show the Chinese
+        // convention instead ("價格由 $70 起") rather than the raw English text.
+        const startingFromMatch = rawSuffix.match(/starting from\s*\$?\s*([\d.]+)/i)
+        const suffixText = startingFromMatch ? `價格由 $${startingFromMatch[1]} 起` : rawSuffix.trim()
+        return { namePart: name.slice(0, dashIdx).trim(), suffix: ' -' + suffixText }
+      }
       // Flat-priced add-ons (e.g. "Top Dog $30") bake the price in after a "$"
       // instead — split there so the translation lookup key is just the name.
       const dollarIdx = name.indexOf('$')
