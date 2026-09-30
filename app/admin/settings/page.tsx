@@ -139,6 +139,13 @@ export default function SettingsPage() {
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
   const [serviceFormData, setServiceFormData] = useState<ServiceDef>({ id: '', name: '', desc: '', tiers: DEFAULT_TIERS.map(t => ({...t})) })
   const [savingButton, setSavingButton] = useState<string | null>(null)
+  // One-off text blast to every SMS-opted-in client (e.g. a promo announcement) —
+  // separate from the per-appointment texts (confirmations/reminders/etc.) above.
+  const [broadcastMessage, setBroadcastMessage] = useState('')
+  const [broadcastRecipientCount, setBroadcastRecipientCount] = useState<number | null>(null)
+  const [broadcastCountLoading, setBroadcastCountLoading] = useState(false)
+  const [broadcastSending, setBroadcastSending] = useState(false)
+  const [broadcastResult, setBroadcastResult] = useState<{ sent: number; failed: number; total: number } | null>(null)
   const [closedDays, setClosedDays] = useState<Set<string>>(new Set())
   const [blockedHours, setBlockedHours] = useState<{ start: string; end: string }[]>([])
   // One-off dates the salon opens even though that weekday is normally closed
@@ -223,6 +230,18 @@ export default function SettingsPage() {
       }
     }
   }, [businessSettings, showForm, editingId])
+
+  // Load the SMS-opted-in recipient count lazily, only once the Business tab
+  // (where the broadcast section lives) is actually opened.
+  useEffect(() => {
+    if (activeTab !== 'business' || broadcastRecipientCount !== null) return
+    setBroadcastCountLoading(true)
+    fetch('/api/admin/broadcast')
+      .then(r => r.json())
+      .then(data => { if (typeof data.count === 'number') setBroadcastRecipientCount(data.count) })
+      .catch(() => {})
+      .finally(() => setBroadcastCountLoading(false))
+  }, [activeTab, broadcastRecipientCount])
 
   const loadBusinessSettings = async () => {
     try {
@@ -2453,6 +2472,63 @@ export default function SettingsPage() {
                   </>
                 )
               })()}
+            </div>
+
+            {/* Send Announcement Section — one-off text blast to every SMS-opted-in client */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-1">📢 Send Announcement</h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Send a one-time text to every client who has opted in to SMS — for promos, grand-opening specials, etc.
+                This is separate from the automatic appointment texts above.
+              </p>
+              <textarea
+                value={broadcastMessage}
+                onChange={e => { setBroadcastMessage(e.target.value); setBroadcastResult(null) }}
+                placeholder="Type the message clients will receive..."
+                rows={4}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-1"
+              />
+              <p className="text-xs text-gray-400 mb-3">{broadcastMessage.length} characters{broadcastMessage.length > 320 ? ' — long messages may send as multiple SMS segments' : ''}</p>
+              <div className="flex items-center gap-3">
+                <button
+                  disabled={!broadcastMessage.trim() || broadcastSending || broadcastCountLoading || !broadcastRecipientCount}
+                  onClick={async () => {
+                    const count = broadcastRecipientCount ?? 0
+                    const ok = confirm(`This will send this text message to ${count} client${count === 1 ? '' : 's'} who have opted in to SMS. This cannot be undone. Send now?`)
+                    if (!ok) return
+                    setBroadcastSending(true)
+                    setBroadcastResult(null)
+                    try {
+                      const res = await fetch('/api/admin/broadcast', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: broadcastMessage }),
+                      })
+                      const data = await res.json()
+                      if (!res.ok) throw new Error(data.error || 'Failed to send')
+                      setBroadcastResult({ sent: data.sent, failed: data.failed, total: data.total })
+                    } catch (err) {
+                      setSavingMessage({ type: 'error', text: `❌ ${err instanceof Error ? err.message : 'Failed to send announcement'}` })
+                      setTimeout(() => setSavingMessage(null), 4000)
+                    } finally {
+                      setBroadcastSending(false)
+                    }
+                  }}
+                  className="bg-sky-500 hover:bg-sky-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
+                >
+                  {broadcastSending
+                    ? 'Sending…'
+                    : broadcastCountLoading
+                      ? 'Loading recipient count…'
+                      : `Send to ${broadcastRecipientCount ?? '…'} Client${broadcastRecipientCount === 1 ? '' : 's'}`}
+                </button>
+                {broadcastResult && (
+                  <p className="text-sm text-gray-600">
+                    ✅ Sent to {broadcastResult.sent} of {broadcastResult.total}
+                    {broadcastResult.failed > 0 ? ` (${broadcastResult.failed} failed — check SMS Log)` : ''}
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Business Info Section */}
