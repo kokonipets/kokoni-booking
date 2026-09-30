@@ -63,9 +63,25 @@ export async function GET() {
 // the recipient count before calling this.
 export async function POST(req: NextRequest) {
   const supabase = getAdminClient()
-  const { message } = await req.json()
+  const { message, testPhone } = await req.json()
   if (!message || !message.trim()) {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 })
+  }
+
+  // Test-send path: fire the same message at a single number the admin provides
+  // (bypassing the client list and sms_consent gate — it's a self-test, not a
+  // real client) so the announcement can be proofread on a phone before the
+  // real send goes out to everyone.
+  if (testPhone) {
+    const digits = String(testPhone).replace(/\D/g, '')
+    if (digits.length !== 10) {
+      return NextResponse.json({ error: 'Enter a valid 10-digit phone number' }, { status: 400 })
+    }
+    const result = await sendSMS(`+1${digits}`, message, 'broadcast-test')
+    if (!result.success) {
+      return NextResponse.json({ error: result.error?.toString() ?? 'Failed to send test message' }, { status: 500 })
+    }
+    return NextResponse.json({ test: true, sent: 1, failed: 0, total: 1 })
   }
 
   const { data: clients, error } = await getOptedInClients(supabase)
