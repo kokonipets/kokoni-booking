@@ -5757,6 +5757,11 @@ export default function AdminPage() {
                                           📝 {legacyNote}
                                         </p>
                                       )}
+                                      {noteHistory.length === 0 && !legacyNote && (
+                                        <p className="text-xs text-gray-300 mt-1 bg-gray-50 rounded-lg px-2 py-1">
+                                          📝 None
+                                        </p>
+                                      )}
                                     </div>
                                     )
                                   })}
