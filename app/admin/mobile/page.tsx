@@ -5698,8 +5698,11 @@ export default function AdminPage() {
                                   .slice(0, 5)
                                   .map(appt => {
                                     const apptPet = client.pets.find(p => p.id === appt.pet_id)
-                                    const latestNote = (appt.notes_list ?? []).filter(n => !n.is_addon).slice(-1)[0]?.text
-                                      || appt.notes_english || appt.notes || null
+                                    // Full note history for this appointment, not just the latest — falls back
+                                    // to the legacy single-note fields for older appointments saved before
+                                    // notes_list existed.
+                                    const noteHistory = (appt.notes_list ?? []).filter(n => !n.is_addon)
+                                    const legacyNote = noteHistory.length === 0 ? (appt.notes_english || appt.notes) : null
                                     return (
                                     <div key={appt.id} className="text-sm py-1.5 border-b border-gray-50 last:border-0">
                                       <div className="flex items-start justify-between">
@@ -5737,9 +5740,21 @@ export default function AdminPage() {
                                           )}
                                         </div>
                                       </div>
-                                      {latestNote && (
+                                      {noteHistory.length > 0 && (
+                                        <div className="mt-1 space-y-1">
+                                          {noteHistory.map(n => (
+                                            <p key={n.id} className="text-xs text-gray-500 bg-gray-50 rounded-lg px-2 py-1">
+                                              📝 {n.text}
+                                              <span className="text-gray-400">
+                                                {' — '}{n.author}{n.created_at ? `, ${new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                                              </span>
+                                            </p>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {legacyNote && (
                                         <p className="text-xs text-gray-500 mt-1 bg-gray-50 rounded-lg px-2 py-1">
-                                          📝 {latestNote}
+                                          📝 {legacyNote}
                                         </p>
                                       )}
                                     </div>
