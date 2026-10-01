@@ -149,6 +149,10 @@ export default function SettingsPage() {
   const [testPhone, setTestPhone] = useState('')
   const [testSending, setTestSending] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [announceTags, setAnnounceTags] = useState<{ id: string; name: string; color: string }[]>([])
+  const [selectedTagId, setSelectedTagId] = useState('')
+  const [broadcastHistory, setBroadcastHistory] = useState<{ id: string; message: string; tag_name: string | null; sent_count: number; failed_count: number; total_count: number; sent_at: string }[]>([])
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const [closedDays, setClosedDays] = useState<Set<string>>(new Set())
   const [blockedHours, setBlockedHours] = useState<{ start: string; end: string }[]>([])
   // One-off dates the salon opens even though that weekday is normally closed
@@ -234,17 +238,34 @@ export default function SettingsPage() {
     }
   }, [businessSettings, showForm, editingId])
 
-  // Load the SMS-opted-in recipient count lazily, only once the Business tab
-  // (where the broadcast section lives) is actually opened.
+  // Load the SMS-opted-in recipient count for whichever audience is selected
+  // (all clients, or clients with a specific tag) — refetches whenever the
+  // announcements tab is open and whenever the audience selection changes.
   useEffect(() => {
-    if (activeTab !== 'announcements' || broadcastRecipientCount !== null) return
+    if (activeTab !== 'announcements') return
     setBroadcastCountLoading(true)
-    fetch('/api/admin/broadcast')
+    const url = selectedTagId ? `/api/admin/broadcast?tagId=${selectedTagId}` : '/api/admin/broadcast'
+    fetch(url)
       .then(r => r.json())
       .then(data => { if (typeof data.count === 'number') setBroadcastRecipientCount(data.count) })
       .catch(() => {})
       .finally(() => setBroadcastCountLoading(false))
-  }, [activeTab, broadcastRecipientCount])
+  }, [activeTab, selectedTagId])
+
+  // Load the available tags (for the audience picker) and the send history,
+  // once, the first time the announcements tab is opened.
+  useEffect(() => {
+    if (activeTab !== 'announcements' || historyLoaded) return
+    setHistoryLoaded(true)
+    fetch('/api/admin/tags')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data.tags)) setAnnounceTags(data.tags) })
+      .catch(() => {})
+    fetch('/api/admin/broadcast/history')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data.history)) setBroadcastHistory(data.history) })
+      .catch(() => {})
+  }, [activeTab, historyLoaded])
 
   const loadBusinessSettings = async () => {
     try {
@@ -2610,6 +2631,17 @@ export default function SettingsPage() {
                 Send a one-time text to every client who has opted in to SMS — for promos, grand-opening specials, etc.
                 This is separate from the automatic appointment texts above.
               </p>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Send to</label>
+              <select
+                value={selectedTagId}
+                onChange={e => { setSelectedTagId(e.target.value); setBroadcastResult(null) }}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 w-full max-w-xs"
+              >
+                <option value="">All Clients (opted in to SMS)</option>
+                {announceTags.map(t => (
+                  <option key={t.id} value={t.id}>Clients tagged "{t.name}"</option>
+                ))}
+              </select>
               <textarea
                 value={broadcastMessage}
                 onChange={e => { setBroadcastMessage(e.target.value); setBroadcastResult(null); setTestResult(null) }}
@@ -2623,7 +2655,8 @@ export default function SettingsPage() {
                   disabled={!broadcastMessage.trim() || broadcastSending || broadcastCountLoading || !broadcastRecipientCount}
                   onClick={async () => {
                     const count = broadcastRecipientCount ?? 0
-                    const ok = confirm(`This will send this text message to ${count} client${count === 1 ? '' : 's'} who have opted in to SMS. This cannot be undone. Send now?`)
+                    const audienceLabel = selectedTagId ? `clients tagged "${announceTags.find(t => t.id === selectedTagId)?.name ?? ''}"` : 'clients who have opted in to SMS'
+                    const ok = confirm(`This will send this text message to ${count} ${audienceLabel}. This cannot be undone. Send now?`)
                     if (!ok) return
                     setBroadcastSending(true)
                     setBroadcastResult(null)
@@ -2631,11 +2664,19 @@ export default function SettingsPage() {
                       const res = await fetch('/api/admin/broadcast', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: broadcastMessage }),
+                        body: JSON.stringify({
+                          message: broadcastMessage,
+                          tagId: selectedTagId || undefined,
+                          tagName: selectedTagId ? announceTags.find(t => t.id === selectedTagId)?.name : undefined,
+                        }),
                       })
                       const data = await res.json()
                       if (!res.ok) throw new Error(data.error || 'Failed to send')
                       setBroadcastResult({ sent: data.sent, failed: data.failed, total: data.total })
+                      fetch('/api/admin/broadcast/history')
+                        .then(r => r.json())
+                        .then(d => { if (Array.isArray(d.history)) setBroadcastHistory(d.history) })
+                        .catch(() => {})
                     } catch (err) {
                       setSavingMessage({ type: 'error', text: `❌ ${err instanceof Error ? err.message : 'Failed to send announcement'}` })
                       setTimeout(() => setSavingMessage(null), 4000)
@@ -2658,6 +2699,32 @@ export default function SettingsPage() {
                   </p>
                 )}
               </div>
+            </div>
+
+            {/* History Section — every announcement actually sent (not test sends), newest first */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-1">🕐 History</h2>
+              <p className="text-sm text-gray-500 mb-4">Past announcements you've sent, with when they went out and who received them.</p>
+              {broadcastHistory.length === 0 ? (
+                <p className="text-sm text-gray-400">No announcements sent yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {broadcastHistory.map(h => (
+                    <div key={h.id} className="border border-gray-100 rounded-lg p-3">
+                      <div className="flex items-center justify-between gap-3 mb-1">
+                        <p className="text-xs font-semibold text-gray-500">
+                          {new Date(h.sent_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </p>
+                        <p className="text-xs text-gray-400 whitespace-nowrap">
+                          {h.tag_name ? `Tagged "${h.tag_name}"` : 'All Clients'} · ✅ {h.sent_count}/{h.total_count}
+                          {h.failed_count > 0 ? ` · ${h.failed_count} failed` : ''}
+                        </p>
+                      </div>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{h.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

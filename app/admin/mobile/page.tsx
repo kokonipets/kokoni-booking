@@ -55,7 +55,22 @@ type ClientRecord = {
   sms_consent?: boolean | null
   sms_consent_at?: string | null
   pets: Pet[]
-  appointments: { id: string; appointment_date: string; appointment_time: string; service: string; status: string; assigned_groomer?: string | null; assigned_bather?: string | null }[]
+  appointments: {
+    id: string
+    appointment_date: string
+    appointment_time: string
+    service: string
+    status: string
+    assigned_groomer?: string | null
+    assigned_bather?: string | null
+    pet_id?: string | null
+    payment_amount?: string | null
+    tip_amount?: string | null
+    notes?: string | null
+    notes_english?: string | null
+    notes_chinese?: string | null
+    notes_list?: { id: string; text: string; author: string; created_at: string; is_addon?: boolean }[] | null
+  }[]
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -5681,33 +5696,55 @@ export default function AdminPage() {
                                 {client.appointments
                                   .sort((a, b) => b.appointment_date.localeCompare(a.appointment_date))
                                   .slice(0, 5)
-                                  .map(appt => (
-                                    <div key={appt.id} className="flex items-start justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
-                                      <div className="min-w-0">
-                                        <span className="font-medium text-gray-700">
-                                          {serviceMap[appt.service] ?? appt.service}
-                                        </span>
-                                        <span className="text-gray-400 ml-2">
-                                          {new Date(appt.appointment_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                        </span>
-                                        {(appt.assigned_groomer || appt.assigned_bather) && (
-                                          <p className="text-xs text-gray-400 mt-0.5">
-                                            {appt.assigned_groomer && <span>✂️ {appt.assigned_groomer}</span>}
-                                            {appt.assigned_groomer && appt.assigned_bather && <span className="mx-1">·</span>}
-                                            {appt.assigned_bather && <span>🛁 {appt.assigned_bather}</span>}
-                                          </p>
-                                        )}
+                                  .map(appt => {
+                                    const apptPet = client.pets.find(p => p.id === appt.pet_id)
+                                    const latestNote = (appt.notes_list ?? []).filter(n => !n.is_addon).slice(-1)[0]?.text
+                                      || appt.notes_english || appt.notes || null
+                                    return (
+                                    <div key={appt.id} className="text-sm py-1.5 border-b border-gray-50 last:border-0">
+                                      <div className="flex items-start justify-between">
+                                        <div className="min-w-0">
+                                          {client.pets.length > 1 && apptPet && (
+                                            <span className="text-xs font-semibold text-sky-600 mr-1.5">🐾 {apptPet.name}</span>
+                                          )}
+                                          <span className="font-medium text-gray-700">
+                                            {serviceMap[appt.service] ?? appt.service}
+                                          </span>
+                                          <span className="text-gray-400 ml-2">
+                                            {new Date(appt.appointment_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                          </span>
+                                          {(appt.assigned_groomer || appt.assigned_bather) && (
+                                            <p className="text-xs text-gray-400 mt-0.5">
+                                              {appt.assigned_groomer && <span>✂️ {appt.assigned_groomer}</span>}
+                                              {appt.assigned_groomer && appt.assigned_bather && <span className="mx-1">·</span>}
+                                              {appt.assigned_bather && <span>🛁 {appt.assigned_bather}</span>}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="flex flex-col items-end flex-shrink-0 ml-2 gap-0.5">
+                                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                            appt.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
+                                            appt.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                            appt.status === 'completed' ? 'bg-gray-100 text-gray-500' :
+                                            'bg-red-100 text-red-600'
+                                          }`}>
+                                            {appt.status}
+                                          </span>
+                                          {appt.payment_amount && (
+                                            <span className="text-xs font-semibold text-emerald-700">
+                                              💰 ${appt.payment_amount}{appt.tip_amount ? ` +$${appt.tip_amount} tip` : ''}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
-                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ml-2 ${
-                                        appt.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
-                                        appt.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                        appt.status === 'completed' ? 'bg-gray-100 text-gray-500' :
-                                        'bg-red-100 text-red-600'
-                                      }`}>
-                                        {appt.status}
-                                      </span>
+                                      {latestNote && (
+                                        <p className="text-xs text-gray-500 mt-1 bg-gray-50 rounded-lg px-2 py-1">
+                                          📝 {latestNote}
+                                        </p>
+                                      )}
                                     </div>
-                                  ))}
+                                    )
+                                  })}
                               </div>
                             </div>
                           )}
