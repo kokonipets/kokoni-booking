@@ -69,7 +69,9 @@ type ClientRecord = {
     notes?: string | null
     notes_english?: string | null
     notes_chinese?: string | null
-    notes_list?: { id: string; text: string; author: string; created_at: string; is_addon?: boolean }[] | null
+    notes_list?: { id: string; text: string; author: string; created_at: string; is_addon?: boolean; notes_english?: string | null; notes_chinese?: string | null }[] | null
+    health_check?: any
+    grooming_quality?: any
   }[]
 }
 
@@ -438,6 +440,7 @@ export default function AdminPage() {
   const [customers, setCustomers] = useState<ClientRecord[]>([])
   const [customersLoading, setCustomersLoading] = useState(false)
   const [expandedClient, setExpandedClient] = useState<string | null>(null)
+  const [expandedPetHistoryIds, setExpandedPetHistoryIds] = useState<Set<string>>(new Set())
   const [customerSearch, setCustomerSearch] = useState('')
   const [uploadingPetId, setUploadingPetId] = useState<string | null>(null)
   const [editingClientPhone, setEditingClientPhone] = useState<string | null>(null)
@@ -5629,145 +5632,181 @@ export default function AdminPage() {
                                     </div>
                                   </div>
 
-                                  {/* Pet Notes Section — always visible */}
-                                  <div className="border-t border-gray-200 pt-2">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">📝 Pet Notes</p>
-                                      <span className="text-xs text-gray-400 flex items-center gap-1">
-                                        {translatingId === `pet_${pet.id}` && <span className="inline-block w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
-                                        {translatingId === `pet_${pet.id}` ? 'Translating…' : noteTranslationsMap[`pet_${pet.id}`] ? '✓ Auto-translated' : 'Any language'}
-                                      </span>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <textarea
-                                        value={noteDrafts[`pet_${pet.id}`]?.chinese ?? (pet.notes_chinese || pet.notes_english || '')}
-                                        onChange={e => {
-                                          const val = e.target.value
-                                          setNoteDrafts(prev => ({ ...prev, [`pet_${pet.id}`]: { ...prev[`pet_${pet.id}`] || {chinese:'',english:''}, chinese: val } }))
-                                          triggerAutoTranslateMobile(`pet_${pet.id}`, val)
-                                        }}
-                                        placeholder="Type in English, 繁體中文, or 简体中文…"
-                                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 resize-none bg-white"
-                                        rows={2}
-                                      />
-                                      {noteTranslationsMap[`pet_${pet.id}`] && (() => {
-                                        const t = noteTranslationsMap[`pet_${pet.id}`]
-                                        return (
-                                          <div className="bg-violet-50 rounded-xl p-2.5 space-y-1.5 border border-violet-100">
-                                            {t.detected !== 'english' && t.english && (
-                                              <div className="bg-white rounded-lg px-2.5 py-1.5 border border-violet-100">
-                                                <p className="text-xs font-semibold text-gray-400">🇺🇸 English</p>
-                                                <p className="text-xs text-gray-700">{t.english}</p>
+                                  {/* Appointment history — collapsible, per pet */}
+                                  {(() => {
+                                    const petAppts = client.appointments
+                                      .filter(a => a.pet_id === pet.id)
+                                      .sort((a, b) => b.appointment_date.localeCompare(a.appointment_date))
+                                    const histOpen = expandedPetHistoryIds.has(pet.id)
+                                    const lastAppt = petAppts[0]
+                                    return (
+                                      <div className="border-t border-gray-200 mt-2 pt-2">
+                                        {petAppts.length === 0 ? (
+                                          <p className="text-xs text-gray-400 italic py-1">No appointments yet</p>
+                                        ) : (
+                                          <>
+                                            <button
+                                              onClick={() => setExpandedPetHistoryIds(prev => {
+                                                const next = new Set(prev)
+                                                next.has(pet.id) ? next.delete(pet.id) : next.add(pet.id)
+                                                return next
+                                              })}
+                                              className="w-full flex items-center justify-between py-1 text-left"
+                                            >
+                                              <span className="text-xs font-semibold text-gray-500">
+                                                📋 History · {petAppts.length} visit{petAppts.length !== 1 ? 's' : ''}
+                                                {!histOpen && lastAppt && <span className="text-gray-400 font-normal"> · {formatDate(lastAppt.appointment_date)}</span>}
+                                              </span>
+                                              <span className={`text-gray-400 text-sm transition-transform duration-200 ${histOpen ? 'rotate-180' : ''}`}>⌄</span>
+                                            </button>
+                                            {histOpen && (
+                                              <div className="space-y-1.5 pt-1 max-h-[420px] overflow-y-auto">
+                                                {petAppts.map(appt => {
+                                                  const groomerNotes = (appt.notes_list ?? []).filter(n => !n.is_addon)
+                                                  const hasCustomerReq = !!(appt.notes && appt.notes.trim())
+                                                  return (
+                                                    <div key={appt.id} className="rounded-xl bg-gray-50 overflow-hidden">
+                                                      <div className="flex items-start justify-between gap-2 py-1.5 px-2.5">
+                                                        <div className="min-w-0">
+                                                          <p className="text-sm font-medium text-gray-700">{serviceMap[appt.service] ?? appt.service}</p>
+                                                          <p className="text-xs text-gray-400">
+                                                            {formatDate(appt.appointment_date)}
+                                                            {appt.assigned_groomer && <span className="ml-1">· ✂️ {appt.assigned_groomer}</span>}
+                                                            {appt.assigned_bather && <span className="ml-1">· 🛁 {appt.assigned_bather}</span>}
+                                                          </p>
+                                                        </div>
+                                                        <div className="flex flex-col items-end flex-shrink-0 gap-0.5">
+                                                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                                            appt.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
+                                                            appt.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                                            appt.status === 'completed' ? 'bg-gray-100 text-gray-500' :
+                                                            'bg-red-100 text-red-600'
+                                                          }`}>
+                                                            {appt.status}
+                                                          </span>
+                                                          {appt.payment_amount && (
+                                                            <span className="text-xs font-semibold text-emerald-700">
+                                                              💰 ${appt.payment_amount}{appt.tip_amount ? ` +$${appt.tip_amount}` : ''}
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                      <div className="px-2.5 pb-2 space-y-1.5">
+                                                        {hasCustomerReq && (
+                                                          <div className="bg-amber-50/80 border border-amber-100 rounded-lg px-2.5 py-1.5">
+                                                            <p className="text-[10px] font-bold uppercase tracking-wide text-amber-600 mb-0.5">📋 Customer Request</p>
+                                                            <p className="text-xs text-gray-700 leading-snug whitespace-pre-wrap">{appt.notes}</p>
+                                                          </div>
+                                                        )}
+                                                        {groomerNotes.length > 0 ? (
+                                                          <div className="bg-violet-50/60 border border-violet-100 rounded-lg px-2.5 py-1.5">
+                                                            <p className="text-[10px] font-bold uppercase tracking-wide text-violet-600 mb-1">📝 Groomer Notes ({groomerNotes.length})</p>
+                                                            <div className="space-y-1.5">
+                                                              {groomerNotes.map(n => (
+                                                                <div key={n.id} className="border-l-2 border-violet-200 pl-2">
+                                                                  <p className="text-[10px] text-gray-400 font-medium">
+                                                                    {n.author}{n.created_at ? ` · ${new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                                                                  </p>
+                                                                  <p className="text-xs text-gray-700 leading-snug whitespace-pre-wrap">{n.text}</p>
+                                                                </div>
+                                                              ))}
+                                                            </div>
+                                                          </div>
+                                                        ) : (
+                                                          <p className="text-xs text-gray-300 bg-gray-50 rounded-lg px-2.5 py-1">📝 None</p>
+                                                        )}
+                                                        {appt.health_check && (() => {
+                                                          const hc = appt.health_check as any
+                                                          const HC_SECTIONS = [
+                                                            { key: 'eyes', emoji: '👁️', label: 'Eyes' },
+                                                            { key: 'ears', emoji: '👂', label: 'Ears' },
+                                                            { key: 'nose', emoji: '👃', label: 'Nose' },
+                                                            { key: 'mouth', emoji: '😬', label: 'Mouth' },
+                                                            { key: 'paws', emoji: '🐾', label: 'Paws' },
+                                                            { key: 'skin', emoji: '🧴', label: 'Skin' },
+                                                          ]
+                                                          const isNew = HC_SECTIONS.some(s => Array.isArray(hc[s.key]))
+                                                          const cleared: string[] = Array.isArray(hc.cleared_sections) ? hc.cleared_sections : []
+                                                          const totalIssues = HC_SECTIONS.reduce((sum, s) => {
+                                                            const v = hc[s.key]
+                                                            return sum + (isNew ? (Array.isArray(v) ? v.length : 0) : (v === false ? 1 : 0))
+                                                          }, 0)
+                                                          const allNormal = isNew ? (cleared.length === 6 && totalIssues === 0) : HC_SECTIONS.every(s => hc[s.key] === true)
+                                                          const issuesSections = HC_SECTIONS.filter(s => {
+                                                            const v = hc[s.key]
+                                                            return isNew ? (Array.isArray(v) && v.length > 0) : v === false
+                                                          })
+                                                          return (
+                                                            <div className="bg-sky-50/70 border border-sky-100 rounded-lg px-2.5 py-1.5">
+                                                              <p className="text-[10px] font-bold uppercase tracking-wide text-sky-600 mb-1">🩺 Health Check</p>
+                                                              {allNormal ? (
+                                                                <p className="text-xs text-green-600 font-medium">✅ All Normal — 一切正常</p>
+                                                              ) : (
+                                                                <div className="space-y-1">
+                                                                  {issuesSections.map(s => {
+                                                                    const v = hc[s.key]
+                                                                    const issues: string[] = isNew ? (Array.isArray(v) ? v : []) : [s.label]
+                                                                    return (
+                                                                      <div key={s.key}>
+                                                                        <span className="text-xs font-semibold text-rose-600">{s.emoji} {s.label}: </span>
+                                                                        <span className="text-xs text-rose-500">{issues.map(i => i.replace(/_/g, ' ')).join(', ')}</span>
+                                                                      </div>
+                                                                    )
+                                                                  })}
+                                                                  {issuesSections.length === 0 && <p className="text-xs text-gray-400">Completed</p>}
+                                                                </div>
+                                                              )}
+                                                              {hc.groomer_notes_english && (
+                                                                <p className="text-[11px] text-gray-500 mt-1 border-t border-sky-100 pt-1">🏥 {hc.groomer_notes_english}</p>
+                                                              )}
+                                                            </div>
+                                                          )
+                                                        })()}
+                                                        {appt.grooming_quality && (() => {
+                                                          const q = appt.grooming_quality as any
+                                                          const QC_ITEMS = [
+                                                            { key: 'nails_trimmed', old: 'nails_trimmed', emoji: '✂️', label: 'Nails' },
+                                                            { key: 'ears_cleaned', old: 'ears_cleaned', emoji: '👂', label: 'Ears' },
+                                                            { key: 'tangles_free', old: 'coat_brushed', emoji: '🪮', label: 'Tangles' },
+                                                            { key: 'sanitary_trim', old: 'bath_completed', emoji: '🧼', label: 'Sanitary' },
+                                                            { key: 'paw_pad_trim', old: 'paw_pads_cleared', emoji: '🐾', label: 'Paw Pad' },
+                                                            { key: 'perfume_spray', old: 'styling_finished', emoji: '🌸', label: 'Perfume' },
+                                                          ]
+                                                          const done = QC_ITEMS.filter(i => q[i.key] || q[i.old])
+                                                          const allDone = done.length === QC_ITEMS.length
+                                                          return (
+                                                            <div className="bg-emerald-50/70 border border-emerald-100 rounded-lg px-2.5 py-1.5">
+                                                              <div className="flex items-center justify-between mb-1">
+                                                                <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">🎯 Quality Check</p>
+                                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${allDone ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{done.length}/{QC_ITEMS.length}</span>
+                                                              </div>
+                                                              {allDone ? (
+                                                                <p className="text-xs text-emerald-600 font-medium">✅ All Done</p>
+                                                              ) : (
+                                                                <p className="text-xs text-gray-600">{done.map(i => `${i.emoji} ${i.label}`).join(' · ') || '—'}</p>
+                                                              )}
+                                                              {q.groomer_diary && (
+                                                                <p className="text-[11px] text-purple-600 mt-1 border-t border-emerald-100 pt-1">📓 {q.groomer_diary}</p>
+                                                              )}
+                                                            </div>
+                                                          )
+                                                        })()}
+                                                      </div>
+                                                    </div>
+                                                  )
+                                                })}
                                               </div>
                                             )}
-                                            {t.detected !== 'traditional' && t.traditional && (
-                                              <div className="bg-white rounded-lg px-2.5 py-1.5 border border-violet-100">
-                                                <p className="text-xs font-semibold text-gray-400">🇹🇼 繁體</p>
-                                                <p className="text-xs text-gray-700">{t.traditional}</p>
-                                              </div>
-                                            )}
-                                            {t.simplified && t.detected !== 'simplified' && (
-                                              <div className="bg-white rounded-lg px-2.5 py-1.5 border border-violet-100">
-                                                <p className="text-xs font-semibold text-gray-400">🇨🇳 简体</p>
-                                                <p className="text-xs text-gray-700">{t.simplified}</p>
-                                              </div>
-                                            )}
-                                          </div>
-                                        )
-                                      })()}
-                                      <button
-                                        onClick={() => saveNotes(`pet_${pet.id}`)}
-                                        className="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-1.5 rounded-lg text-xs transition-colors"
-                                      >
-                                        💾 Save Notes
-                                      </button>
-                                    </div>
-                                  </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    )
+                                  })()}
+
                                 </div>
                               ))}
                             </div>
                           </div>
-
-                          {/* Appointment history */}
-                          {client.appointments.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Appointment History</p>
-                              <div className="space-y-1.5">
-                                {client.appointments
-                                  .sort((a, b) => b.appointment_date.localeCompare(a.appointment_date))
-                                  .slice(0, 5)
-                                  .map(appt => {
-                                    const apptPet = client.pets.find(p => p.id === appt.pet_id)
-                                    // Full note history for this appointment, not just the latest — falls back
-                                    // to the legacy single-note fields for older appointments saved before
-                                    // notes_list existed.
-                                    const noteHistory = (appt.notes_list ?? []).filter(n => !n.is_addon)
-                                    const legacyNote = noteHistory.length === 0 ? (appt.notes_english || appt.notes) : null
-                                    return (
-                                    <div key={appt.id} className="text-sm py-1.5 border-b border-gray-50 last:border-0">
-                                      <div className="flex items-start justify-between">
-                                        <div className="min-w-0">
-                                          {client.pets.length > 1 && apptPet && (
-                                            <span className="text-xs font-semibold text-sky-600 mr-1.5">🐾 {apptPet.name}</span>
-                                          )}
-                                          <span className="font-medium text-gray-700">
-                                            {serviceMap[appt.service] ?? appt.service}
-                                          </span>
-                                          <span className="text-gray-400 ml-2">
-                                            {new Date(appt.appointment_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                          </span>
-                                          {(appt.assigned_groomer || appt.assigned_bather) && (
-                                            <p className="text-xs text-gray-400 mt-0.5">
-                                              {appt.assigned_groomer && <span>✂️ {appt.assigned_groomer}</span>}
-                                              {appt.assigned_groomer && appt.assigned_bather && <span className="mx-1">·</span>}
-                                              {appt.assigned_bather && <span>🛁 {appt.assigned_bather}</span>}
-                                            </p>
-                                          )}
-                                        </div>
-                                        <div className="flex flex-col items-end flex-shrink-0 ml-2 gap-0.5">
-                                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                            appt.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
-                                            appt.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                            appt.status === 'completed' ? 'bg-gray-100 text-gray-500' :
-                                            'bg-red-100 text-red-600'
-                                          }`}>
-                                            {appt.status}
-                                          </span>
-                                          {appt.payment_amount && (
-                                            <span className="text-xs font-semibold text-emerald-700">
-                                              💰 ${appt.payment_amount}{appt.tip_amount ? ` +$${appt.tip_amount} tip` : ''}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      {noteHistory.length > 0 && (
-                                        <div className="mt-1 space-y-1">
-                                          {noteHistory.map(n => (
-                                            <p key={n.id} className="text-xs text-gray-500 bg-gray-50 rounded-lg px-2 py-1">
-                                              📝 {n.text}
-                                              <span className="text-gray-400">
-                                                {' — '}{n.author}{n.created_at ? `, ${new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
-                                              </span>
-                                            </p>
-                                          ))}
-                                        </div>
-                                      )}
-                                      {legacyNote && (
-                                        <p className="text-xs text-gray-500 mt-1 bg-gray-50 rounded-lg px-2 py-1">
-                                          📝 {legacyNote}
-                                        </p>
-                                      )}
-                                      {noteHistory.length === 0 && !legacyNote && (
-                                        <p className="text-xs text-gray-300 mt-1 bg-gray-50 rounded-lg px-2 py-1">
-                                          📝 None
-                                        </p>
-                                      )}
-                                    </div>
-                                    )
-                                  })}
-                              </div>
-                            </div>
-                          )}
 
                           {/* Member since */}
                           <p className="text-xs text-gray-400">
