@@ -9702,9 +9702,9 @@ export default function DeskAdmin() {
                   </div>
 
                   {/* Groomer columns — each with its own every-30-min timeline. Appointments
-                      render as one merged box spanning the rows their real duration covers,
-                      and a small green "+" stays available on every covered row so admin can
-                      still deliberately overbook that exact time when needed. */}
+                      render as one merged box spanning the rows their real duration covers.
+                      The green "+" (add) button only shows on genuinely empty rows now —
+                      it no longer appears on rows already covered by an appointment. */}
                   <div className="flex-1 overflow-auto">
                     <div className="flex divide-x divide-gray-200" style={{minWidth: `${columns.length * 240}px`}}>
                       {columns.map(col => {
@@ -9757,13 +9757,6 @@ export default function DeskAdmin() {
                                                   <span className="text-gray-300 group-hover/pill:text-sky-400 text-base flex-shrink-0">›</span>
                                                 </>
                                               )}
-                                            </button>
-                                            {/* Even though this time is already covered, admin can still
-                                                deliberately overbook it on purpose. */}
-                                            <button onClick={() => startAddAppt(slot)}
-                                              className="self-center flex-shrink-0 w-[22px] h-[22px] rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold flex items-center justify-center"
-                                              title="Add another appointment at this time (overbook)">
-                                              +
                                             </button>
                                           </div>
                                         ))

@@ -135,6 +135,36 @@ export async function GET(req: NextRequest) {
       .eq('appointment_date', dayDate)
       .in('status', ['confirmed', 'in_progress', 'completed'])
       .order('appointment_time', { ascending: true })
+
+    // Detect first-time visits — same "earliest appointment ever" check used by the
+    // 'month' and 'requests' branches, so the Staff Calendar widget (powered by this
+    // 'today' branch) can also show the ⭐ first-visit marker instead of always leaving
+    // is_new_client undefined.
+    if (!result.error && result.data?.length) {
+      const phones = [...new Set(result.data.map((a: { client_phone: string }) => a.client_phone))]
+      const { data: allAppts } = await fetchAllRows<{ client_phone: string; appointment_date: string }>((from, to) =>
+        supabase
+          .from('appointments')
+          .select('client_phone, appointment_date')
+          .in('client_phone', phones)
+          .not('status', 'eq', 'cancelled')
+          .order('appointment_date', { ascending: true })
+          .range(from, to)
+      )
+      const firstDateByPhone: Record<string, string> = {}
+      for (const a of (allAppts || [])) {
+        if (!firstDateByPhone[a.client_phone] || a.appointment_date < firstDateByPhone[a.client_phone]) {
+          firstDateByPhone[a.client_phone] = a.appointment_date
+        }
+      }
+      result = {
+        ...result,
+        data: result.data.map((a: { client_phone: string; appointment_date: string }) => ({
+          ...a,
+          is_new_client: firstDateByPhone[a.client_phone] === a.appointment_date,
+        })),
+      }
+    }
   } else if (status === 'upcoming') {
     result = await supabase
       .from('appointments')
