@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { matchTier } from '@/lib/serviceTier'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -100,7 +101,8 @@ export async function GET(req: NextRequest) {
     // 45-min default, or a service like this quietly gets treated as much shorter than it
     // really is (e.g. a 1.5h Bath & Brush booked as if it only took 45 minutes).
     if (!svc?.tiers?.length) return parseDurationStr(svc?.duration) ?? 45
-    const exactTier = sizeTier ? svc.tiers.find(t => t.label === sizeTier) : undefined
+    // Match by weight numbers, not exact label text (see lib/serviceTier.ts)
+    const exactTier = matchTier(svc.tiers, sizeTier)
     const exactDur = exactTier ? parseDurationStr(exactTier.duration) : null
     if (exactDur != null) return exactDur
     const allDurations = svc.tiers.map(t => parseDurationStr(t.duration)).filter((d): d is number => d != null)
@@ -117,7 +119,7 @@ export async function GET(req: NextRequest) {
   const existingApptDurationMin = (svcId: string, sizeTier?: string | null): number => {
     const svc = allServices.find(s => s.id === svcId)
     if (!svc?.tiers?.length) return parseDurationStr(svc?.duration) ?? 45
-    const tier = (sizeTier ? svc.tiers.find(t => t.label === sizeTier) : undefined) || svc.tiers[0]
+    const tier = matchTier(svc.tiers, sizeTier) || svc.tiers[0]
     return parseDurationStr(tier?.duration) ?? 45
   }
 
@@ -220,6 +222,16 @@ export async function GET(req: NextRequest) {
   // legitimately off *this specific day* (days off, a special_hours override, or just not
   // scheduled that weekday), that's a real 0-capacity day and must show as fully booked,
   // not wide open — so the fallback must NOT key off availableGroomers being 0.
+  // A groomer's special hours that run past normal closing (e.g. 9:00–18:00 on one date)
+  // extend that day's bookable window. Before, the store-wide close_time (5 PM) still cut
+  // off every appointment no matter what the staff special hours said.
+  const dayEndMins = Math.max(endMins, ...groomerWindows.map(w => (w ? w.end : endMins)))
+  for (let m = startMins; m < dayEndMins; m += interval) {
+    if (m < endMins) continue // already generated above
+    const blocked = validBlocks.some(b => m >= parseTime(b.start) && m < parseTime(b.end))
+    if (!blocked) allSlots.push(formatTime(m))
+  }
+
   const noOneScheduledToday = totalGroomers === 0
 
   const capacityAtSlot = (slotMinutes: number): number => {
@@ -274,7 +286,7 @@ export async function GET(req: NextRequest) {
     const apptEnd = slotMin + newApptDuration
 
     // Must fully fit before closing — not just start before close
-    if (apptEnd > endMins) return false
+    if (apptEnd > dayEndMins) return false
 
     // Must not run into a recurring blocked-hours range (e.g. "closed after 3 PM") at any
     // point during the appointment, not just at its start

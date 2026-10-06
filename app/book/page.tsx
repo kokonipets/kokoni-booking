@@ -70,6 +70,7 @@ interface Pet {
   breed?: string
   vaccine_status: string
   photo_url?: string | null
+  weight?: string | null
 }
 
 // ─── Constants ────────────────────────────────────────────
@@ -225,6 +226,8 @@ export default function BookPage() {
   const [newPetName, setNewPetName] = useState('')
   const [newPetBreed, setNewPetBreed] = useState('')
   const [newPetWeight, setNewPetWeight] = useState('')
+  // Weight used to size the appointment length: the new pet's choice, or a returning pet's saved weight.
+  const slotSizeTier = (isAddingNewPet || !selectedPet) ? newPetWeight : (selectedPet.weight || '')
   const [newPetBirthday, setNewPetBirthday] = useState('')
   const [uploadingPetPhotoId, setUploadingPetPhotoId] = useState<string | null>(null)
   const [uploadDonePetId, setUploadDonePetId] = useState<string | null>(null)
@@ -333,18 +336,18 @@ export default function BookPage() {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         fetchAvailability()
-        fetchDateSlots(selectedDateRef.current, service, newPetWeight) // re-fetch slots for currently selected date
+        fetchDateSlots(selectedDateRef.current, service, slotSizeTier) // re-fetch slots for currently selected date
       }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [fetchAvailability, fetchDateSlots, service, newPetWeight])
+  }, [fetchAvailability, fetchDateSlots, service, slotSizeTier])
 
   // Fetch capacity-aware slots whenever the selected date, service, or pet size changes
   useEffect(() => {
     selectedDateRef.current = selectedDate
-    fetchDateSlots(selectedDate, service, newPetWeight)
-  }, [selectedDate, service, newPetWeight, fetchDateSlots])
+    fetchDateSlots(selectedDate, service, slotSizeTier)
+  }, [selectedDate, service, slotSizeTier, fetchDateSlots])
 
   // When booking 2-3 dogs at the same requested time, availability comes from the
   // group feasibility check instead of the plain per-dog slot list — it also returns
@@ -355,7 +358,7 @@ export default function BookPage() {
     const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
     const dd = String(selectedDate.getDate()).padStart(2, '0')
     const dateStr = `${yyyy}-${mm}-${dd}`
-    const dogs = [{ service }, ...groupExtraPets.map(g => ({ service: g.service }))]
+    const dogs = [{ service, size_tier: slotSizeTier || undefined }, ...groupExtraPets.map(g => ({ service: g.service }))]
     setGroupSlotsLoading(true)
     fetch('/api/slots/group', {
       method: 'POST',
@@ -369,7 +372,7 @@ export default function BookPage() {
       })
       .catch(() => { setGroupSlots([]); setGroupAssignments({}) })
       .finally(() => setGroupSlotsLoading(false))
-  }, [isGroupBooking, selectedDate, service, groupExtraPets])
+  }, [isGroupBooking, selectedDate, service, groupExtraPets, slotSizeTier])
 
   // ─── Step: Phone ────────────────────────────────────────
   const handlePhoneLookup = async () => {

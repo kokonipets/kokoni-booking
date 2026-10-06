@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   const { data: petsRaw } = await supabase
     .from('pets')
-    .select('id, name, breed, vaccine_status, photo_url, pet_tags ( tags ( id, name, color ) )')
+    .select('id, name, breed, weight, vaccine_status, photo_url, pet_tags ( tags ( id, name, color ) )')
     .eq('client_phone', phone)
     .eq('is_active', true)
     .order('created_at', { ascending: true })
