@@ -3873,7 +3873,7 @@ export default function AdminPage() {
                                               <p className="text-[10px] font-semibold text-sky-600">
                                                 {fmtMin(t.startMin)}–{fmtMin(t.endMin)}
                                                 {activeTabKey === 'all' && (t.a.assigned_groomer || t.a.assigned_bather) && (
-                                                  <span className="text-gray-500 font-medium"> · {t.a.assigned_groomer || t.a.assigned_bather}</span>
+                                                  <span className="ml-1.5 text-[13px] font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">{t.a.assigned_groomer || t.a.assigned_bather}</span>
                                                 )}
                                               </p>
                                             </div>
