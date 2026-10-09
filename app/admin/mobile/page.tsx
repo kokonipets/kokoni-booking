@@ -3839,7 +3839,14 @@ export default function AdminPage() {
                           </div>
 
                           {/* Slot content */}
-                          <div className="flex-1 border-l border-gray-100 px-3 py-1.5 flex items-stretch gap-1.5">
+                          {/* Multi-slot pills: drop the row padding where a pill continues
+                              into the next/previous row, and pull up over the row divider,
+                              so one appointment reads as a single unbroken color block. */}
+                          <div className={`flex-1 border-l border-gray-100 px-3 flex items-stretch gap-1.5 ${
+                            segs.some(s => s.role === 'top' || s.role === 'mid') ? 'pb-0' : 'pb-1.5'
+                          } ${
+                            segs.some(s => s.role === 'mid' || s.role === 'bottom') ? 'pt-0 -mt-px' : 'pt-1.5'
+                          }`}>
                             {segs.length > 0 ? (
                               <>
                                 <div className="flex-1 min-w-0 flex flex-col gap-1">
