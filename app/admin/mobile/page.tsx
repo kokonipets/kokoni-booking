@@ -3688,9 +3688,14 @@ export default function AdminPage() {
                 count: dayAppts.filter(a => a.assigned_groomer === s.name || a.assigned_bather === s.name).length,
               })).filter(t => t.count > 0)
               const unassignedCount = dayAppts.filter(a => !a.assigned_groomer && !a.assigned_bather).length
-              const tabs = unassignedCount > 0
+              const personTabs = unassignedCount > 0
                 ? [...staffTabs, { key: '__unassigned', label: 'Unassigned', icon: '❔', dot: 'bg-gray-400', count: unassignedCount }]
                 : staffTabs
+              // "All" tab first — every appointment of the day together on one
+              // timeline (overlapping ones stack side by side in the same row).
+              const tabs = dayAppts.length > 0
+                ? [{ key: 'all', label: 'All', icon: '👥', dot: 'bg-violet-500', count: dayAppts.length }, ...personTabs]
+                : personTabs
               const activeTabKey = tabs.some(t => t.key === calendarStaffFilter) ? calendarStaffFilter : (tabs[0]?.key ?? 'all')
 
               const daySlots = (() => {
@@ -3708,6 +3713,7 @@ export default function AdminPage() {
               // overlapping appointments for the same person just stack as
               // separate pills within the same row instead.
               const tabAppts = dayAppts.filter(a =>
+                activeTabKey === 'all' ? true :
                 activeTabKey === '__unassigned'
                   ? (!a.assigned_groomer && !a.assigned_bather)
                   : (a.assigned_groomer === activeTabKey || a.assigned_bather === activeTabKey)
@@ -3857,7 +3863,12 @@ export default function AdminPage() {
                                               <p className="text-[10.5px] text-gray-500 truncate">
                                                 {serviceMap[t.a.service] ?? t.a.service}{t.a.clients?.name ? ` · ${t.a.clients.name}` : ''}
                                               </p>
-                                              <p className="text-[10px] font-semibold text-sky-600">{fmtMin(t.startMin)}–{fmtMin(t.endMin)}</p>
+                                              <p className="text-[10px] font-semibold text-sky-600">
+                                                {fmtMin(t.startMin)}–{fmtMin(t.endMin)}
+                                                {activeTabKey === 'all' && (t.a.assigned_groomer || t.a.assigned_bather) && (
+                                                  <span className="text-gray-500 font-medium"> · {t.a.assigned_groomer || t.a.assigned_bather}</span>
+                                                )}
+                                              </p>
                                             </div>
                                             <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
                                               t.a.status === 'pending' ? 'bg-amber-100 text-amber-700' :
