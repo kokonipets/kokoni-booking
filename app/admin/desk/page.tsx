@@ -9731,7 +9731,9 @@ export default function DeskAdmin() {
                                       <span className="text-[11px] font-semibold text-gray-400">{slot}</span>
                                     </div>
                                     {/* Slot content */}
-                                    <div className="flex-1 min-w-0 border-l border-gray-100 px-2 py-1 flex items-stretch gap-1.5">
+                                    {/* Multi-row pills: no vertical padding where a pill continues into the
+                                        next/previous row, so one appointment is a single unbroken block. */}
+                                    <div className={`flex-1 min-w-0 border-l border-gray-100 px-2 flex items-stretch gap-1.5 ${noSep ? 'pb-0' : 'pb-1'} ${segs?.some(s => s.kind === 'mid' || s.kind === 'bottom') ? 'pt-0' : 'pt-1'}`}>
                                       {segs ? (
                                         segs.map(({appt, kind}, si) => (
                                           <div key={appt.id + '-' + si} className="flex-1 min-w-0 flex items-stretch gap-1.5">
