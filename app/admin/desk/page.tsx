@@ -3249,10 +3249,9 @@ export default function DeskAdmin() {
                                   const timed = groupedAppts.map(([a, ...mates]) => {
                                     const d = parseApptTime(a.appointment_date, a.appointment_time)
                                     const startMin = d.getHours() * 60 + d.getMinutes()
-                                    const dur = Math.max(
-                                      serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier),
-                                      ...mates.map(m => serviceDurationMin(m.service, (m as { size_tier?: string | null }).size_tier)),
-                                    )
+                                    // One groomer does the dogs back to back, so the block is the SUM of
+                                    // each dog's own service time.
+                                    const dur = [a, ...mates].reduce((s, d) => s + serviceDurationMin(d.service, (d as { size_tier?: string | null }).size_tier), 0)
                                     return { a, mates, startMin, dur, endMin: startMin + dur }
                                   }).sort((x, y) => x.startMin - y.startMin)
 
@@ -9658,7 +9657,7 @@ export default function DeskAdmin() {
                 merged.forEach(({ appt, mates }) => {
                   const startMin = toMinsD(appt.appointment_time)
                   if (startMin === -1) return
-                  const dur = Math.max(apptDurationMin(appt.service, appt.size_tier), ...mates.map(m => apptDurationMin(m.service, m.size_tier)))
+                  const dur = [appt, ...mates].reduce((s, d) => s + apptDurationMin(d.service, d.size_tier), 0)
                   const endMin = startMin + dur
                   const coveredIdx: number[] = []
                   halfHourSlots.forEach((slot, idx) => {
@@ -9801,7 +9800,7 @@ export default function DeskAdmin() {
                                                     <p className="text-[10px] text-sky-600 font-semibold mt-0.5">
                                                       {(() => {
                                                         const st = toMinsD(appt.appointment_time)
-                                                        const dur = Math.max(apptDurationMin(appt.service, appt.size_tier), ...mates.map(m => apptDurationMin(m.service, m.size_tier)))
+                                                        const dur = [appt, ...mates].reduce((s, d) => s + apptDurationMin(d.service, d.size_tier), 0)
                                                         return st === -1 ? appt.appointment_time : `${fmtRangeD(st)} – ${fmtRangeD(st+dur)}`
                                                       })()}
                                                     </p>

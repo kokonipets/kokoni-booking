@@ -3729,7 +3729,7 @@ export default function AdminPage() {
                 return acc
               }, []).map(([a, ...mates]) => {
                 const startMin = toMins(a.appointment_time)
-                const dur = Math.max(serviceDurationMin(a.service, a.size_tier), ...mates.map(m => serviceDurationMin(m.service, m.size_tier)))
+                const dur = [a, ...mates].reduce((s, d) => s + serviceDurationMin(d.service, d.size_tier), 0)
                 return { a, mates, startMin, endMin: startMin + dur }
               }).sort((x, y) => x.startMin - y.startMin)
 
