@@ -590,30 +590,63 @@ export async function PATCH(
     if (grooming_status === 'ready') {
       const { data: appt } = await supabase
         .from('appointments')
-        .select('client_phone, is_walk_in, clients(name, sms_consent), pets!pet_id(name)')
+        .select('client_phone, is_walk_in, group_id, appointment_date, clients(name, sms_consent), pets!pet_id(name)')
         .eq('id', id)
         .single()
 
       if (appt) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const a = appt as any
+
+        // Dogs booked together (same group_id) share ONE pickup text. If another dog in
+        // the group isn't ready yet, hold the SMS — the last dog to be marked ready
+        // triggers a single message naming every dog. Cancelled / no-show siblings
+        // don't count.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let siblings: any[] = []
+        if (a.group_id) {
+          const { data: sibs } = await supabase
+            .from('appointments')
+            .select('id, grooming_status, status, owner_notified_at, grooming_quality, pets!pet_id(name)')
+            .eq('group_id', a.group_id)
+            .eq('appointment_date', a.appointment_date)
+            .neq('id', id)
+            .not('status', 'in', '(cancelled,no_show)')
+          siblings = sibs ?? []
+        }
+        const waitingOnSibling = siblings.some(s =>
+          !['ready', 'done'].includes(s.grooming_status ?? '') && s.status !== 'completed')
+
         // Walk-ins are already standing in the store — a "ready for pickup" text
         // doesn't apply to them, so skip the client SMS entirely.
         // Only send client SMS if client opted in (A2P 10DLC compliance)
-        if (a.clients?.sms_consent && !a.is_walk_in) {
+        if (a.clients?.sms_consent && !a.is_walk_in && !waitingOnSibling) {
           // Include the groomer's note to customer, if one was written.
           // Send the English version to the customer (groomer may type Chinese; it's auto-translated).
           const gq = grooming_quality as { customer_note_raw?: string; customer_note_english?: string } | undefined
+          const noteOf = (q?: { customer_note_raw?: string; customer_note_english?: string } | null) =>
+            q?.customer_note_english || q?.customer_note_raw || ''
+          const ownName = a.pets?.name ?? 'your pet'
+          const names = [ownName, ...siblings.map(s => s.pets?.name).filter(Boolean)]
+          // One note per dog; label each with the dog's name when there's more than one dog.
+          const notes = [
+            { name: ownName, text: noteOf(gq) },
+            ...siblings.map(s => ({ name: s.pets?.name ?? '', text: noteOf(s.grooming_quality) })),
+          ].filter(n => n.text)
+          const customerNote = notes.length === 0 ? undefined
+            : names.length > 1 ? notes.map(n => `${n.name}: ${n.text}`).join(' | ')
+            : notes[0].text
           notifyClientGroomingReady({
             to: a.client_phone,
             clientName: a.clients?.name ?? 'there',
-            petName: a.pets?.name ?? 'your pet',
-            customerNote: gq?.customer_note_english || gq?.customer_note_raw || undefined,
+            petName: names.length > 1 ? names.join(' & ') : ownName,
+            customerNote,
           }).catch((e: unknown) => console.error('Grooming ready SMS failed:', e))
           // Stamp owner_notified_at only when an SMS was actually attempted —
           // previously this ran unconditionally, so clients without sms_consent
           // showed "Msg sent ✓" in the desk UI despite never receiving anything.
-          await supabase.from('appointments').update({ owner_notified_at: now }).eq('id', id)
+          const notifiedIds = [id, ...siblings.map(s => s.id)]
+          await supabase.from('appointments').update({ owner_notified_at: now }).in('id', notifiedIds)
         }
       }
     }
