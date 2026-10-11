@@ -242,7 +242,7 @@ export async function GET(req: NextRequest) {
   // 4. Load existing appointments for this date (non-cancelled)
   const { data: apptRows } = await supabase
     .from('appointments')
-    .select('appointment_time, status, service, size_tier')
+    .select('appointment_time, status, service, size_tier, group_id, assigned_groomer, assigned_bather')
     .eq('appointment_date', dateStr)
     .neq('status', 'cancelled')
 
@@ -259,11 +259,26 @@ export async function GET(req: NextRequest) {
   // exact starting slot — e.g. a 1.5h Asian Fusion booked at 9:30 is still occupying someone
   // at 10:00 and 10:30 too. Without this, a longer appointment only "blocked" the one slot it
   // started in, so the next slot or two could look wide open even though nobody was free.
-  const apptWindows: { start: number; end: number }[] = (apptRows || []).map(a => {
+  //
+  // Dogs booked together (same group_id), at the same time, with the SAME assigned groomer are
+  // done back to back by that one person — so they are ONE window whose length is the SUM of
+  // each dog's service time (this matches how the admin calendar draws the merged block).
+  // Without this, two 1h dogs for one groomer counted as two groomers busy for 1h, leaving a
+  // slot that was really still taken (until the second dog finished) looking open.
+  // Group dogs with no groomer assigned yet stay separate (can't tell whether one person does both).
+  type RawAppt = { appointment_time: string; service: string; size_tier?: string | null; group_id?: string | null; assigned_groomer?: string | null; assigned_bather?: string | null }
+  const merged: { start: number; dur: number; key: string | null }[] = []
+  for (const a of ((apptRows || []) as unknown as RawAppt[])) {
     const start = parseTime((a.appointment_time as string).trim())
-    const dur = existingApptDurationMin(a.service as string, (a as { size_tier?: string | null }).size_tier)
-    return { start, end: start + dur }
-  }).filter(w => !isNaN(w.start))
+    if (isNaN(start)) continue
+    const dur = existingApptDurationMin(a.service, a.size_tier)
+    const who = a.assigned_groomer || a.assigned_bather || ''
+    const key = a.group_id && who ? `${a.group_id}|${a.appointment_time.trim()}|${who}` : null
+    const hit = key ? merged.find(m => m.key === key) : undefined
+    if (hit) hit.dur += dur
+    else merged.push({ start, dur, key })
+  }
+  const apptWindows: { start: number; end: number }[] = merged.map(m => ({ start: m.start, end: m.start + m.dur }))
 
   const occupiedAtSlot = (slotMinutes: number): number =>
     apptWindows.filter(w => slotMinutes >= w.start && slotMinutes < w.end).length
