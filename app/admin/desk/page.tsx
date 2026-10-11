@@ -9612,16 +9612,26 @@ export default function DeskAdmin() {
                 setAddingApptSlot({date:d, time})
               }
 
-              type Seg = { appt: Appointment; kind: 'solo' | 'top' | 'mid' | 'bottom' }
+              type Seg = { appt: Appointment; kind: 'solo' | 'top' | 'mid' | 'bottom'; mates: Appointment[] }
               // Lays one groomer's appointments across every half-hour row each actually
               // covers (by real duration), so a 1.5h appointment reads as one merged box
               // spanning 3 rows instead of squeezing into a single row regardless of length.
               const buildGrid = (colAppts: Appointment[]): (Seg[] | null)[] => {
                 const grid: (Seg[] | null)[] = halfHourSlots.map(() => null)
-                colAppts.forEach(appt => {
+                // Dogs booked together (same group_id) at the same time with this same
+                // groomer collapse into ONE card listing both dogs; each stays its own
+                // appointment underneath (own service, price, notes).
+                const merged: { appt: Appointment; mates: Appointment[] }[] = []
+                colAppts.forEach(a => {
+                  const m = a.group_id
+                    ? merged.find(x => x.appt.group_id === a.group_id && x.appt.appointment_time === a.appointment_time)
+                    : undefined
+                  if (m) m.mates.push(a); else merged.push({ appt: a, mates: [] })
+                })
+                merged.forEach(({ appt, mates }) => {
                   const startMin = toMinsD(appt.appointment_time)
                   if (startMin === -1) return
-                  const dur = apptDurationMin(appt.service, appt.size_tier)
+                  const dur = Math.max(apptDurationMin(appt.service, appt.size_tier), ...mates.map(m => apptDurationMin(m.service, m.size_tier)))
                   const endMin = startMin + dur
                   const coveredIdx: number[] = []
                   halfHourSlots.forEach((slot, idx) => {
@@ -9633,7 +9643,7 @@ export default function DeskAdmin() {
                   coveredIdx.forEach((idx, i) => {
                     const kind: Seg['kind'] = coveredIdx.length === 1 ? 'solo' : i === 0 ? 'top' : i === coveredIdx.length - 1 ? 'bottom' : 'mid'
                     if (!grid[idx]) grid[idx] = []
-                    grid[idx]!.push({ appt, kind })
+                    grid[idx]!.push({ appt, kind, mates })
                   })
                 })
                 return grid
@@ -9735,7 +9745,7 @@ export default function DeskAdmin() {
                                         next/previous row, so one appointment is a single unbroken block. */}
                                     <div className={`flex-1 min-w-0 border-l border-gray-100 px-2 flex items-stretch gap-1.5 ${noSep ? 'pb-0' : 'pb-1'} ${segs?.some(s => s.kind === 'mid' || s.kind === 'bottom') ? 'pt-0' : 'pt-1'}`}>
                                       {segs ? (
-                                        segs.map(({appt, kind}, si) => (
+                                        segs.map(({appt, kind, mates}, si) => (
                                           <div key={appt.id + '-' + si} className="flex-1 min-w-0 flex items-stretch gap-1.5">
                                             <button onClick={() => { openApptDetail(appt); setSelectedDay(null) }}
                                               className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-1 text-left transition-all hover:shadow-sm group/pill ${segColorClass(appt)} ${segShapeClass(kind)}`}>
@@ -9745,12 +9755,26 @@ export default function DeskAdmin() {
                                                     ? <img src={appt.pets.photo_url} className="w-7 h-7 rounded-full object-cover flex-shrink-0" alt="" />
                                                     : <div className="w-7 h-7 rounded-full bg-white/70 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
                                                   <div className="flex-1 min-w-0">
-                                                    <p className="font-semibold text-gray-800 text-xs truncate">{appt.pets?.name}{appt.is_new_client && ' ⭐'}</p>
-                                                    <p className="text-[11px] text-gray-500 truncate">{serviceMap[appt.service]??appt.service} · {appt.clients?.name}</p>
+                                                    <p className="font-semibold text-gray-800 text-xs truncate">
+                                                      {[appt, ...mates].map((d, di) => (
+                                                        <span key={d.id}>
+                                                          {di > 0 && <span className="text-gray-400 font-normal"> + </span>}
+                                                          <span onClick={mates.length > 0 ? (e) => { e.stopPropagation(); openApptDetail(d); setSelectedDay(null) } : undefined}
+                                                            className={mates.length > 0 ? 'hover:underline cursor-pointer' : ''}>
+                                                            {d.pets?.name}{d.is_new_client && ' ⭐'}
+                                                          </span>
+                                                        </span>
+                                                      ))}
+                                                    </p>
+                                                    <p className="text-[11px] text-gray-500 truncate">
+                                                      {mates.length > 0
+                                                        ? [appt, ...mates].map(d => serviceMap[d.service]??d.service).filter((s, i, arr) => arr.indexOf(s) === i).join(' / ')
+                                                        : (serviceMap[appt.service]??appt.service)} · {appt.clients?.name}
+                                                    </p>
                                                     <p className="text-[10px] text-sky-600 font-semibold mt-0.5">
                                                       {(() => {
                                                         const st = toMinsD(appt.appointment_time)
-                                                        const dur = apptDurationMin(appt.service, appt.size_tier)
+                                                        const dur = Math.max(apptDurationMin(appt.service, appt.size_tier), ...mates.map(m => apptDurationMin(m.service, m.size_tier)))
                                                         return st === -1 ? appt.appointment_time : `${fmtRangeD(st)} – ${fmtRangeD(st+dur)}`
                                                       })()}
                                                     </p>

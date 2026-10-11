@@ -173,6 +173,7 @@ type Appointment = {
   confirmed_at: string | null
   assigned_groomer?: string | null
   assigned_bather?: string | null
+  group_id?: string | null
   groomer_confirmed?: boolean | null
   payment_amount?: string | null
   size_tier?: string | null
@@ -3717,10 +3718,19 @@ export default function AdminPage() {
                 activeTabKey === '__unassigned'
                   ? (!a.assigned_groomer && !a.assigned_bather)
                   : (a.assigned_groomer === activeTabKey || a.assigned_bather === activeTabKey)
-              ).map(a => {
+              ).reduce((acc: Appointment[][], a) => {
+                // Dogs booked together (same group_id) at the same time with the same
+                // groomer collapse into ONE card; each stays its own appointment underneath.
+                const g = a.group_id
+                  ? acc.find(x => x[0].group_id === a.group_id && x[0].appointment_time === a.appointment_time &&
+                      (x[0].assigned_groomer || x[0].assigned_bather) === (a.assigned_groomer || a.assigned_bather))
+                  : undefined
+                if (g) g.push(a); else acc.push([a])
+                return acc
+              }, []).map(([a, ...mates]) => {
                 const startMin = toMins(a.appointment_time)
-                const dur = serviceDurationMin(a.service, a.size_tier)
-                return { a, startMin, endMin: startMin + dur }
+                const dur = Math.max(serviceDurationMin(a.service, a.size_tier), ...mates.map(m => serviceDurationMin(m.service, m.size_tier)))
+                return { a, mates, startMin, endMin: startMin + dur }
               }).sort((x, y) => x.startMin - y.startMin)
 
               // Which half-hour rows each appointment covers, so a multi-slot
@@ -3866,9 +3876,20 @@ export default function AdminPage() {
                                               ? <img src={t.a.pets.photo_url} className="w-8 h-8 rounded-full object-cover flex-shrink-0" alt="" />
                                               : <div className="w-8 h-8 rounded-full bg-white/70 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
                                             <div className="flex-1 min-w-0">
-                                              <p className="font-semibold text-gray-800 text-[12.5px] truncate">{t.a.pets?.name ?? 'Pet'}{t.a.is_new_client && ' ⭐'}</p>
+                                              <p className="font-semibold text-gray-800 text-[12.5px] truncate">
+                                                {[t.a, ...t.mates].map((d, di) => (
+                                                  <span key={d.id}>
+                                                    {di > 0 && <span className="text-gray-400 font-normal"> + </span>}
+                                                    <span onClick={t.mates.length > 0 ? (e) => { e.stopPropagation(); openApptDetail(d) } : undefined}>
+                                                      {d.pets?.name ?? 'Pet'}{d.is_new_client && ' ⭐'}
+                                                    </span>
+                                                  </span>
+                                                ))}
+                                              </p>
                                               <p className="text-[10.5px] text-gray-500 truncate">
-                                                {serviceMap[t.a.service] ?? t.a.service}{t.a.clients?.name ? ` · ${t.a.clients.name}` : ''}
+                                                {t.mates.length > 0
+                                                  ? [t.a, ...t.mates].map(d => serviceMap[d.service] ?? d.service).filter((s, i, arr) => arr.indexOf(s) === i).join(' / ')
+                                                  : (serviceMap[t.a.service] ?? t.a.service)}{t.a.clients?.name ? ` · ${t.a.clients.name}` : ''}
                                               </p>
                                               <p className="text-[10px] font-semibold text-sky-600">
                                                 {fmtMin(t.startMin)}–{fmtMin(t.endMin)}
