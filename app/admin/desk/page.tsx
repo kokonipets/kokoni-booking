@@ -3236,11 +3236,24 @@ export default function DeskAdmin() {
                                   // real (e.g. two dogs from the same family) and fine to show
                                   // side-by-side at their true times, so lay overlapping ones out in
                                   // side-by-side lanes instead of ever changing anyone's displayed time.
-                                  const timed = colAppts.map(a => {
+                                  // Dogs booked together (same group_id) at the same time with this same
+                                  // groomer collapse into ONE block listing both dogs; each stays its own
+                                  // appointment underneath.
+                                  const groupedAppts = colAppts.reduce((acc: (typeof colAppts)[], a) => {
+                                    const g = a.group_id
+                                      ? acc.find(x => x[0].group_id === a.group_id && x[0].appointment_time === a.appointment_time)
+                                      : undefined
+                                    if (g) g.push(a); else acc.push([a])
+                                    return acc
+                                  }, [])
+                                  const timed = groupedAppts.map(([a, ...mates]) => {
                                     const d = parseApptTime(a.appointment_date, a.appointment_time)
                                     const startMin = d.getHours() * 60 + d.getMinutes()
-                                    const dur = serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier)
-                                    return { a, startMin, dur, endMin: startMin + dur }
+                                    const dur = Math.max(
+                                      serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier),
+                                      ...mates.map(m => serviceDurationMin(m.service, (m as { size_tier?: string | null }).size_tier)),
+                                    )
+                                    return { a, mates, startMin, dur, endMin: startMin + dur }
                                   }).sort((x, y) => x.startMin - y.startMin)
 
                                   type TimedItem = typeof timed[number]
@@ -3270,7 +3283,7 @@ export default function DeskAdmin() {
                                   })
                                   flushCluster()
 
-                                  return laidOut.map(({ a, startMin, dur, lane, laneCount }) => {
+                                  return laidOut.map(({ a, mates, startMin, dur, lane, laneCount }) => {
                                     const top = (startMin - CAL_START) * CAL_PX
                                     const h = dur * CAL_PX
                                     const isDone = a.status === 'completed' || !!a.checked_out_at
@@ -3289,10 +3302,24 @@ export default function DeskAdmin() {
                                           left: `calc(${lane * widthPct}% + 2px)`,
                                           width: `calc(${widthPct}% - 4px)`,
                                         }}
-                                        title={`${a.pets?.name ?? ''} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(startMin)}–${fmtCalMin(startMin + dur)}`}>
-                                        <p className="font-bold truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'}</p>
+                                        title={`${[a, ...mates].map(d => d.pets?.name ?? '').join(' + ')} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(startMin)}–${fmtCalMin(startMin + dur)}`}>
+                                        <p className="font-bold truncate">
+                                          {[a, ...mates].map((d, di) => (
+                                            <span key={d.id}>
+                                              {di > 0 && <span className="font-normal opacity-60"> + </span>}
+                                              <span onClick={mates.length > 0 ? (e) => { e.stopPropagation(); openApptDetail(d) } : undefined}
+                                                className={mates.length > 0 ? 'hover:underline' : ''}>
+                                                {d.pets?.name ?? 'Pet'}{d.is_new_client && ' ⭐'}
+                                              </span>
+                                            </span>
+                                          ))}
+                                        </p>
                                         <p className="truncate opacity-80">{fmtCalMin(startMin)}–{fmtCalMin(startMin + dur)}</p>
-                                        <p className="truncate opacity-80">{serviceMap[a.service] ?? a.service}</p>
+                                        <p className="truncate opacity-80">
+                                          {mates.length > 0
+                                            ? [a, ...mates].map(d => serviceMap[d.service] ?? d.service).filter((s, i, arr) => arr.indexOf(s) === i).join(' / ')
+                                            : (serviceMap[a.service] ?? a.service)}
+                                        </p>
                                       </div>
                                     )
                                   })
