@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import RetailSell from '@/components/RetailSell'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -64,7 +65,7 @@ type Appt = {
   clients: { name: string; phone: string } | null
 }
 
-type Tab = 'dashboard' | 'checkin' | 'checkout'
+type Tab = 'dashboard' | 'checkin' | 'checkout' | 'retail'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function fmt12(t: string | null | undefined) {
@@ -1481,6 +1482,7 @@ export default function CashierPage() {
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'checkin',   label: 'Upcoming',   icon: '🐾' },
     { id: 'checkout',  label: 'Ready to Go', icon: '💰' },
+    { id: 'retail',    label: 'Retail 店販', icon: '🛍️' },
   ]
 
   // Auth gate — every hook above this line still runs on every render, so
@@ -2146,6 +2148,14 @@ export default function CashierPage() {
         )}
 
         {/* ── CHECK OUT / PAYMENT TAB ── */}
+        {/* ── RETAIL (店販) TAB ── */}
+        {tab === 'retail' && (
+          <div className="max-w-2xl mx-auto space-y-4">
+            <h2 className="text-2xl font-black text-gray-800">🛍️ Retail 店販</h2>
+            <RetailSell />
+          </div>
+        )}
+
         {tab === 'checkout' && (
           <div className="space-y-5">
             <div className="flex items-center justify-between">
