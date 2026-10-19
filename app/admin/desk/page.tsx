@@ -5489,6 +5489,18 @@ export default function DeskAdmin() {
           </a>
           )}
 
+          {/* Inventory — standalone page, gated by the 'inventory' permission key. */}
+          {(!allowedTabs || allowedTabs.includes('inventory')) && (
+          <a
+            href="/admin/inventory"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <span className="text-base leading-none w-5 text-center">📦</span>
+            <span className="flex-1">Inventory</span>
+          </a>
+          )}
+
           {/* Cashier Sign-Ins — standalone page, gated by the 'cashier_logins' permission key. */}
           {(!allowedTabs || allowedTabs.includes('cashier_logins')) && (
           <a
