@@ -210,6 +210,9 @@ export default function KioskPage() {
 
   // ── Idle reset ────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
+    // Safety net: if a Terminal payment succeeded but this tab never recorded it,
+    // let the server finish it from Square's records.
+    fetch('/api/kiosk/reconcile-square', { method: 'POST' }).catch(() => {})
     setStep('welcome')
     setPhone('')
     setAppt(null)
@@ -277,7 +280,9 @@ export default function KioskPage() {
   }, [])
 
   useEffect(() => {
-    if (step === 'welcome') return
+    // Don't idle-reset while the customer is paying on the Square Terminal — they're
+    // touching the terminal, not this screen, so the kiosk sees no activity for 45s.
+    if (step === 'welcome' || terminalWaiting) return
     let timer = setTimeout(reset, IDLE_TIMEOUT)
     const refresh = () => {
       clearTimeout(timer)
@@ -290,7 +295,7 @@ export default function KioskPage() {
       window.removeEventListener('pointerdown', refresh)
       window.removeEventListener('keydown', refresh)
     }
-  }, [step, reset])
+  }, [step, reset, terminalWaiting])
 
   // Auto-advance after success
   useEffect(() => {
