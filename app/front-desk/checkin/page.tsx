@@ -1,4 +1,5 @@
 'use client'
+import ZelleIcon from '@/components/ZelleIcon'
 import { useEffect, useState, useCallback, useRef } from 'react'
 // Note: using plain <img> for pet photos — they're external Supabase URLs not in next.config remotePatterns
 
@@ -405,7 +406,7 @@ export default function StaffCheckinPage() {
                   <p className="text-sm font-medium opacity-90">{venmoZelleAlert.clients?.name || 'Unknown owner'}</p>
                   <p className="text-sm opacity-75">{venmoZelleAlert.clients?.phone} · {formatTime(venmoZelleAlert.appointment_time)}</p>
                 </div>
-                <div className="ml-auto text-4xl">{isVenmo ? '💜' : '💛'}</div>
+                <div className="ml-auto text-4xl">{isVenmo ? '💜' : <ZelleIcon />}</div>
               </div>
 
               {/* Payment details */}
@@ -609,7 +610,7 @@ export default function StaffCheckinPage() {
                                 onClick={() => setVenmoZelleAlert(appt)}
                                 className="bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all shadow-sm animate-pulse"
                               >
-                                {appt.payment_status === 'venmo_pending' ? '💜 Venmo' : '💛 Zelle'}
+                                {appt.payment_status === 'venmo_pending' ? '💜 Venmo' : <><ZelleIcon /> Zelle</>}
                               </button>
                             )}
                             {appt.payment_status !== 'cash_pending' && appt.payment_status !== 'venmo_pending' && appt.payment_status !== 'zelle_pending' && (<>

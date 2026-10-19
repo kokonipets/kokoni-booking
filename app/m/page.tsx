@@ -1,4 +1,5 @@
 'use client'
+import ZelleIcon from '@/components/ZelleIcon'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -539,7 +540,7 @@ export default function MobileKioskPage() {
           { key: 'card',  icon: '💳', label: 'Card',  style: 'bg-sky-500 border-sky-500 text-white hover:bg-sky-600' },
           { key: 'cash',  icon: '💵', label: 'Cash',  style: 'bg-green-500 border-green-500 text-white hover:bg-green-600' },
           { key: 'venmo', icon: '💜', label: 'Venmo', style: 'bg-indigo-500 border-indigo-500 text-white hover:bg-indigo-600' },
-          { key: 'zelle', icon: '💛', label: 'Zelle', style: 'bg-yellow-400 border-yellow-400 text-white hover:bg-yellow-500' },
+          { key: 'zelle', icon: <ZelleIcon />, label: 'Zelle', style: 'bg-yellow-400 border-yellow-400 text-white hover:bg-yellow-500' },
         ] as const
 
         return (
@@ -670,7 +671,7 @@ export default function MobileKioskPage() {
               qrModal === 'cash'  ? 'bg-green-500' : 'bg-sky-500'
             }`}>
               <div className="flex items-center gap-3">
-                <span className="text-2xl">{qrModal === 'venmo' ? '💜' : qrModal === 'zelle' ? '💛' : qrModal === 'cash' ? '💵' : '💳'}</span>
+                <span className="text-2xl">{qrModal === 'venmo' ? '💜' : qrModal === 'zelle' ? <ZelleIcon /> : qrModal === 'cash' ? '💵' : '💳'}</span>
                 <div>
                   <p className="text-white font-black text-base">
                     {qrModal === 'venmo' ? 'Pay with Venmo' : qrModal === 'zelle' ? 'Pay with Zelle' : qrModal === 'cash' ? 'Pay with Cash' : 'Pay with Card'}
