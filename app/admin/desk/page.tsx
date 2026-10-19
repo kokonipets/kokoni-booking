@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
 import ChatSidebarLink from '@/components/ChatSidebarLink'
 import ChatIconButton from '@/components/ChatIconButton'
+import RetailSell from '@/components/RetailSell'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 import { commissionableAmount } from '@/lib/commission'
 
@@ -8290,6 +8291,17 @@ export default function DeskAdmin() {
                   </div>
                   <button onClick={() => fetchReports()} className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5">⟳ Refresh</button>
                 </div>
+
+                {/* Retail (店販) — counter sale of inventory items, paid cash/Zelle/Venmo or on the Square Terminal */}
+                <details className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <summary className="px-4 py-3 cursor-pointer select-none list-none flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">🛍️ Retail sale · 店販</span>
+                    <span className="text-xs text-gray-300">▾</span>
+                  </summary>
+                  <div className="border-t border-gray-50 p-4 bg-gray-50/40">
+                    <RetailSell />
+                  </div>
+                </details>
 
                 {/* Cashier sign-in activity — who's been on register, and when they signed in */}
                 {cashierLogins.length > 0 && (

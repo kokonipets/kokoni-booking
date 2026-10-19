@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import RetailSell from '@/components/RetailSell'
 
 type Item = {
   id: string; name: string; unit_cost: string | null; sale_price: string | null
@@ -25,11 +26,6 @@ export default function InventoryPage() {
   const [items, setItems] = useState<Item[]>([])
   const [moves, setMoves] = useState<Move[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
-  // counter sale (店販收銀)
-  const [cart, setCart] = useState<Record<string, number>>({})
-  const [sellErr, setSellErr] = useState('')
-  const [sellDone, setSellDone] = useState('')
-  const [cardSaleId, setCardSaleId] = useState<string | null>(null)
   const [iConsign, setIConsign] = useState(false)
   const [pVendor, setPVendor] = useState<string | null>(null)
   const [pAmt, setPAmt] = useState('')
@@ -118,49 +114,6 @@ export default function InventoryPage() {
     for (const p of payments) { const g = get(p.vendor); g.paid += parseFloat(p.amount) || 0; g.payments.push(p) }
     return Array.from(m.values()).sort((a, b) => a.vendor.localeCompare(b.vendor))
   }, [items, payments])
-  const cartLines = items.filter(i => (cart[i.id] ?? 0) > 0)
-  const cartTotal = cartLines.reduce((t, i) => t + cart[i.id] * (parseFloat(i.sale_price ?? '') || 0), 0)
-  const bump = (id: string, d: number) => setCart(c => {
-    const n = Math.max(0, (c[id] ?? 0) + d)
-    const next = { ...c }
-    if (n === 0) delete next[id]; else next[id] = n
-    return next
-  })
-  const finishSale = (msg: string) => { setCart({}); setCardSaleId(null); setSellDone(msg); setSellErr(''); load() }
-  const checkoutSale = async (method: 'cash' | 'card' | 'zelle' | 'venmo') => {
-    setSellErr(''); setSellDone('')
-    setBusy(true)
-    const r = await fetch('/api/admin/retail-sale', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'create', method, lines: cartLines.map(i => ({ item_id: i.id, qty: cart[i.id] })) }),
-    })
-    const d = await r.json()
-    setBusy(false)
-    if (d.error) { setSellErr(d.error); return }
-    if (d.status === 'paid') finishSale(`已收款 Sale recorded · ${money(d.total)}`)
-    else setCardSaleId(d.id)
-  }
-  // Poll the Terminal sale until Square reports it paid / cancelled.
-  useEffect(() => {
-    if (!cardSaleId) return
-    const t = setInterval(async () => {
-      try {
-        const r = await fetch(`/api/admin/retail-sale?id=${cardSaleId}`)
-        const d = await r.json()
-        if (d.status === 'paid') { clearInterval(t); finishSale('刷卡成功 Card payment received') }
-        else if (d.status === 'cancelled') { clearInterval(t); setCardSaleId(null); setSellErr('付款已取消 Payment cancelled') }
-      } catch { /* keep polling */ }
-    }, 3000)
-    return () => clearInterval(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardSaleId])
-  const cancelCardSale = async () => {
-    if (!cardSaleId) return
-    const r = await fetch('/api/admin/retail-sale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel', id: cardSaleId }) })
-    const d = await r.json()
-    if (d.status === 'paid') finishSale('刷卡成功 Card payment received')
-    else { setCardSaleId(null); setSellErr('付款已取消 Payment cancelled') }
-  }
   const lowItems = items.filter(i => i.low_stock_threshold > 0 && i.stock <= i.low_stock_threshold)
 
   const openItemForm = (i?: Item) => {
@@ -349,45 +302,7 @@ export default function InventoryPage() {
           </>
         )}
 
-        {tab === 'sell' && (
-          <>
-            {sellDone && <div className="mb-3 p-3 rounded-lg bg-emerald-50 text-emerald-700 text-sm">{sellDone}</div>}
-            {sellErr && <div className="mb-3 p-3 rounded-lg bg-rose-50 text-rose-700 text-sm">{sellErr}</div>}
-            {cardSaleId && (
-              <div className="mb-4 p-4 rounded-xl bg-sky-50 border border-sky-200 text-center">
-                <p className="font-bold text-sky-800">請客人在刷卡機上刷卡 Waiting for card on the Terminal…</p>
-                <p className="text-sm text-sky-700 mt-1">{money(cartTotal)}</p>
-                <button onClick={cancelCardSale} className="mt-3 text-sm text-gray-500 underline">取消 Cancel</button>
-              </div>
-            )}
-            <div className="bg-white rounded-xl border border-gray-200 divide-y mb-4">
-              {items.filter(i => i.sale_price).map(i => (
-                <div key={i.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{i.name}</p>
-                    <p className="text-xs text-gray-400">{money(parseFloat(i.sale_price!))}（含稅 tax incl.）· 庫存 {i.stock}</p>
-                  </div>
-                  <button disabled={!!cardSaleId} onClick={() => bump(i.id, -1)} className="w-8 h-8 rounded-lg border border-gray-300 text-lg leading-none disabled:opacity-40">−</button>
-                  <span className="w-6 text-center font-bold">{cart[i.id] ?? 0}</span>
-                  <button disabled={!!cardSaleId} onClick={() => bump(i.id, 1)} className="w-8 h-8 rounded-lg border border-gray-300 text-lg leading-none disabled:opacity-40">+</button>
-                </div>
-              ))}
-              {items.filter(i => i.sale_price).length === 0 && <p className="px-4 py-6 text-sm text-gray-400 text-center">還沒有設定售價的商品</p>}
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <div className="flex justify-between text-lg font-bold mb-3"><span>合計 Total</span><span>{money(cartTotal)}</span></div>
-              {cartLines.some(i => cart[i.id] > i.stock) && <p className="text-xs text-amber-600 mb-2">⚠️ 有商品數量超過庫存，請確認庫存是否正確</p>}
-              <div className="grid grid-cols-2 gap-2">
-                <button disabled={busy || !!cardSaleId || cartTotal <= 0} onClick={() => checkoutSale('card')} className={`${btn} bg-sky-600 text-white col-span-2`}>刷卡 Card（Terminal）</button>
-                {(['cash', 'zelle', 'venmo'] as const).map(m => (
-                  <button key={m} disabled={busy || !!cardSaleId || cartTotal <= 0} onClick={() => checkoutSale(m)}
-                    className={`${btn} bg-gray-100 text-gray-700`}>{m === 'cash' ? '現金 Cash' : m === 'zelle' ? 'Zelle' : 'Venmo'}</button>
-                ))}
-              </div>
-              <p className="text-xs text-gray-400 mt-3">售價已含稅，不另外加稅。收款成功後自動扣庫存，並記入「出貨」。店販不計入美容師薪資。</p>
-            </div>
-          </>
-        )}
+        {tab === 'sell' && <RetailSell onSold={load} />}
 
         {tab === 'in' && <>{MoveForm({ type: 'in' })}{MoveList({ type: 'in' })}</>}
         {tab === 'out' && <>{MoveForm({ type: 'out' })}{MoveList({ type: 'out' })}</>}
