@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
       unit_cost: num(b.unit_cost),
       sale_price: num(b.sale_price),
       low_stock_threshold: Math.max(0, Math.round(num(b.low_stock_threshold) ?? 0)),
+      vendor: String(b.vendor ?? '').trim() || null,
     }
     const q = b.action === 'add_item'
       ? supabase.from('inventory_items').insert(row)

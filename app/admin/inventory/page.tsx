@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type Item = {
   id: string; name: string; unit_cost: string | null; sale_price: string | null
-  low_stock_threshold: number; stock: number
+  low_stock_threshold: number; stock: number; vendor: string | null
 }
 type Move = {
   id: string; item_id: string; type: 'in' | 'out' | 'adjust'; qty: number
@@ -32,6 +32,8 @@ export default function InventoryPage() {
   const [iCost, setICost] = useState('')
   const [iPrice, setIPrice] = useState('')
   const [iLow, setILow] = useState('')
+  const [iVendor, setIVendor] = useState('')
+  const [vendorFilter, setVendorFilter] = useState('')
   const [showItemForm, setShowItemForm] = useState(false)
 
   // movement form
@@ -66,7 +68,7 @@ export default function InventoryPage() {
 
   const itemById = useMemo(() => Object.fromEntries(items.map(i => [i.id, i])), [items])
   // Value of what's on hand right now (stock × default cost / sale price).
-  const stockTotals = items.reduce((t, i) => {
+  const stockTotals = items.filter(i => !vendorFilter || i.vendor === vendorFilter).reduce((t, i) => {
     const q = Math.max(0, i.stock)
     return {
       units: t.units + q,
@@ -74,18 +76,20 @@ export default function InventoryPage() {
       retail: t.retail + q * (parseFloat(i.sale_price ?? '') || 0),
     }
   }, { units: 0, cost: 0, retail: 0 })
+  const vendors = useMemo(() => Array.from(new Set(items.map(i => i.vendor).filter(Boolean) as string[])).sort(), [items])
   const lowItems = items.filter(i => i.low_stock_threshold > 0 && i.stock <= i.low_stock_threshold)
 
   const openItemForm = (i?: Item) => {
     setEditId(i?.id ?? null)
     setIName(i?.name ?? ''); setICost(i?.unit_cost ?? ''); setIPrice(i?.sale_price ?? '')
     setILow(i ? String(i.low_stock_threshold) : '')
+    setIVendor(i?.vendor ?? vendorFilter)
     setShowItemForm(true)
   }
   const saveItem = async () => {
     const ok = await post({
       action: editId ? 'update_item' : 'add_item', id: editId,
-      name: iName, unit_cost: iCost, sale_price: iPrice, low_stock_threshold: iLow,
+      name: iName, unit_cost: iCost, sale_price: iPrice, low_stock_threshold: iLow, vendor: iVendor,
     })
     if (ok) setShowItemForm(false)
   }
@@ -94,6 +98,7 @@ export default function InventoryPage() {
     setMItem(id)
     const it = itemById[id]
     if (it) setMPrice((type === 'in' ? it.unit_cost : it.sale_price) ?? '')
+    if (it && type === 'in') setMWho(it.vendor ?? '')
   }
   const saveMove = async (type: 'in' | 'out') => {
     const ok = await post({
@@ -107,19 +112,21 @@ export default function InventoryPage() {
 
   const report = useMemo(() => {
     let cost = 0, sales = 0, cogs = 0
+    const byVendor: Record<string, number> = {}
     const byItem: Record<string, { name: string; inQty: number; inCost: number; outQty: number; outRev: number }> = {}
     for (const m of moves) {
       const it = itemById[m.item_id]
       const row = (byItem[m.item_id] ??= { name: it?.name ?? '?', inQty: 0, inCost: 0, outQty: 0, outRev: 0 })
       const p = parseFloat(m.unit_price ?? '') || 0
-      if (m.type === 'in') { row.inQty += m.qty; row.inCost += p * m.qty; cost += p * m.qty }
+      if (m.type === 'in') { row.inQty += m.qty; row.inCost += p * m.qty; cost += p * m.qty
+        const v = m.supplier || it?.vendor || '未指定 Unspecified'; byVendor[v] = (byVendor[v] ?? 0) + p * m.qty }
       if (m.type === 'out') {
         const q = -m.qty
         row.outQty += q; row.outRev += p * q; sales += p * q
         cogs += (parseFloat(it?.unit_cost ?? '') || 0) * q
       }
     }
-    return { cost, sales, profit: sales - cogs, rows: Object.values(byItem) }
+    return { cost, sales, profit: sales - cogs, rows: Object.values(byItem), vendorRows: Object.entries(byVendor) }
   }, [moves, itemById])
 
   const typeLabel = { in: '進貨 In', out: '出貨 Sale', adjust: '調整 Adjust' }
@@ -137,7 +144,8 @@ export default function InventoryPage() {
       <input className={inp} type="number" inputMode="decimal" step="0.01"
         placeholder={type === 'in' ? '進價 / 個 Cost each' : '售價 / 個 Price each'} value={mPrice} onChange={e => setMPrice(e.target.value)} />
       {type === 'in'
-        ? <input className={inp} placeholder="供應商 Supplier（選填）" value={mWho} onChange={e => setMWho(e.target.value)} />
+        ? <><input className={inp} list="vendor-list" placeholder="廠商 Vendor（選填）" value={mWho} onChange={e => setMWho(e.target.value)} />
+            <datalist id="vendor-list">{vendors.map(v => <option key={v} value={v} />)}</datalist></>
         : <select className={inp} value={mWho || 'cash'} onChange={e => setMWho(e.target.value)}>
             {PAY.map(p => <option key={p} value={p}>{p}</option>)}
           </select>}
@@ -201,12 +209,20 @@ export default function InventoryPage() {
                 </div>
               ))}
             </div>
+            {vendors.length > 0 && (
+              <select className={`${inp} mb-3`} value={vendorFilter} onChange={e => setVendorFilter(e.target.value)}>
+                <option value="">全部廠商 All vendors</option>
+                {vendors.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            )}
             <button onClick={() => openItemForm()} className={`${btn} bg-sky-600 text-white mb-3`}>＋ 新增商品 Add item</button>
             {showItemForm && (
               <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 grid gap-3 sm:grid-cols-2">
                 <input className={`${inp} sm:col-span-2`} placeholder="商品名稱 Name" value={iName} onChange={e => setIName(e.target.value)} />
                 <input className={inp} type="number" step="0.01" placeholder="進價 Cost" value={iCost} onChange={e => setICost(e.target.value)} />
                 <input className={inp} type="number" step="0.01" placeholder="售價 Price" value={iPrice} onChange={e => setIPrice(e.target.value)} />
+                <input className={`${inp} sm:col-span-2`} list="vendor-list" placeholder="廠商 Vendor（選填）" value={iVendor} onChange={e => setIVendor(e.target.value)} />
+                <datalist id="vendor-list">{vendors.map(v => <option key={v} value={v} />)}</datalist>
                 <input className={`${inp} sm:col-span-2`} type="number" placeholder="低庫存提醒數量 Low-stock alert at (0 = off)" value={iLow} onChange={e => setILow(e.target.value)} />
                 <div className="sm:col-span-2 flex gap-2">
                   <button disabled={busy || !iName.trim()} onClick={saveItem} className={`${btn} bg-sky-600 text-white flex-1`}>儲存 Save</button>
@@ -215,11 +231,11 @@ export default function InventoryPage() {
               </div>
             )}
             <div className="bg-white rounded-xl border border-gray-200 divide-y">
-              {items.map(i => (
+              {items.filter(i => !vendorFilter || i.vendor === vendorFilter).map(i => (
                 <div key={i.id} className="flex items-center gap-3 px-4 py-3">
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold truncate">{i.name}</p>
-                    <p className="text-xs text-gray-400">進價 {i.unit_cost ? money(parseFloat(i.unit_cost)) : '—'} · 售價 {i.sale_price ? money(parseFloat(i.sale_price)) : '—'}</p>
+                    <p className="text-xs text-gray-400">{i.vendor ? `${i.vendor} · ` : ''}進價 {i.unit_cost ? money(parseFloat(i.unit_cost)) : '—'} · 售價 {i.sale_price ? money(parseFloat(i.sale_price)) : '—'}</p>
                   </div>
                   <span className={`text-lg font-bold ${i.low_stock_threshold > 0 && i.stock <= i.low_stock_threshold ? 'text-amber-600' : 'text-gray-800'}`}>{i.stock}</span>
                   <button onClick={() => {
@@ -249,6 +265,14 @@ export default function InventoryPage() {
                 </div>
               ))}
             </div>
+            {report.vendorRows.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 divide-y text-sm mb-4">
+                <p className="px-4 py-2 text-xs text-gray-400">各廠商進貨額 Purchases by vendor</p>
+                {report.vendorRows.map(([v, amt]) => (
+                  <div key={v} className="px-4 py-2.5 flex"><span className="flex-1 font-medium">{v}</span><span>{money(amt)}</span></div>
+                ))}
+              </div>
+            )}
             <div className="bg-white rounded-xl border border-gray-200 divide-y text-sm">
               {report.rows.map(r => (
                 <div key={r.name} className="px-4 py-2.5 flex gap-3">
