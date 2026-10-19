@@ -65,6 +65,15 @@ export default function InventoryPage() {
   }
 
   const itemById = useMemo(() => Object.fromEntries(items.map(i => [i.id, i])), [items])
+  // Value of what's on hand right now (stock × default cost / sale price).
+  const stockTotals = items.reduce((t, i) => {
+    const q = Math.max(0, i.stock)
+    return {
+      units: t.units + q,
+      cost: t.cost + q * (parseFloat(i.unit_cost ?? '') || 0),
+      retail: t.retail + q * (parseFloat(i.sale_price ?? '') || 0),
+    }
+  }, { units: 0, cost: 0, retail: 0 })
   const lowItems = items.filter(i => i.low_stock_threshold > 0 && i.stock <= i.low_stock_threshold)
 
   const openItemForm = (i?: Item) => {
@@ -184,6 +193,14 @@ export default function InventoryPage() {
 
         {tab === 'stock' && (
           <>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {[['庫存件數 Units', String(stockTotals.units)], ['進貨價總額 Cost value', money(stockTotals.cost)], ['售價總額 Retail value', money(stockTotals.retail)]].map(([l, v]) => (
+                <div key={l} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-400">{l}</p>
+                  <p className="text-lg font-bold">{v}</p>
+                </div>
+              ))}
+            </div>
             <button onClick={() => openItemForm()} className={`${btn} bg-sky-600 text-white mb-3`}>＋ 新增商品 Add item</button>
             {showItemForm && (
               <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 grid gap-3 sm:grid-cols-2">
