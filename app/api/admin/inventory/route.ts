@@ -35,11 +35,17 @@ export async function GET(req: NextRequest) {
 
   // Stock = sum of ALL movements. Page through (Supabase caps unbounded selects at 1000 rows).
   const stock: Record<string, number> = {}
+  const inQty: Record<string, number> = {}   // all-time units purchased
+  const outQty: Record<string, number> = {}  // all-time units sold
   for (let from = 0; ; from += 1000) {
     const { data: rows, error } = await supabase
-      .from('inventory_movements').select('item_id, qty').order('id').range(from, from + 999)
+      .from('inventory_movements').select('item_id, qty, type').order('id').range(from, from + 999)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    for (const r of rows ?? []) stock[r.item_id] = (stock[r.item_id] ?? 0) + r.qty
+    for (const r of rows ?? []) {
+      stock[r.item_id] = (stock[r.item_id] ?? 0) + r.qty
+      if (r.type === 'in') inQty[r.item_id] = (inQty[r.item_id] ?? 0) + r.qty
+      if (r.type === 'out') outQty[r.item_id] = (outQty[r.item_id] ?? 0) - r.qty
+    }
     if (!rows || rows.length < 1000) break
   }
 
@@ -52,8 +58,12 @@ export async function GET(req: NextRequest) {
     .limit(1000)
   if (movErr) return NextResponse.json({ error: movErr.message }, { status: 500 })
 
+  const { data: payments } = await supabase
+    .from('vendor_payments').select('*').order('paid_on', { ascending: false }).order('created_at', { ascending: false }).limit(1000)
+
   return NextResponse.json({
-    items: (items ?? []).map(i => ({ ...i, stock: stock[i.id] ?? 0 })),
+    items: (items ?? []).map(i => ({ ...i, stock: stock[i.id] ?? 0, in_qty: inQty[i.id] ?? 0, out_qty: outQty[i.id] ?? 0 })),
+    payments: payments ?? [],
     movements: movements ?? [],
     month,
   })
@@ -74,6 +84,7 @@ export async function POST(req: NextRequest) {
       sale_price: num(b.sale_price),
       low_stock_threshold: Math.max(0, Math.round(num(b.low_stock_threshold) ?? 0)),
       vendor: String(b.vendor ?? '').trim() || null,
+      consignment: !!b.consignment,
     }
     const q = b.action === 'add_item'
       ? supabase.from('inventory_items').insert(row)
@@ -107,6 +118,24 @@ export async function POST(req: NextRequest) {
       note: String(b.note ?? '').trim() || null,
       occurred_on: b.occurred_on || undefined,
     })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (b.action === 'add_payment') {
+    const vendor = String(b.vendor ?? '').trim()
+    const amount = num(b.amount)
+    if (!vendor || !amount || amount <= 0) return NextResponse.json({ error: 'vendor and amount required' }, { status: 400 })
+    const { error } = await supabase.from('vendor_payments').insert({
+      vendor, amount, method: String(b.method ?? '').trim() || null,
+      note: String(b.note ?? '').trim() || null, paid_on: b.paid_on || undefined,
+    })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (b.action === 'delete_payment') {
+    const { error } = await supabase.from('vendor_payments').delete().eq('id', b.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
   }
