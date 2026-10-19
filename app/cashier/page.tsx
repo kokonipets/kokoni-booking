@@ -1874,6 +1874,14 @@ export default function CashierPage() {
               )}
             </div>
 
+            {/* Big shortcut to the Retail (店販) sale screen */}
+            <button onClick={() => setTab('retail')}
+              className="w-full flex items-center justify-center gap-3 rounded-2xl border-2 border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-700 font-black text-xl py-5 transition-colors">
+              <span className="text-3xl">🛍️</span>
+              <span>Retail 店販 · sell products</span>
+              <span className="text-2xl">›</span>
+            </button>
+
             {/* New payment alerts */}
             {alerts.length > 0 && (
               <div className="space-y-2">
@@ -1905,21 +1913,21 @@ export default function CashierPage() {
             {/* 🐾 Ready to collect payment — TOP PRIORITY */}
             <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h2 className="font-black text-gray-800">💰 Ready to Pay</h2>
-                <span className={`font-bold text-xs px-2.5 py-1 rounded-full ${(unpaid.length + cashPending.length) > 0 ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-gray-100 text-gray-400'}`}>{unpaid.length + cashPending.length}</span>
+                <h2 className="font-black text-gray-800 text-2xl">💰 Ready to Pay</h2>
+                <span className={`font-bold text-base px-3.5 py-1.5 rounded-full ${(unpaid.length + cashPending.length) > 0 ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-gray-100 text-gray-400'}`}>{unpaid.length + cashPending.length}</span>
               </div>
               {unpaid.length === 0 && cashPending.length === 0 && vzPending.length === 0
                 ? <p className="text-gray-400 text-center py-8">No one waiting to pay right now!</p>
                 : <div className="divide-y divide-gray-50">
                   {cashPendingGroups.flat().map(a => (
                     <div key={a.id} className="flex items-center gap-3 px-5 py-3 bg-green-50 hover:bg-green-100/40 transition-colors">
-                      {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className="w-12 h-12 rounded-xl bg-green-200 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
+                      {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className="w-14 h-14 rounded-xl bg-green-200 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
                       <div className="flex-1 min-w-0">
-                        <p className="font-black text-gray-800 truncate">{a.pets?.name} <span className="text-gray-400 font-normal text-sm">· {a.clients?.name}</span></p>
-                        <p className="text-green-600 text-sm truncate font-bold">💵 Cash — waiting at desk</p>
+                        <p className="font-black text-gray-800 truncate text-xl">{a.pets?.name} <span className="text-gray-400 font-normal text-base">· {a.clients?.name}</span></p>
+                        <p className="text-green-600 text-base truncate font-bold">💵 Cash — waiting at desk</p>
                       </div>
                       <button onClick={() => setCheckoutAppt(a)}
-                        className="flex-shrink-0 bg-green-500 hover:bg-green-600 text-white font-black px-4 py-2 rounded-xl text-sm shadow transition-colors">
+                        className="flex-shrink-0 bg-green-500 hover:bg-green-600 text-white font-black px-6 py-3 rounded-xl text-base shadow transition-colors">
                         💵 Collect
                       </button>
                     </div>
@@ -1929,13 +1937,13 @@ export default function CashierPage() {
                     const isVenmo = a.payment_method === 'venmo'
                     return (
                       <div key={a.id} className={`flex items-center gap-3 px-5 py-3 ${isVenmo ? 'bg-indigo-50 hover:bg-indigo-100/40' : 'bg-yellow-50 hover:bg-yellow-100/40'} transition-colors`}>
-                        {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className={`w-12 h-12 rounded-xl ${isVenmo ? 'bg-indigo-200' : 'bg-yellow-200'} flex items-center justify-center text-xl flex-shrink-0`}>🐶</div>}
+                        {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className={`w-14 h-14 rounded-xl ${isVenmo ? 'bg-indigo-200' : 'bg-yellow-200'} flex items-center justify-center text-xl flex-shrink-0`}>🐶</div>}
                         <div className="flex-1 min-w-0">
-                          <p className="font-black text-gray-800 truncate">{a.pets?.name} <span className="text-gray-400 font-normal text-sm">· {a.clients?.name}</span></p>
-                          <p className={`text-sm truncate font-bold ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>{isVenmo ? '💜' : '💛'} {isVenmo ? 'Venmo' : 'Zelle'} — verify received</p>
+                          <p className="font-black text-gray-800 truncate text-xl">{a.pets?.name} <span className="text-gray-400 font-normal text-base">· {a.clients?.name}</span></p>
+                          <p className={`text-base truncate font-bold ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>{isVenmo ? '💜' : '💛'} {isVenmo ? 'Venmo' : 'Zelle'} — verify received</p>
                         </div>
                         <button onClick={() => setVzPopup(a)}
-                          className={`flex-shrink-0 text-white font-black px-4 py-2 rounded-xl text-sm shadow transition-colors ${isVenmo ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
+                          className={`flex-shrink-0 text-white font-black px-6 py-3 rounded-xl text-base shadow transition-colors ${isVenmo ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
                           {isVenmo ? '💜' : '💛'} Verify
                         </button>
                       </div>
@@ -1947,7 +1955,7 @@ export default function CashierPage() {
                         <div className="flex items-center justify-between px-5 pt-3 pb-2">
                           <p className={`text-xs font-black uppercase tracking-wide ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>{isVenmo ? '💜' : '💛'} {group[0].clients?.name} · {group.length} pets</p>
                           <button onClick={() => setGroupVzPopup(group)}
-                            className={`flex-shrink-0 text-white font-black px-4 py-2 rounded-xl text-sm shadow transition-colors ${isVenmo ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
+                            className={`flex-shrink-0 text-white font-black px-6 py-3 rounded-xl text-base shadow transition-colors ${isVenmo ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
                             {isVenmo ? '💜' : '💛'} Verify all {group.length} together
                           </button>
                         </div>
@@ -1970,13 +1978,13 @@ export default function CashierPage() {
                   {unpaidGroups.map(group => group.length === 1 ? (
                     (a => (
                       <div key={a.id} className="flex items-center gap-3 px-5 py-3 hover:bg-rose-50/30 transition-colors">
-                        {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
+                        {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className="w-14 h-14 rounded-xl bg-rose-100 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
                         <div className="flex-1 min-w-0">
-                          <p className="font-black text-gray-800 truncate">{a.pets?.name} <span className="text-gray-400 font-normal text-sm">· {a.clients?.name}</span></p>
-                          <p className="text-gray-400 text-sm truncate">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
+                          <p className="font-black text-gray-800 truncate text-xl">{a.pets?.name} <span className="text-gray-400 font-normal text-base">· {a.clients?.name}</span></p>
+                          <p className="text-gray-500 text-base truncate">{serviceMap[a.service] ?? a.service} · {fmt12(a.appointment_time)}</p>
                         </div>
                         <button onClick={() => setCheckoutAppt(a)}
-                          className="flex-shrink-0 bg-violet-600 hover:bg-violet-700 text-white font-black px-4 py-2 rounded-xl text-sm shadow transition-colors">
+                          className="flex-shrink-0 bg-violet-600 hover:bg-violet-700 text-white font-black px-6 py-3 rounded-xl text-base shadow transition-colors">
                           💳 Pay
                         </button>
                       </div>
@@ -1986,7 +1994,7 @@ export default function CashierPage() {
                       <div className="flex items-center justify-between px-5 pt-3 pb-2">
                         <p className="text-xs font-black text-violet-600 uppercase tracking-wide">🐾 {group[0].clients?.name} · {group.length} pets</p>
                         <button onClick={() => setGroupCheckout(group)}
-                          className="flex-shrink-0 bg-violet-600 hover:bg-violet-700 text-white font-black px-4 py-2 rounded-xl text-sm shadow transition-colors">
+                          className="flex-shrink-0 bg-violet-600 hover:bg-violet-700 text-white font-black px-6 py-3 rounded-xl text-base shadow transition-colors">
                           💳 Pay all {group.length} together
                         </button>
                       </div>
