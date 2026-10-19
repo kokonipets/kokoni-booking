@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import ZelleIcon from '@/components/ZelleIcon'
+import VenmoIcon from '@/components/VenmoIcon'
 import RetailSell from '@/components/RetailSell'
 
 const supabase = createClient(
@@ -845,7 +846,7 @@ function GroupVzModal({
         <div className="bg-white rounded-3xl p-10 text-center shadow-2xl">
           <p className="text-6xl mb-3">✅</p>
           <p className="text-2xl font-black text-gray-800">{appts.length} Payments Verified!</p>
-          <p className="text-gray-400 mt-1">{isVenmo ? '💜 Venmo' : <><ZelleIcon /> Zelle</>} · {fmtMoney(receivedAmt)}</p>
+          <p className="text-gray-400 mt-1">{isVenmo ? <><VenmoIcon /> Venmo</> : <><ZelleIcon /> Zelle</>} · {fmtMoney(receivedAmt)}</p>
         </div>
       </div>
     )
@@ -1516,7 +1517,7 @@ export default function CashierPage() {
                   <p className="text-sm font-medium opacity-90">{vzPopup.clients?.name}</p>
                   <p className="text-sm opacity-75">{vzPopup.clients?.phone} · {fmt12(vzPopup.appointment_time)}</p>
                 </div>
-                <div className="text-4xl">{isVenmo ? '💜' : <ZelleIcon />}</div>
+                <div className="text-4xl">{isVenmo ? <VenmoIcon /> : <ZelleIcon />}</div>
               </div>
               <div className="px-6 pt-5 pb-4 space-y-4">
                 <div>
@@ -1941,11 +1942,11 @@ export default function CashierPage() {
                         {a.pets?.photo_url ? <img src={a.pets.photo_url} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt="" /> : <div className={`w-14 h-14 rounded-xl ${isVenmo ? 'bg-indigo-200' : 'bg-yellow-200'} flex items-center justify-center text-xl flex-shrink-0`}>🐶</div>}
                         <div className="flex-1 min-w-0">
                           <p className="font-black text-gray-800 truncate text-xl">{a.pets?.name} <span className="text-gray-400 font-normal text-base">· {a.clients?.name}</span></p>
-                          <p className={`text-base truncate font-bold ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>{isVenmo ? '💜' : <ZelleIcon />} {isVenmo ? 'Venmo' : 'Zelle'} — verify received</p>
+                          <p className={`text-base truncate font-bold ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>{isVenmo ? <VenmoIcon /> : <ZelleIcon />} {isVenmo ? 'Venmo' : 'Zelle'} — verify received</p>
                         </div>
                         <button onClick={() => setVzPopup(a)}
                           className={`flex-shrink-0 text-white font-black px-6 py-3 rounded-xl text-base shadow transition-colors ${isVenmo ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
-                          {isVenmo ? '💜' : <ZelleIcon />} Verify
+                          {isVenmo ? <VenmoIcon /> : <ZelleIcon />} Verify
                         </button>
                       </div>
                     )
@@ -1954,10 +1955,10 @@ export default function CashierPage() {
                     return (
                       <div key={group[0].id} className={isVenmo ? 'bg-indigo-50/40 border-y border-indigo-100' : 'bg-yellow-50/40 border-y border-yellow-100'}>
                         <div className="flex items-center justify-between px-5 pt-3 pb-2">
-                          <p className={`text-xs font-black uppercase tracking-wide ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>{isVenmo ? '💜' : <ZelleIcon />} {group[0].clients?.name} · {group.length} pets</p>
+                          <p className={`text-xs font-black uppercase tracking-wide ${isVenmo ? 'text-indigo-600' : 'text-amber-600'}`}>{isVenmo ? <VenmoIcon /> : <ZelleIcon />} {group[0].clients?.name} · {group.length} pets</p>
                           <button onClick={() => setGroupVzPopup(group)}
                             className={`flex-shrink-0 text-white font-black px-6 py-3 rounded-xl text-base shadow transition-colors ${isVenmo ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
-                            {isVenmo ? '💜' : <ZelleIcon />} Verify all {group.length} together
+                            {isVenmo ? <VenmoIcon /> : <ZelleIcon />} Verify all {group.length} together
                           </button>
                         </div>
                         {group.map(a => (

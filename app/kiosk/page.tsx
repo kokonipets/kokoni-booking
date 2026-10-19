@@ -1,5 +1,6 @@
 'use client'
 import ZelleIcon from '@/components/ZelleIcon'
+import VenmoIcon from '@/components/VenmoIcon'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
 
@@ -83,7 +84,7 @@ function VenmoZelleWaitingPanel({
   const isVenmo = method === 'venmo'
   return (
     <div className="p-10 flex flex-col items-center gap-7 text-center">
-      <div className="text-8xl animate-bounce">{isVenmo ? '💜' : <ZelleIcon />}</div>
+      <div className="text-8xl animate-bounce">{isVenmo ? <VenmoIcon /> : <ZelleIcon />}</div>
       <div>
         <p className="text-3xl font-black text-gray-800">
           Thanks! The front desk is verifying your {isVenmo ? 'Venmo' : 'Zelle'} payment
@@ -917,7 +918,7 @@ export default function KioskPage() {
         const PAY_METHODS = [
           { key: 'card',  icon: '💳', label: 'Card',  style: 'bg-sky-500 border-sky-500 text-white hover:bg-sky-600' },
           { key: 'cash',  icon: '💵', label: 'Cash',  style: 'bg-green-500 border-green-500 text-white hover:bg-green-600' },
-          { key: 'venmo', icon: '💜', label: 'Venmo', style: 'bg-indigo-500 border-indigo-500 text-white hover:bg-indigo-600' },
+          { key: 'venmo', icon: <VenmoIcon />, label: 'Venmo', style: 'bg-indigo-500 border-indigo-500 text-white hover:bg-indigo-600' },
           { key: 'zelle', icon: <ZelleIcon />, label: 'Zelle', style: 'bg-yellow-400 border-yellow-400 text-white hover:bg-yellow-500' },
         ] as const
 
@@ -1075,7 +1076,7 @@ export default function KioskPage() {
               'bg-sky-500'
             }`}>
               <div className="flex items-center gap-4">
-                <span className="text-4xl">{qrModal === 'venmo' ? '💜' : qrModal === 'zelle' ? <ZelleIcon /> : qrModal === 'cash' ? '💵' : '💳'}</span>
+                <span className="text-4xl">{qrModal === 'venmo' ? <VenmoIcon /> : qrModal === 'zelle' ? <ZelleIcon /> : qrModal === 'cash' ? '💵' : '💳'}</span>
                 <div>
                   <p className="text-white font-black text-2xl">
                     {qrModal === 'venmo' ? 'Pay with Venmo' : qrModal === 'zelle' ? 'Pay with Zelle' : qrModal === 'cash' ? 'Pay with Cash' : 'Pay with Card'}
