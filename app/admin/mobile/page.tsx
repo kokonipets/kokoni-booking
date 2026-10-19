@@ -3844,7 +3844,7 @@ export default function AdminPage() {
                       return (
                         <div key={slot} className={`flex items-stretch min-h-[52px] ${segs.length === 0 && blocked ? 'bg-rose-50/60' : ''}`}>
                           {/* Time label */}
-                          <div className="w-16 flex-shrink-0 flex items-start justify-end pr-3 pt-2.5">
+                          <div className="w-[4.75rem] flex-shrink-0 flex items-start justify-end pr-2 pt-2.5">
                             <span className="text-xs font-semibold text-gray-400 whitespace-nowrap">{slot}</span>
                           </div>
 
