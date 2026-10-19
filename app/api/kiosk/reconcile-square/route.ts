@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { finalizeRetailSale } from '@/lib/retail-sale'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -50,6 +51,11 @@ export async function POST() {
   }[]) {
     const id = c.reference_id
     if (!id) continue
+    // Counter retail sales (admin "Sell" tab) use reference_id = retail:<saleId>.
+    if (id.startsWith('retail:')) {
+      if (await finalizeRetailSale(supabase, id.slice(7))) fixed.push(id)
+      continue
+    }
     const { data: appt } = await supabase
       .from('appointments')
       .select('id, payment_status, payment_amount')
