@@ -51,9 +51,10 @@ export async function POST() {
   }[]) {
     const id = c.reference_id
     if (!id) continue
-    // Counter retail sales (admin "Sell" tab) use reference_id = retail:<saleId>.
-    if (id.startsWith('retail:')) {
-      if (await finalizeRetailSale(supabase, id.slice(7))) fixed.push(id)
+    // Counter retail sales (admin "Sell" tab) use reference_id = r:<saleId>
+    // (older ones: retail:<saleId>).
+    if (id.startsWith('r:') || id.startsWith('retail:')) {
+      if (await finalizeRetailSale(supabase, id.slice(id.indexOf(':') + 1))) fixed.push(id)
       continue
     }
     const { data: appt } = await supabase

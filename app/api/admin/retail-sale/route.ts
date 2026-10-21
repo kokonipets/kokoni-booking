@@ -84,7 +84,9 @@ export async function POST(req: NextRequest) {
       idempotency_key: `retail-${sale.id}`,
       checkout: {
         amount_money: { amount: Math.round(total * 100), currency: 'USD' },
-        reference_id: `retail:${sale.id}`,
+        // Square caps reference_id at 40 chars; "retail:" + a 36-char UUID is 43,
+        // which Square rejects ("Field must not be greater than 40 length").
+        reference_id: `r:${sale.id}`,
         note: `Retail - ${lines.map(l => `${l.name} x${l.qty}`).join(', ').slice(0, 120)}`,
         device_options: { device_id: deviceId },
         payment_options: { autocomplete: true },
