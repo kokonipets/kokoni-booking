@@ -1,11 +1,12 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
+import { RETAIL_TAX_RATE, withTax } from '@/lib/retail-tax'
 
 type SellItem = { id: string; name: string; sale_price: string | null; stock: number }
 const money = (n: number) => `$${n.toFixed(2)}`
 
 // Counter retail sale (店販收銀). Used by Admin → Inventory → Sell and the front-desk Cashier.
-// Prices are tax-inclusive. Card sales are charged on the Square Terminal; the server records the
+// Prices are pre-tax; sales tax (lib/retail-tax) is added at checkout. Card sales are charged on the Square Terminal; the server records the
 // sale (and deducts stock) only once Square confirms payment.
 export default function RetailSell({ onSold }: { onSold?: () => void }) {
   const [items, setItems] = useState<SellItem[]>([])
@@ -24,7 +25,7 @@ export default function RetailSell({ onSold }: { onSold?: () => void }) {
   useEffect(() => { load() }, [load])
 
   const lines = items.filter(i => (cart[i.id] ?? 0) > 0)
-  const total = lines.reduce((t, i) => t + cart[i.id] * (parseFloat(i.sale_price ?? '') || 0), 0)
+  const { subtotal, tax, total } = withTax(lines.reduce((t, i) => t + cart[i.id] * (parseFloat(i.sale_price ?? '') || 0), 0))
   const bump = (id: string, d: number) => setCart(c => {
     const n = Math.max(0, (c[id] ?? 0) + d)
     const next = { ...c }
@@ -86,7 +87,7 @@ export default function RetailSell({ onSold }: { onSold?: () => void }) {
           <div key={i.id} className="flex items-center gap-3 px-4 py-2.5">
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm truncate">{i.name}</p>
-              <p className="text-xs text-gray-400">{money(parseFloat(i.sale_price!))}（含稅 tax incl.）· 庫存 {i.stock}</p>
+              <p className="text-xs text-gray-400">{money(parseFloat(i.sale_price!))}（未稅 before tax）· 庫存 {i.stock}</p>
             </div>
             <button disabled={!!cardSaleId} onClick={() => bump(i.id, -1)} className="w-8 h-8 rounded-lg border border-gray-300 text-lg leading-none disabled:opacity-40">−</button>
             <span className="w-6 text-center font-bold">{cart[i.id] ?? 0}</span>
@@ -96,7 +97,9 @@ export default function RetailSell({ onSold }: { onSold?: () => void }) {
         {sellable.length === 0 && <p className="px-4 py-6 text-sm text-gray-400 text-center">還沒有設定售價的商品</p>}
       </div>
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex justify-between text-lg font-bold mb-3"><span>合計 Total</span><span>{money(total)}</span></div>
+        <div className="flex justify-between text-sm text-gray-500"><span>小計 Subtotal</span><span>{money(subtotal)}</span></div>
+        <div className="flex justify-between text-sm text-gray-500 mb-1"><span>銷售稅 Sales tax（{(RETAIL_TAX_RATE * 100).toFixed(2)}%）</span><span>{money(tax)}</span></div>
+        <div className="flex justify-between text-lg font-bold mb-3 border-t pt-2"><span>合計 Total</span><span>{money(total)}</span></div>
         {lines.some(i => cart[i.id] > i.stock) && <p className="text-xs text-amber-600 mb-2">⚠️ 有商品數量超過庫存，請確認庫存是否正確</p>}
         <div className="grid grid-cols-2 gap-2">
           <button disabled={busy || !!cardSaleId || total <= 0} onClick={() => checkout('card')} className={`${btn} bg-sky-600 text-white col-span-2`}>刷卡 Card（Terminal）</button>
@@ -105,7 +108,7 @@ export default function RetailSell({ onSold }: { onSold?: () => void }) {
               className={`${btn} bg-gray-100 text-gray-700`}>{m === 'cash' ? '現金 Cash' : m === 'zelle' ? 'Zelle' : 'Venmo'}</button>
           ))}
         </div>
-        <p className="text-xs text-gray-400 mt-3">售價已含稅，不另外加稅。收款成功後自動扣庫存，並記入「出貨」。店販不計入美容師薪資。</p>
+        <p className="text-xs text-gray-400 mt-3">售價為未稅價，結帳時另加銷售稅。收款成功後自動扣庫存，並記入「出貨」。店販不計入美容師薪資。</p>
       </div>
     </div>
   )

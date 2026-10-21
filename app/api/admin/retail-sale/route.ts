@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { finalizeRetailSale } from '@/lib/retail-sale'
+import { withTax } from '@/lib/retail-tax'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -17,7 +18,7 @@ const admin = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.
 // POST /api/admin/retail-sale
 //   { action:'create', lines:[{item_id, qty}], method:'cash'|'card'|'zelle'|'venmo', note? }
 //   { action:'cancel', id }
-// Prices come from the item's sale_price on the server (tax-inclusive) — never trusted from the client.
+// Prices come from the item's sale_price on the server (pre-tax; sales tax added here) — never trusted from the client.
 export async function POST(req: NextRequest) {
   const supabase = admin()
   const b = await req.json()
@@ -59,7 +60,9 @@ export async function POST(req: NextRequest) {
     if (isNaN(price)) return NextResponse.json({ error: `${it.name} has no sale price` }, { status: 400 })
     lines.push({ item_id: it.id, name: it.name, qty, unit_price: price })
   }
-  const total = Math.round(lines.reduce((t, l) => t + l.qty * l.unit_price, 0) * 100) / 100
+  // unit_price stays pre-tax (that's what inventory/reports record as revenue);
+  // `total` is what the customer is charged, including sales tax.
+  const { subtotal, tax, total } = withTax(lines.reduce((t, l) => t + l.qty * l.unit_price, 0))
 
   const { data: sale, error } = await supabase
     .from('retail_sales')
@@ -69,7 +72,7 @@ export async function POST(req: NextRequest) {
 
   if (method !== 'card') {
     await finalizeRetailSale(supabase, sale.id)
-    return NextResponse.json({ success: true, id: sale.id, status: 'paid', total })
+    return NextResponse.json({ success: true, id: sale.id, status: 'paid', subtotal, tax, total })
   }
 
   const deviceId = process.env.SQUARE_TERMINAL_DEVICE_ID
@@ -99,7 +102,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: data.errors?.[0]?.detail || 'Square error' }, { status: 500 })
   }
   await supabase.from('retail_sales').update({ checkout_id: data.checkout.id }).eq('id', sale.id)
-  return NextResponse.json({ success: true, id: sale.id, status: 'pending', total })
+  return NextResponse.json({ success: true, id: sale.id, status: 'pending', subtotal, tax, total })
 }
 
 // GET /api/admin/retail-sale?id=... — poll a card sale; finalizes it when Square says COMPLETED.
