@@ -105,11 +105,16 @@ export default function InventoryPage() {
   }, [items, vendorFilter])
   // Accounts payable per vendor: consignment items owe cost x units SOLD; normal items owe cost x units PURCHASED.
   const payables = useMemo(() => {
-    const m = new Map<string, { vendor: string; owed: number; paid: number; payments: Payment[] }>()
-    const get = (v: string) => { if (!m.has(v)) m.set(v, { vendor: v, owed: 0, paid: 0, payments: [] }); return m.get(v)! }
+    type Line = { id: string; name: string; consignment: boolean; qty: number; cost: number; subtotal: number }
+    const m = new Map<string, { vendor: string; owed: number; paid: number; payments: Payment[]; lines: Line[] }>()
+    const get = (v: string) => { if (!m.has(v)) m.set(v, { vendor: v, owed: 0, paid: 0, payments: [], lines: [] }); return m.get(v)! }
     for (const i of items) {
       if (!i.vendor) continue
-      get(i.vendor).owed += (parseFloat(i.unit_cost ?? '') || 0) * (i.consignment ? i.out_qty : i.in_qty)
+      const cost = parseFloat(i.unit_cost ?? '') || 0
+      const qty = i.consignment ? i.out_qty : i.in_qty
+      const g = get(i.vendor)
+      g.owed += cost * qty
+      if (qty > 0) g.lines.push({ id: i.id, name: i.name, consignment: i.consignment, qty, cost, subtotal: cost * qty })
     }
     for (const p of payments) { const g = get(p.vendor); g.paid += parseFloat(p.amount) || 0; g.payments.push(p) }
     return Array.from(m.values()).sort((a, b) => a.vendor.localeCompare(b.vendor))
@@ -329,6 +334,38 @@ export default function InventoryPage() {
                   <div className="bg-white rounded-b-xl border border-t-0 border-gray-200 p-4">
                     <p className="text-sm text-gray-500">待付餘額 Balance due</p>
                     <p className={`text-2xl font-bold ${bal > 0.004 ? 'text-rose-600' : 'text-emerald-600'}`}>{money(bal)}</p>
+                    {g.lines.length > 0 && (
+                      <details open className="mt-3 border rounded-lg">
+                        <summary className="px-3 py-2 text-sm font-semibold text-gray-700 cursor-pointer bg-gray-50 rounded-lg">
+                          明細 Details（{g.lines.length} 項）
+                        </summary>
+                        <div className="divide-y text-sm">
+                          <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400">
+                            <span className="flex-1">商品 Item</span>
+                            <span className="w-12 text-right">數量</span>
+                            <span className="w-16 text-right">進價</span>
+                            <span className="w-20 text-right">小計</span>
+                          </div>
+                          {g.lines.map(l => (
+                            <div key={l.id} className="flex items-center gap-2 px-3 py-2">
+                              <span className="flex-1 min-w-0">
+                                <span className="break-words">{l.name}</span>
+                                <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded ${l.consignment ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                                  {l.consignment ? '寄售 已售' : '進貨'}
+                                </span>
+                              </span>
+                              <span className="w-12 text-right">{l.qty}</span>
+                              <span className="w-16 text-right text-gray-500">{money(l.cost)}</span>
+                              <span className="w-20 text-right font-medium">{money(l.subtotal)}</span>
+                            </div>
+                          ))}
+                          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 font-semibold">
+                            <span className="flex-1">合計 Total</span>
+                            <span className="w-20 text-right">{money(g.owed)}</span>
+                          </div>
+                        </div>
+                      </details>
+                    )}
                     {pVendor === g.vendor ? (
                       <div className="grid gap-2 sm:grid-cols-2 mt-3">
                         <input className={inp} type="number" step="0.01" placeholder="付款金額 Amount" value={pAmt} onChange={e => setPAmt(e.target.value)} />
