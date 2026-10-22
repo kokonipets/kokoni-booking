@@ -10,28 +10,48 @@ type Props = {
   className?: string
 }
 
-// Gentle two-tone "ding" so staff hear a new message. Uses the Web Audio API
-// (no file needed). Browsers block audio until the user has interacted with the
-// page — since staff are actively using the app, that's already satisfied.
+// 🔔 Doorbell "ding-dong" for a new client text (the dog bark is reserved for new
+// booking requests). Synthesized with the Web Audio API (no file needed): each
+// note is a bell-like blend of a fundamental + overtones with a long decay.
+// Browsers block audio until the user has interacted with the page — staff are
+// actively using the app, so that's already satisfied.
 function playChime() {
   try {
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     const ctx = new Ctx()
-    const notes = [880, 1175]
-    notes.forEach((freq, i) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.connect(gain); gain.connect(ctx.destination)
-      osc.type = 'sine'
-      osc.frequency.value = freq
-      const start = ctx.currentTime + i * 0.18
-      gain.gain.setValueAtTime(0.0001, start)
-      gain.gain.exponentialRampToValueAtTime(0.35, start + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.32)
-      osc.start(start)
-      osc.stop(start + 0.34)
+    const master = ctx.createGain()
+    master.gain.value = 0.9
+    master.connect(ctx.destination)
+    // Urgent rapid "ding-ding-ding-ding": two quick pairs, short bright strikes
+    const notes = [
+      { freq: 1046.5, at: 0 },
+      { freq: 1318.5, at: 0.11 },
+      { freq: 1046.5, at: 0.32 },
+      { freq: 1318.5, at: 0.43 },
+    ]
+    // [harmonic ratio, relative level, decay seconds]
+    const partials: [number, number, number][] = [
+      [1, 0.45, 0.45],
+      [2, 0.2, 0.3],
+      [3, 0.1, 0.2],
+      [4.2, 0.05, 0.12],
+    ]
+    notes.forEach(({ freq, at }) => {
+      partials.forEach(([ratio, level, decay]) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.value = freq * ratio
+        const start = ctx.currentTime + at
+        gain.gain.setValueAtTime(0.0001, start)
+        gain.gain.exponentialRampToValueAtTime(level, start + 0.01)
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + decay)
+        osc.connect(gain); gain.connect(master)
+        osc.start(start)
+        osc.stop(start + decay + 0.05)
+      })
     })
-    setTimeout(() => ctx.close(), 1200)
+    setTimeout(() => ctx.close(), 2500)
   } catch { /* audio not available */ }
 }
 

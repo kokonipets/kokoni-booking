@@ -292,22 +292,22 @@ function avatarColor(name: string) {
 
 // ── Sidebar nav items ──────────────────────────────────────────────────────
 const NAV = [
-  { key: 'requests',   label: 'Pending Request',         icon: '📋' },
-  { key: 'staff_cal',  label: 'Recent Confirmed',        icon: '👥' },
-  { key: 'calendar',   label: 'Calendar',                icon: '📅' },
-  { key: 'today',      label: 'Today',                   icon: '✅' },
-  { key: 'grooming',   label: 'Grooming Board',          icon: '✂️' },
-  { key: 'clients',    label: 'Pet Parents',             icon: '🐾' },
-  { key: 'not_opted_in', label: 'Not Opted In',          icon: '🔕' },
-  { key: 'vaccines',   label: 'Vaccine Records',         icon: '💉' },
-  { key: 'payroll',    label: 'Payroll',                 icon: '💵' },
-  { key: 'intake',     label: 'New Client Intake',       icon: '📝' },
-  { key: 'waitlist',   label: 'Waitlist',                icon: '⏳' },
-  { key: 'cashier',    label: 'Cashier',                 icon: '💰' },
-  { key: 'reviews',    label: 'SMS Reviews',             icon: '⭐' },
-  { key: 'reports',    label: 'Reports',                 icon: '📊' },
-  { key: 'deleted_noshow', label: 'Deleted & No-Shows',  icon: '🗑️' },
-  { key: 'settings',   label: 'Settings',                icon: '⚙️' },
+  { key: 'requests',   label: 'Pending 待確認預約',         icon: '📋' },
+  { key: 'staff_cal',  label: 'Recent Confirmed 近期已確認',        icon: '👥' },
+  { key: 'calendar',   label: 'Calendar 行事曆',                icon: '📅' },
+  { key: 'today',      label: 'Today 今日預約',                   icon: '✅' },
+  { key: 'grooming',   label: 'Grooming Board 美容看板',          icon: '✂️' },
+  { key: 'clients',    label: 'Pet Parents 寵物家長',             icon: '🐾' },
+  { key: 'not_opted_in', label: 'Not Opted In 未同意簡訊',          icon: '🔕' },
+  { key: 'vaccines',   label: 'Vaccines 疫苗紀錄',         icon: '💉' },
+  { key: 'payroll',    label: 'Payroll 薪資',                 icon: '💵' },
+  { key: 'intake',     label: 'New Client Intake 新客登記',       icon: '📝' },
+  { key: 'waitlist',   label: 'Waitlist 候補名單',                icon: '⏳' },
+  { key: 'cashier',    label: 'Cashier 收銀',                 icon: '💰' },
+  { key: 'reviews',    label: 'SMS Reviews 簡訊評價',             icon: '⭐' },
+  { key: 'reports',    label: 'Reports 報表',                 icon: '📊' },
+  { key: 'deleted_noshow', label: 'Deleted & No-Shows 刪除/未到',  icon: '🗑️' },
+  { key: 'settings',   label: 'Settings 設定',                icon: '⚙️' },
 ] as const
 
 type TabKey = typeof NAV[number]['key']
@@ -2652,23 +2652,39 @@ export default function DeskAdmin() {
     } catch (e) { console.warn('Bark sound error:', e) }
   }, [])
 
-  // 🔔 Chime — groomer confirmed
+  // 🔔 Urgent doorbell — groomer confirmed (same sound as the new-text alert)
   const playChime = useCallback(async () => {
     try {
       const ctx = await getCtx()
-      const notes = [523.25, 659.25, 783.99] // C5 E5 G5
-      notes.forEach((freq, i) => {
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
-        osc.type = 'sine'
-        osc.frequency.value = freq
-        gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.15)
-        gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + i * 0.15 + 0.02)
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.6)
-        osc.connect(gain)
-        gain.connect(ctx.destination)
-        osc.start(ctx.currentTime + i * 0.15)
-        osc.stop(ctx.currentTime + i * 0.15 + 0.65)
+      const master = ctx.createGain()
+      master.gain.value = 0.9
+      master.connect(ctx.destination)
+      const notes = [
+        { freq: 1046.5, at: 0 },
+        { freq: 1318.5, at: 0.11 },
+        { freq: 1046.5, at: 0.32 },
+        { freq: 1318.5, at: 0.43 },
+      ]
+      const partials: [number, number, number][] = [
+        [1, 0.45, 0.45],
+        [2, 0.2, 0.3],
+        [3, 0.1, 0.2],
+        [4.2, 0.05, 0.12],
+      ]
+      notes.forEach(({ freq, at }) => {
+        partials.forEach(([ratio, level, decay]) => {
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.type = 'sine'
+          osc.frequency.value = freq * ratio
+          const start = ctx.currentTime + at
+          gain.gain.setValueAtTime(0.0001, start)
+          gain.gain.exponentialRampToValueAtTime(level, start + 0.01)
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + decay)
+          osc.connect(gain); gain.connect(master)
+          osc.start(start)
+          osc.stop(start + decay + 0.05)
+        })
       })
     } catch (e) { console.warn('Chime sound error:', e) }
   }, [getCtx])
@@ -5395,134 +5411,89 @@ export default function DeskAdmin() {
           </div>
         </div>
 
-        {/* Nav items */}
-        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-          {NAV.filter(({ key }) => (!isBookMode || key === 'calendar') && (!allowedTabs || allowedTabs.includes(key))).map(({ key, label, icon }) => (
-            key === 'settings' ? (
-              <a key={key} href="/admin/settings"
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left relative text-sky-600 hover:bg-sky-100 hover:text-sky-900`}
-              >
-                <span className="text-base leading-none w-5 text-center">{icon}</span>
-                <span>{label}</span>
-              </a>
-            ) : (
-            <button key={key} onClick={() => { setTab(key); setSidebarOpen(false) }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left relative ${
-                tab === key
-                  ? 'bg-sky-200 text-sky-900'
-                  : 'text-sky-600 hover:bg-sky-100 hover:text-sky-900'
-              }`}
-            >
-              {tab === key && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-sky-500 rounded-r-full" />}
-              <span className="text-base leading-none w-5 text-center">{icon}</span>
-              <span className="flex-1">{label}</span>
-              {key === 'requests' && pendingCount > 0 && (
-                <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                  {pendingCount}
-                </span>
-              )}
-              {key === 'vaccines' && vaccineCount > 0 && (
-                <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                  {vaccineCount}
-                </span>
-              )}
-              {key === 'not_opted_in' && notOptedInCount > 0 && (
-                <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                  {notOptedInCount}
-                </span>
-              )}
-              {key === 'intake' && pendingCount > 0 && (
-                <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                  {pendingCount}
-                </span>
-              )}
-            </button>
+        {/* Nav items — grouped by colour: appointments, clients, finance, tools */}
+        <nav className="flex-1 px-2 py-3 space-y-3 overflow-y-auto">
+          {(() => {
+            const vis = (k: string) => !allowedTabs || allowedTabs.includes(k)
+            type C = { bar: string; title: string; item: string; active: string; bg: string; solid: string }
+            const COLORS: Record<string, C> = {
+              appt:    { solid: 'bg-sky-500',     bar: 'border-sky-500',     title: 'text-sky-700',    item: 'text-sky-700 hover:bg-sky-100',         active: 'bg-sky-200 text-sky-900',         bg: 'bg-sky-100/50' },
+              clients: { solid: 'bg-violet-500', bar: 'border-violet-500', title: 'text-violet-700',  item: 'text-violet-700 hover:bg-violet-100',   active: 'bg-violet-200 text-violet-900',   bg: 'bg-violet-100/50' },
+              finance: { solid: 'bg-emerald-500', bar: 'border-emerald-500',title: 'text-emerald-700', item: 'text-emerald-700 hover:bg-emerald-100', active: 'bg-emerald-200 text-emerald-900', bg: 'bg-emerald-100/50' },
+              tools:   { solid: 'bg-amber-500', bar: 'border-amber-500',  title: 'text-amber-700',   item: 'text-amber-800 hover:bg-amber-100',     active: 'bg-amber-200 text-amber-900',     bg: 'bg-amber-100/50' },
+            }
+            const base = 'w-full flex items-center px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors text-left relative'
+            const badge = (n: number) => n > 0 ? (
+              <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">{n}</span>
+            ) : null
+            const navBtn = (key: TabKey, c: C) => {
+              const n = NAV.find(x => x.key === key)
+              if (!n || !vis(key)) return null
+              const { label } = n
+              if (key === 'settings') {
+                return <a key={key} href="/admin/settings" className={`${base} ${c.item}`}><span className="flex-1">{label}</span></a>
+              }
+              return (
+                <button key={key} onClick={() => { setTab(key); setSidebarOpen(false) }}
+                  className={`${base} ${tab === key ? c.active : c.item}`}>
+                  <span className="flex-1">{label}</span>
+                  {key === 'requests' && badge(pendingCount)}
+                  {key === 'vaccines' && badge(vaccineCount)}
+                  {key === 'not_opted_in' && badge(notOptedInCount)}
+                  {key === 'intake' && badge(pendingCount)}
+                </button>
+              )
+            }
+            const link = (href: string, label: string, c: C, opts?: { gate?: string; external?: boolean }) => {
+              if (opts?.gate && !vis(opts.gate)) return null
+              return (
+                <a key={href} href={href} {...(opts?.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                  className={`${base} ${c.item}`} onClick={() => setSidebarOpen(false)}>
+                  <span className="flex-1">{label}</span>
+                  {opts?.external && <span className="text-xs font-bold opacity-60">↗</span>}
+                </a>
+              )
+            }
+            const group = (title: string, c: C, items: ReactNode[]) => {
+              const shown = items.filter(Boolean)
+              if (shown.length === 0) return null
+              return (
+                <div key={title} className={`border-l-4 ${c.bar} ${c.bg} rounded-r-lg pl-2 pr-1 py-1.5 space-y-0.5`}>
+                  <p className={`mb-1 px-2 py-1 rounded-md text-xs font-black tracking-wide text-white ${c.solid}`}>{title}</p>
+                  {shown}
+                </div>
+              )
+            }
+            const A = COLORS.appt, K = COLORS.clients, F = COLORS.finance, T = COLORS.tools
+            return (
+              <>
+                {group('客人預約 Appointments', A, [
+                  navBtn('requests', A), navBtn('staff_cal', A), navBtn('calendar', A), navBtn('today', A),
+                  navBtn('grooming', A), navBtn('intake', A), navBtn('waitlist', A), navBtn('deleted_noshow', A),
+                ])}
+                {group('客人資料 Clients', K, [
+                  navBtn('clients', K), navBtn('not_opted_in', K), navBtn('vaccines', K),
+                  <ChatSidebarLink key="chat" noIcon className={`${base} ${K.item}`} onClick={() => setSidebarOpen(false)} />,
+                  navBtn('reviews', K),
+                  link('/admin/reviews', 'Reviews 評價', K, { gate: 'reviews' }),
+                ])}
+                {group('財務 Finance', F, [
+                  navBtn('cashier', F),
+                  link('/admin/daily-close', 'Daily Close 每日核帳', F, { gate: 'daily_close' }),
+                  navBtn('reports', F), navBtn('payroll', F),
+                  link('/admin/inventory', 'Inventory 庫存/店售', F, { gate: 'inventory' }),
+                  link('/admin/timesheet', 'Timesheet 工時表', F, { gate: 'timesheet' }),
+                  link('/admin/cashier-logins', 'Cashier Sign-Ins 收銀登入', F, { gate: 'cashier_logins' }),
+                ])}
+                {group('工具 Tools', T, [
+                  link('/kiosk', 'Kiosk Screen 自助機畫面', T, { external: true }),
+                  link('/front-desk', 'Front Desk 前台', T, { external: true }),
+                  link('/clock', 'Clock Kiosk 打卡機', T, { external: true }),
+                  navBtn('settings', T),
+                ])}
+              </>
             )
-          ))}
-
-          {/* Divider */}
-          <div className="border-t border-sky-200 my-2" />
-
-          {/* Kiosk link */}
-          <a href="/kiosk" target="_blank" rel="noopener noreferrer"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="text-base leading-none w-5 text-center">🖥️</span>
-            <span className="flex-1">Kiosk Screen</span>
-            <span className="text-sky-400 text-xs font-bold">↗</span>
-          </a>
-
-          {/* Front Desk launcher */}
-          <a href="/front-desk" target="_blank" rel="noopener noreferrer"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="text-base leading-none w-5 text-center">🏠</span>
-            <span className="flex-1">Front Desk</span>
-            <span className="text-sky-400 text-xs font-bold">↗</span>
-          </a>
-
-          {/* Chat — two-way SMS with customers */}
-          <ChatSidebarLink onClick={() => setSidebarOpen(false)} />
-
-          {/* Reviews — standalone page, gated by the 'reviews' permission key. */}
-          {(!allowedTabs || allowedTabs.includes('reviews')) && (
-          <a
-            href="/admin/reviews"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="text-base leading-none w-5 text-center">⭐</span>
-            <span className="flex-1">Reviews</span>
-          </a>
-          )}
-
-          {/* Time Tracking — standalone page, gated by the 'timesheet' permission key. */}
-          {(!allowedTabs || allowedTabs.includes('timesheet')) && (
-          <a
-            href="/admin/timesheet"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="text-base leading-none w-5 text-center">🕐</span>
-            <span className="flex-1">Timesheet</span>
-          </a>
-          )}
-
-          {/* Inventory — standalone page, gated by the 'inventory' permission key. */}
-          {(!allowedTabs || allowedTabs.includes('inventory')) && (
-          <a
-            href="/admin/inventory"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="text-base leading-none w-5 text-center">📦</span>
-            <span className="flex-1">Inventory</span>
-          </a>
-          )}
-
-          {/* Cashier Sign-Ins — standalone page, gated by the 'cashier_logins' permission key. */}
-          {(!allowedTabs || allowedTabs.includes('cashier_logins')) && (
-          <a
-            href="/admin/cashier-logins"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="text-base leading-none w-5 text-center">🔑</span>
-            <span className="flex-1">Cashier Sign-Ins</span>
-          </a>
-          )}
-          <a
-            href="/clock"
-            target="_blank"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sky-600 hover:bg-sky-100 hover:text-sky-900 transition-colors text-left"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <span className="text-base leading-none w-5 text-center">⏱️</span>
-            <span className="flex-1">Clock Kiosk</span>
-            <span className="text-sky-400 text-xs font-bold">↗</span>
-          </a>
+          })()}
         </nav>
 
         {/* User footer */}
