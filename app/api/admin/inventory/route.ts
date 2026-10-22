@@ -141,8 +141,22 @@ export async function POST(req: NextRequest) {
   }
 
   if (b.action === 'delete_movement') {
+    const { data: mv } = await supabase.from('inventory_movements').select('note').eq('id', b.id).maybeSingle()
     const { error } = await supabase.from('inventory_movements').delete().eq('id', b.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // A counter sale's movements carry "Counter sale <id prefix>". Once all of them are
+    // deleted, cancel the sale itself so it also drops out of Daily Close / reports.
+    const note = (mv as { note?: string | null } | null)?.note
+    if (note?.startsWith('Counter sale ')) {
+      const { count } = await supabase.from('inventory_movements').select('id', { count: 'exact', head: true }).eq('note', note)
+      if (!count) {
+        const prefix = note.slice('Counter sale '.length).trim()
+        const { data: sales } = await supabase.from('retail_sales').select('id').eq('status', 'paid')
+        for (const sl of (sales ?? []) as { id: string }[]) {
+          if (sl.id.startsWith(prefix)) await supabase.from('retail_sales').update({ status: 'cancelled' }).eq('id', sl.id)
+        }
+      }
+    }
     return NextResponse.json({ success: true })
   }
 

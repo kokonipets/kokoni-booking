@@ -5469,7 +5469,7 @@ export default function DeskAdmin() {
               <>
                 {group('客人預約 Appointments', A, [
                   navBtn('requests', A), navBtn('staff_cal', A), navBtn('calendar', A), navBtn('today', A),
-                  navBtn('grooming', A), navBtn('intake', A), navBtn('waitlist', A), navBtn('deleted_noshow', A),
+                  navBtn('intake', A), navBtn('deleted_noshow', A),
                 ])}
                 {group('客人資料 Clients', K, [
                   navBtn('clients', K), navBtn('not_opted_in', K), navBtn('vaccines', K),
