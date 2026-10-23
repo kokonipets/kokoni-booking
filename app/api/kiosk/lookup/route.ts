@@ -25,8 +25,8 @@ export async function GET(req: NextRequest) {
   // Anonymous Nail Trim walk-ins all book under one placeholder phone (see /api/appointments).
   // At checkout they type the short code 1234 instead; list only today's still-unpaid ones.
   const ANON_PHONE = '0000000000'
-  // 1234 = anonymous Nail Trim, 5678 = anonymous Top Dog (same placeholder client, split by service).
-  const anonKind = mode === 'checkout' ? (phone === '1234' ? 'nail' : phone === '5678' ? 'top dog' : null) : null
+  // 1234 = anonymous Nail Trim, 2345 = anonymous Top Dog (same placeholder client, split by service).
+  const anonKind = mode === 'checkout' ? (phone === '1234' ? 'nail' : phone === '2345' ? 'top dog' : null) : null
   const isNailCode = anonKind !== null
 
   // Normalise: try raw digits, then with leading 1 stripped, then with 1 prepended

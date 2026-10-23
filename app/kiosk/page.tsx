@@ -546,9 +546,9 @@ export default function KioskPage() {
 
   // Anonymous Nail Trim walk-ins leave no phone number, so at checkout they type the short
   // code 1234 instead — the server lists today's unpaid anonymous nail trims.
-  // 1234 = Nail Trim, 5678 = Top Dog.
+  // 1234 = Nail Trim, 2345 = Top Dog.
   const NAIL_CODE = '1234'
-  const TOP_CODE = '5678'
+  const TOP_CODE = '2345'
   const nailCodeActive = mode === 'checkout' && (phone === NAIL_CODE || phone === TOP_CODE)
 
   // ── Lookup ────────────────────────────────────────────────────────────────
@@ -703,7 +703,7 @@ export default function KioskPage() {
           </div>
           {mode === 'checkout' && (
             <p className="-mt-4 text-gray-400 text-xl text-center">
-              {nailCodeActive ? (phone === TOP_CODE ? '🐕 Top Dog walk-in' : '✂️ Nail Trim walk-in') : 'No phone number? Nail Trim: 1234 · Top Dog: 5678'}
+              {nailCodeActive ? (phone === TOP_CODE ? '🐕 Top Dog walk-in' : '✂️ Nail Trim walk-in') : 'No phone number? Nail Trim: 1234 · Top Dog: 2345'}
             </p>
           )}
 
