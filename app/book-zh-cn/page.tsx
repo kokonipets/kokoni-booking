@@ -537,8 +537,9 @@ export default function BookPageZhCn() {
   // ─── Walk-in 剪指甲（免留资料）──────────────────────────
   // 一键登记：用共用的默认客人，不需电话、姓名、疫苗资料；客人在现场等候。
   const [anonDogName, setAnonDogName] = useState('')
-  const handleAnonNailTrim = async () => {
-    const svc = dynamicServices.find((s: any) => s.skipCapacity && s.name.toLowerCase().includes('nail'))
+  const handleAnonNailTrim = async (kind: 'nail' | 'top' = 'nail') => {
+    const keyword = kind === 'top' ? 'top dog' : 'nail'
+    const svc = dynamicServices.find((s: any) => s.skipCapacity && s.name.toLowerCase().includes(keyword))
     if (!svc) { setError('剪指甲尚未设置为现场服务，请联系前台。'); return }
     setError('')
     setLoading(true)
@@ -962,14 +963,20 @@ export default function BookPageZhCn() {
             {/* 现场 Walk-in 专用：只剪指甲，免留任何资料 */}
             {isWalkIn && (
               <div className="mt-5 pt-5 border-t border-gray-100">
-                <p className="text-sm font-semibold text-amber-800 text-center mb-2">✂️ 只剪指甲？免留资料</p>
+                <p className="text-sm font-semibold text-amber-800 text-center mb-2">✂️ 只剪指甲或 Top Dog？免留资料</p>
                 <input type="text" placeholder="狗狗名字（选填）" value={anonDogName}
                   onChange={e => setAnonDogName(e.target.value)} maxLength={40}
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 mb-2" />
-                <button onClick={handleAnonNailTrim} disabled={loading}
-                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-40">
-                  {loading ? '登记中...' : '剪指甲现场登记'}
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => handleAnonNailTrim('nail')} disabled={loading}
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-40">
+                    {loading ? '登记中...' : '✂️ 剪指甲'}
+                  </button>
+                  <button onClick={() => handleAnonNailTrim('top')} disabled={loading}
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-40">
+                    {loading ? '登记中...' : '🐕 Top Dog'}
+                  </button>
+                </div>
               </div>
             )}
             <div className="mt-4 pt-4 border-t border-gray-100 text-center">

@@ -476,8 +476,9 @@ export default function BookPage() {
   // One tap: books the quick "Nail Trim" walk-in service under a shared placeholder client
   // (no phone / name / vaccine records). Customers wait on site, so nothing else is needed.
   const [anonDogName, setAnonDogName] = useState('')
-  const handleAnonNailTrim = async () => {
-    const svc = dynamicServices.find((s: any) => s.skipCapacity && s.name.toLowerCase().includes('nail'))
+  const handleAnonNailTrim = async (kind: 'nail' | 'top' = 'nail') => {
+    const keyword = kind === 'top' ? 'top dog' : 'nail'
+    const svc = dynamicServices.find((s: any) => s.skipCapacity && s.name.toLowerCase().includes(keyword))
     if (!svc) { setError('Nail Trim isn\'t set up as a walk-in service yet. Please check in with the front desk.'); return }
     setError('')
     setLoading(true)
@@ -973,7 +974,7 @@ export default function BookPage() {
             {/* Walk-in kiosk only: quick Nail Trim without leaving any info */}
             {isWalkIn && (
               <div className="mt-5 pt-5 border-t border-gray-100">
-                <p className="text-sm font-semibold text-amber-800 text-center mb-2">✂️ Just a Nail Trim? No info needed</p>
+                <p className="text-sm font-semibold text-amber-800 text-center mb-2">✂️ Just a Nail Trim or Top Dog? No info needed</p>
                 <input
                   type="text"
                   placeholder="Dog's name (optional)"
@@ -982,13 +983,16 @@ export default function BookPage() {
                   maxLength={40}
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 mb-2"
                 />
-                <button
-                  onClick={handleAnonNailTrim}
-                  disabled={loading}
-                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-40"
-                >
-                  {loading ? 'Checking in...' : 'Check in for Nail Trim'}
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => handleAnonNailTrim('nail')} disabled={loading}
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-40">
+                    {loading ? 'Checking in...' : '✂️ Nail Trim'}
+                  </button>
+                  <button onClick={() => handleAnonNailTrim('top')} disabled={loading}
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-40">
+                    {loading ? 'Checking in...' : '🐕 Top Dog'}
+                  </button>
+                </div>
               </div>
             )}
             <div className="mt-4 pt-4 border-t border-gray-100 text-center">

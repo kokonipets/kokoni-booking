@@ -25,7 +25,9 @@ export async function GET(req: NextRequest) {
   // Anonymous Nail Trim walk-ins all book under one placeholder phone (see /api/appointments).
   // At checkout they type the short code 1234 instead; list only today's still-unpaid ones.
   const ANON_PHONE = '0000000000'
-  const isNailCode = mode === 'checkout' && phone === '1234'
+  // 1234 = anonymous Nail Trim, 5678 = anonymous Top Dog (same placeholder client, split by service).
+  const anonKind = mode === 'checkout' ? (phone === '1234' ? 'nail' : phone === '5678' ? 'top dog' : null) : null
+  const isNailCode = anonKind !== null
 
   // Normalise: try raw digits, then with leading 1 stripped, then with 1 prepended
   const variants = isNailCode ? [ANON_PHONE] : [phone]
@@ -70,9 +72,17 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Nail Trim code: only the ones not paid yet (quick walk-ins often skip the grooming pipeline).
-  const data = isNailCode
-    ? (rawData ?? []).filter(a => a.payment_status !== 'paid')
-    : rawData
+  let data = rawData
+  if (isNailCode) {
+    // Which service ids are Nail Trim / Top Dog? (match by name, like the booking page does)
+    let ids: string[] = []
+    try {
+      const { data: sv } = await supabase.from('salon_settings').select('value').eq('key', 'services').maybeSingle()
+      const defs: { id: string; name?: string }[] = sv?.value ? JSON.parse(sv.value) : []
+      ids = defs.filter(d => (d.name ?? '').toLowerCase().includes(anonKind!)).map(d => d.id)
+    } catch { ids = [] }
+    data = (rawData ?? []).filter(a => a.payment_status !== 'paid' && ids.includes(a.service))
+  }
 
   // DEBUG: also fetch ALL of today's appointments for this phone (no status filter)
   // so we can see what's in the DB vs what the filter is hiding

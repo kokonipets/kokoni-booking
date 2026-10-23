@@ -546,8 +546,10 @@ export default function KioskPage() {
 
   // Anonymous Nail Trim walk-ins leave no phone number, so at checkout they type the short
   // code 1234 instead — the server lists today's unpaid anonymous nail trims.
+  // 1234 = Nail Trim, 5678 = Top Dog.
   const NAIL_CODE = '1234'
-  const nailCodeActive = mode === 'checkout' && phone === NAIL_CODE
+  const TOP_CODE = '5678'
+  const nailCodeActive = mode === 'checkout' && (phone === NAIL_CODE || phone === TOP_CODE)
 
   // ── Lookup ────────────────────────────────────────────────────────────────
   const lookup = async () => {
@@ -696,12 +698,12 @@ export default function KioskPage() {
             <p className={`text-7xl font-black tracking-widest min-h-[96px] flex items-center justify-center ${phone.length === 0 ? 'text-gray-200' : 'text-gray-800'}`}>
               {phone.length === 0
                 ? '_ _ _  _ _ _  _ _ _ _'
-                : nailCodeActive ? NAIL_CODE : formatPhoneDisplay(phone)}
+                : nailCodeActive ? phone : formatPhoneDisplay(phone)}
             </p>
           </div>
           {mode === 'checkout' && (
             <p className="-mt-4 text-gray-400 text-xl text-center">
-              {nailCodeActive ? '✂️ Nail Trim walk-in' : 'Nail Trim walk-in with no phone number? Enter 1234'}
+              {nailCodeActive ? (phone === TOP_CODE ? '🐕 Top Dog walk-in' : '✂️ Nail Trim walk-in') : 'No phone number? Nail Trim: 1234 · Top Dog: 5678'}
             </p>
           )}
 
