@@ -22,10 +22,15 @@ export async function GET(req: NextRequest) {
 
   if (!phone) return NextResponse.json({ error: 'Phone required' }, { status: 400 })
 
+  // Anonymous Nail Trim walk-ins all book under one placeholder phone (see /api/appointments).
+  // At checkout they type the short code 1234 instead; list only today's still-unpaid ones.
+  const ANON_PHONE = '0000000000'
+  const isNailCode = mode === 'checkout' && phone === '1234'
+
   // Normalise: try raw digits, then with leading 1 stripped, then with 1 prepended
-  const variants = [phone]
-  if (phone.length === 11 && phone.startsWith('1')) variants.push(phone.slice(1))
-  if (phone.length === 10) variants.push('1' + phone)
+  const variants = isNailCode ? [ANON_PHONE] : [phone]
+  if (!isNailCode && phone.length === 11 && phone.startsWith('1')) variants.push(phone.slice(1))
+  if (!isNailCode && phone.length === 10) variants.push('1' + phone)
 
   // Build query based on mode
   let query = supabase
@@ -40,6 +45,7 @@ export async function GET(req: NextRequest) {
       payment_amount,
       payment_method,
       payment_status,
+      notes,
       client_phone,
       assigned_groomer,
       assigned_bather,
@@ -54,14 +60,19 @@ export async function GET(req: NextRequest) {
   if (mode === 'checkin') {
     // Check-in: only appointments that haven't been processed yet
     query = query.not('status', 'in', '(completed,in_progress)')
-  } else {
+  } else if (!isNailCode) {
     // Checkout: only appointments where the dog is actually ready or done
     query = query.or('grooming_status.eq.ready,grooming_status.eq.done,status.eq.completed')
   }
 
-  const { data, error } = await query
+  const { data: rawData, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Nail Trim code: only the ones not paid yet (quick walk-ins often skip the grooming pipeline).
+  const data = isNailCode
+    ? (rawData ?? []).filter(a => a.payment_status !== 'paid')
+    : rawData
 
   // DEBUG: also fetch ALL of today's appointments for this phone (no status filter)
   // so we can see what's in the DB vs what the filter is hiding

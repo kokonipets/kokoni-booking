@@ -38,6 +38,7 @@ interface KioskAppointment {
   payment_method: string | null
   assigned_groomer: string | null
   assigned_bather: string | null
+  notes?: string | null
   clients: { name: string; phone: string; email: string | null } | null
   pets: { id: string; name: string; breed: string | null; weight: string | null; photo_url: string | null } | null
 }
@@ -543,9 +544,14 @@ export default function KioskPage() {
     return `(${raw.slice(0,3)}) ${raw.slice(3,6)}-${raw.slice(6)}`
   }
 
+  // Anonymous Nail Trim walk-ins leave no phone number, so at checkout they type the short
+  // code 1234 instead — the server lists today's unpaid anonymous nail trims.
+  const NAIL_CODE = '1234'
+  const nailCodeActive = mode === 'checkout' && phone === NAIL_CODE
+
   // ── Lookup ────────────────────────────────────────────────────────────────
   const lookup = async () => {
-    if (phone.length < 10) return
+    if (phone.length < 10 && !nailCodeActive) return
     setStep('loading')
     setError('')
     try {
@@ -690,9 +696,14 @@ export default function KioskPage() {
             <p className={`text-7xl font-black tracking-widest min-h-[96px] flex items-center justify-center ${phone.length === 0 ? 'text-gray-200' : 'text-gray-800'}`}>
               {phone.length === 0
                 ? '_ _ _  _ _ _  _ _ _ _'
-                : formatPhoneDisplay(phone)}
+                : nailCodeActive ? NAIL_CODE : formatPhoneDisplay(phone)}
             </p>
           </div>
+          {mode === 'checkout' && (
+            <p className="-mt-4 text-gray-400 text-xl text-center">
+              {nailCodeActive ? '✂️ Nail Trim walk-in' : 'Nail Trim walk-in with no phone number? Enter 1234'}
+            </p>
+          )}
 
           {/* Numpad */}
           <div className="grid grid-cols-3 gap-4 w-full">
@@ -727,7 +738,7 @@ export default function KioskPage() {
             </button>
             <button
               onClick={lookup}
-              disabled={phone.length < 10}
+              disabled={phone.length < 10 && !nailCodeActive}
               className={`flex-[2] text-white font-black py-7 rounded-2xl text-3xl shadow-lg disabled:opacity-40 active:scale-95 transition-transform ${accentBg}`}
             >
               Find My Appointment →
@@ -782,7 +793,7 @@ export default function KioskPage() {
           </div>
 
           {/* ── Pay/check-in all together ── */}
-          {appointments.length > 1 && (
+          {appointments.length > 1 && !nailCodeActive && (
             <button
               disabled={submitting}
               onClick={async () => {
@@ -824,7 +835,7 @@ export default function KioskPage() {
             </button>
           )}
 
-          <p className="text-gray-400 text-xl text-center font-medium">— or select one pet —</p>
+          <p className="text-gray-400 text-xl text-center font-medium">{nailCodeActive ? '— select your pet —' : '— or select one pet —'}</p>
 
           <div className="flex flex-col gap-4 w-full">
             {appointments.map((a) => (
@@ -839,6 +850,7 @@ export default function KioskPage() {
                     : <div className="w-24 h-24 rounded-2xl bg-violet-100 flex items-center justify-center text-6xl flex-shrink-0">🐶</div>}
                   <div className="flex-1 min-w-0">
                     <p className="text-4xl font-black text-gray-800">{a.pets?.name}</p>
+                    {nailCodeActive && a.notes && <p className="text-gray-600 text-2xl font-semibold">{a.notes.replace(/^Dog:\s*/i, '')}</p>}
                     {a.pets?.breed && <p className="text-gray-500 text-xl">{a.pets.breed}{a.pets.weight ? ` · ${a.pets.weight}` : ''}</p>}
                     <p className="text-violet-600 font-semibold text-xl mt-1">{serviceMap[a.service] ?? a.service} · {a.appointment_time}</p>
                   </div>

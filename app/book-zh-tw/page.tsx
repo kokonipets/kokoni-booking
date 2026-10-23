@@ -534,6 +534,44 @@ export default function BookPageZhTw() {
     }
   }
 
+  // ─── Walk-in 剪指甲（免留資料）──────────────────────────
+  // 一鍵登記：用共用的預設客人，不需電話、姓名、疫苗資料；客人在現場等候。
+  const [anonDogName, setAnonDogName] = useState('')
+  const handleAnonNailTrim = async () => {
+    const svc = dynamicServices.find((s: any) => s.skipCapacity && s.name.toLowerCase().includes('nail'))
+    if (!svc) { setError('剪指甲尚未設定為現場服務，請洽櫃檯。'); return }
+    setError('')
+    setLoading(true)
+    try {
+      const laParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
+      const laGet = (t: string) => laParts.find(p => p.type === t)?.value ?? '00'
+      const y = parseInt(laGet('year')), mo = parseInt(laGet('month')), d = parseInt(laGet('day'))
+      const h24 = parseInt(laGet('hour')), min = parseInt(laGet('minute'))
+      const time = `${h24 % 12 || 12}:${String(min).padStart(2, '0')} ${h24 >= 12 ? 'PM' : 'AM'}`
+      const res = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isWalkIn: true,
+          anonymousWalkIn: true,
+          anonDogName: anonDogName.trim(),
+          service: svc.id,
+          date: formatDateShort(new Date(y, mo - 1, d)),
+          time,
+          tosAgreedAt: new Date().toISOString(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '登記失敗')
+      setAppointmentId(data.id)
+      setStep('confirmed')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '發生錯誤，請再試一次。')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handlePetContinue = () => {
     if (!selectedPet && !isAddingNewPet) { setError('請選擇狗狗或新增一隻新狗狗。'); return }
     if (isAddingNewPet && !newPetName.trim()) { setError('請輸入狗狗的名字。'); return }
@@ -921,6 +959,19 @@ export default function BookPageZhTw() {
               className="w-full mt-4 bg-sky-600 hover:bg-sky-700 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
               {loading ? '查詢中...' : '繼續'}
             </button>
+            {/* 現場 Walk-in 專用：只剪指甲，免留任何資料 */}
+            {isWalkIn && (
+              <div className="mt-5 pt-5 border-t border-gray-100">
+                <p className="text-sm font-semibold text-amber-800 text-center mb-2">✂️ 只剪指甲？免留資料</p>
+                <input type="text" placeholder="狗狗名字（選填）" value={anonDogName}
+                  onChange={e => setAnonDogName(e.target.value)} maxLength={40}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 mb-2" />
+                <button onClick={handleAnonNailTrim} disabled={loading}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-40">
+                  {loading ? '登記中...' : '剪指甲現場登記'}
+                </button>
+              </div>
+            )}
             <div className="mt-4 pt-4 border-t border-gray-100 text-center">
               <a href="/profile" className="text-sm text-sky-600 hover:underline">👤 查看我的個人資料及預約 →</a>
             </div>

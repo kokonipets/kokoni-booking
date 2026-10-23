@@ -472,6 +472,45 @@ export default function BookPage() {
     }
   }
 
+  // ─── Walk-in Nail Trim, no info ─────────────────────────
+  // One tap: books the quick "Nail Trim" walk-in service under a shared placeholder client
+  // (no phone / name / vaccine records). Customers wait on site, so nothing else is needed.
+  const [anonDogName, setAnonDogName] = useState('')
+  const handleAnonNailTrim = async () => {
+    const svc = dynamicServices.find((s: any) => s.skipCapacity && s.name.toLowerCase().includes('nail'))
+    if (!svc) { setError('Nail Trim isn\'t set up as a walk-in service yet. Please check in with the front desk.'); return }
+    setError('')
+    setLoading(true)
+    try {
+      const laParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
+      const laGet = (t: string) => laParts.find(p => p.type === t)?.value ?? '00'
+      const y = parseInt(laGet('year')), mo = parseInt(laGet('month')), d = parseInt(laGet('day'))
+      const h24 = parseInt(laGet('hour')), min = parseInt(laGet('minute'))
+      const time = `${h24 % 12 || 12}:${String(min).padStart(2, '0')} ${h24 >= 12 ? 'PM' : 'AM'}`
+      const res = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isWalkIn: true,
+          anonymousWalkIn: true,
+          anonDogName: anonDogName.trim(),
+          service: svc.id,
+          date: formatDateShort(new Date(y, mo - 1, d)),
+          time,
+          tosAgreedAt: new Date().toISOString(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Check-in failed')
+      setAppointmentId(data.id)
+      setStep('confirmed')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // ─── Step: Select Pet ───────────────────────────────────
   const handlePetContinue = () => {
     if (!selectedPet && !isAddingNewPet) { setError('Please select a dog or add a new one.'); return }
@@ -931,6 +970,27 @@ export default function BookPage() {
               {loading ? 'Looking up...' : 'Continue'}
             </button>
 
+            {/* Walk-in kiosk only: quick Nail Trim without leaving any info */}
+            {isWalkIn && (
+              <div className="mt-5 pt-5 border-t border-gray-100">
+                <p className="text-sm font-semibold text-amber-800 text-center mb-2">✂️ Just a Nail Trim? No info needed</p>
+                <input
+                  type="text"
+                  placeholder="Dog's name (optional)"
+                  value={anonDogName}
+                  onChange={e => setAnonDogName(e.target.value)}
+                  maxLength={40}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 mb-2"
+                />
+                <button
+                  onClick={handleAnonNailTrim}
+                  disabled={loading}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-40"
+                >
+                  {loading ? 'Checking in...' : 'Check in for Nail Trim'}
+                </button>
+              </div>
+            )}
             <div className="mt-4 pt-4 border-t border-gray-100 text-center">
               <a href="/profile" className="text-sm text-sky-600 hover:underline">
                 👤 View my profile & appointments →

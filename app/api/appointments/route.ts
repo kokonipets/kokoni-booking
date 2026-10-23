@@ -33,8 +33,72 @@ export async function POST(req: NextRequest) {
     vaccineEmailOnly,
     vaccineSmsOnly,
     isWalkIn,
+    anonymousWalkIn,
+    anonDogName,
     groupId,
   } = body
+
+  // Anonymous walk-in (quick services like Nail Trim): the customer doesn't want to leave
+  // any info and waits on site, so everything books under ONE shared placeholder client and
+  // ONE shared placeholder pet — no new client/pet rows pile up. The optional dog name goes
+  // into the appointment notes. No vaccine record, no client SMS; admin gets a push only.
+  if (isWalkIn && anonymousWalkIn) {
+    try {
+      const ANON_PHONE = '0000000000'
+      await supabase.from('clients').upsert(
+        { phone: ANON_PHONE, name: 'Nail Trim Customer', sms_consent: false },
+        { onConflict: 'phone', ignoreDuplicates: true }
+      )
+      let anonPetId: string | undefined
+      const { data: existingPet } = await supabase
+        .from('pets').select('id').eq('client_phone', ANON_PHONE).limit(1).maybeSingle()
+      if (existingPet?.id) {
+        anonPetId = existingPet.id
+      } else {
+        const { data: newPet, error: petErr } = await supabase
+          .from('pets')
+          .insert({ client_phone: ANON_PHONE, name: 'Nail Trim Walk-In', vaccine_status: 'verified' })
+          .select('id').single()
+        if (petErr) throw new Error(`Pet error: ${petErr.message}`)
+        anonPetId = newPet.id
+      }
+      const dogName = typeof anonDogName === 'string' ? anonDogName.trim().slice(0, 40) : ''
+      // Pre-fill the checkout amount from the service's price (e.g. Nail Trim = $15) so the
+      // cashier opens already filled in. An empty/$0 payment is treated as a no-show by
+      // record-payment, so a blank amount here would mislabel a real, paid nail trim.
+      let anonAmount: string | null = null
+      try {
+        const { data: svcRow } = await supabase.from('salon_settings').select('value').eq('key', 'services').maybeSingle()
+        const svcs: { id: string; price?: string; tiers?: { price?: string }[] }[] = svcRow?.value ? JSON.parse(svcRow.value) : []
+        const svcDef = svcs.find(s => s.id === service)
+        const rawPrice = parseFloat(String(svcDef?.price ?? svcDef?.tiers?.[0]?.price ?? ''))
+        if (!isNaN(rawPrice) && rawPrice > 0) anonAmount = rawPrice.toFixed(2)
+      } catch { anonAmount = null }
+      const { data: appt, error: apptErr } = await supabase
+        .from('appointments')
+        .insert({
+          client_phone: ANON_PHONE,
+          pet_id: anonPetId,
+          service,
+          appointment_date: date,
+          appointment_time: time,
+          notes: dogName ? `Dog: ${dogName}` : null,
+          payment_amount: anonAmount,
+          status: 'confirmed',
+          is_walk_in: true,
+          tos_agreed_at: tosAgreedAt ?? new Date().toISOString(),
+        })
+        .select('id').single()
+      if (apptErr) throw new Error(`Appointment error: ${apptErr.message}`)
+      sendPushToAdmin(
+        '🚶 Walk-In Checked In',
+        `Nail Trim Customer${dogName ? ` — ${dogName}` : ''} · ${String(service).replace(/_/g, ' ')} — here now`
+      ).catch(() => {})
+      return NextResponse.json({ success: true, id: appt.id, petId: anonPetId })
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 })
+    }
+  }
 
   // Defense-in-depth: never accept a booking on a closed day or blocked date,
   // even if the customer's page somehow offered it (e.g. settings didn't load).
