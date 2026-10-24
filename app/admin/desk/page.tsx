@@ -389,7 +389,7 @@ export default function DeskAdmin() {
   const [clientSearch, setClientSearch] = useState('')
   const [clientTagFilter, setClientTagFilter] = useState<string[]>([])
   const [notOptedInSearch, setNotOptedInSearch] = useState('')
-  const notOptedInCount = clients.filter(c => !c.sms_consent).length
+  const notOptedInCount = clients.filter(c => !c.sms_consent && c.phone !== '0000000000').length
   const [expandedClient, setExpandedClient] = useState<string | null>(null)
   const [expandedPetHistoryIds, setExpandedPetHistoryIds] = useState<Set<string>>(new Set())
   // Intake inline-editing state
@@ -7497,7 +7497,8 @@ export default function DeskAdmin() {
 
           {/* NOT OPTED IN (SMS) */}
           {tab === 'not_opted_in' && (() => {
-            const notOptedIn = clients.filter(c => !c.sms_consent)
+            // 0000000000 = shared placeholder client for anonymous Nail Trim / Top Dog walk-ins (has no phone to text)
+            const notOptedIn = clients.filter(c => !c.sms_consent && c.phone !== '0000000000')
             const q = notOptedInSearch.toLowerCase().trim()
             const filtered = q
               ? notOptedIn.filter(c =>
