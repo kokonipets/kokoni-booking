@@ -8,7 +8,16 @@ type Totals = Record<string, { amount: number; tips: number; total: number; coun
 type SysItem = { id: string; pet: string; client: string; total: number; at: string | null }
 type SqItem = { id: string; at: string; total: number; ref: string | null; gross?: number; refunded?: number }
 type VLine = { id: string; method: string; pet: string; client: string; total: number; at: string | null; tipOnly: boolean; verified: boolean }
-type RLine = { id: string; time: string | null; pet: string; client: string; service: string | null; groomer: string | null; method: string | null; amount: number; tip: number; tipMethod: string | null; at: string | null }
+type RLine = { id: string; time: string | null; pet: string; client: string; service: string | null; groomer: string | null; method: string | null; amount: number; tip: number; tipMethod: string | null; extraTip?: number; extraMethod?: string | null; at: string | null }
+// Tip pieces paid a different way than the service: main tip (tipMethod) and the extra tip (extraMethod).
+const tipOffParts = (r: { method: string | null; tip: number; tipMethod: string | null; extraTip?: number; extraMethod?: string | null }) => {
+  const parts: { m: string; amt: number }[] = []
+  const ex = r.extraTip ?? 0
+  const main = Math.round((r.tip - ex) * 100) / 100
+  if (main > 0 && r.tipMethod && r.tipMethod !== r.method) parts.push({ m: r.tipMethod, amt: main })
+  if (ex > 0 && r.extraMethod && r.extraMethod !== r.method) parts.push({ m: r.extraMethod, amt: ex })
+  return parts
+}
 type ULine = { id: string; time: string | null; pet: string; client: string; service: string | null; groomer: string | null; status: string }
 type Result = {
   date: string
@@ -411,10 +420,10 @@ function DayDetail({ data }: { data: Result }) {
         </div>
       )}
       {(() => {
-        const odd = data.report.filter(r => r.tip > 0 && r.tipMethod && r.tipMethod !== r.method)
+        const odd = data.report.filter(r => tipOffParts(r).length > 0)
         if (!odd.length) return null
         const byM: Record<string, number> = {}
-        for (const r of odd) byM[r.tipMethod!] = (byM[r.tipMethod!] ?? 0) + r.tip
+        for (const r of odd) for (const p of tipOffParts(r)) byM[p.m] = (byM[p.m] ?? 0) + p.amt
         return (
           <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm">
             <p className="font-semibold text-amber-800 mb-1">小費用不同方式付（{odd.length} 筆）</p>
@@ -422,7 +431,7 @@ function DayDetail({ data }: { data: Result }) {
             {odd.map(r => (
               <div key={r.id} className="flex items-center gap-3 py-0.5">
                 <span className="flex-1">{r.pet}<span className="text-gray-500"> · {r.client}</span><span className="text-gray-400">（服務 {methodName[r.method ?? ''] ?? r.method}）</span></span>
-                <span className="font-semibold">小費 {money(r.tip)} <MethodTag m={r.tipMethod} /> {methodName[r.tipMethod!] ?? r.tipMethod}</span>
+                <span className="font-semibold">{tipOffParts(r).map((p, i) => <span key={i} className="ml-2">小費 {money(p.amt)} <MethodTag m={p.m} /> {methodName[p.m] ?? p.m}</span>)}</span>
               </div>
             ))}
           </div>
@@ -445,15 +454,15 @@ function DayDetail({ data }: { data: Result }) {
         <p className="text-sm font-semibold text-gray-700 mb-1">當天所有付款 All payments（{sorted.length}）</p>
         <div className="divide-y divide-gray-50 text-sm">
           {sorted.map(r => (
-            <div key={r.id} className={`flex items-center gap-3 py-1.5 ${r.tip > 0 && r.tipMethod && r.tipMethod !== r.method ? 'bg-amber-50 -mx-2 px-2 rounded' : ''}`}>
+            <div key={r.id} className={`flex items-center gap-3 py-1.5 ${tipOffParts(r).length > 0 ? 'bg-amber-50 -mx-2 px-2 rounded' : ''}`}>
               <span className="text-gray-400 w-16 text-xs">{laTime(r.at)}</span>
               <span className="flex-1 min-w-0 truncate">{r.pet}<span className="text-gray-400"> · {r.client} · {svcLabel(r.service)}</span></span>
               <span className="text-xs text-gray-400 w-20 truncate">{r.groomer || ''}</span>
               <span className="w-6 text-center"><MethodTag m={r.method} /></span>
               <span className="w-20 text-right">{money(r.amount)}</span>
               <span className="w-40 text-right text-xs text-emerald-600">
-                {r.tip > 0 ? (r.tipMethod && r.tipMethod !== r.method
-                  ? <span className="font-semibold text-amber-700">小費 +{money(r.tip)} <MethodTag m={r.tipMethod} /> {methodName[r.tipMethod] ?? r.tipMethod}</span>
+                {r.tip > 0 ? (tipOffParts(r).length > 0
+                  ? <span className="font-semibold text-amber-700">小費 +{money(r.tip)}{tipOffParts(r).map((p, i) => <span key={i} className="ml-1">（{money(p.amt)} <MethodTag m={p.m} /> {methodName[p.m] ?? p.m}）</span>)}</span>
                   : <>小費 +{money(r.tip)}</>) : <span className="text-gray-400">小費 $0.00</span>}
               </span>
             </div>

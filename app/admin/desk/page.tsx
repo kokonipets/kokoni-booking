@@ -82,6 +82,8 @@ type Appointment = {
   payment_status: string | null
   size_tier?: string | null
   tip_amount: string | null
+  extra_tip_amount?: string | null
+  extra_tip_method?: string | null
   grooming_status: string | null
   grooming_status_updated_at: string | null
   grooming_started_at: string | null
@@ -750,6 +752,9 @@ export default function DeskAdmin() {
   const [cashierMode, setCashierMode] = useState<'pay' | 'edit' | null>(null)
   const [cashierAmount, setCashierAmount] = useState('')
   const [cashierTip, setCashierTip] = useState('')
+  // Extra tip handed over another way (e.g. tip on the card + extra cash); tip_amount stays the TOTAL.
+  const [cashierExtraTip, setCashierExtraTip] = useState('')
+  const [cashierExtraMethod, setCashierExtraMethod] = useState<'cash' | 'card' | 'zelle' | 'venmo'>('cash')
   const [cashierService, setCashierService] = useState('')
   const [cashierSavingId, setCashierSavingId] = useState<string | null>(null)
 
@@ -8074,17 +8079,21 @@ export default function DeskAdmin() {
               color: m === 'cash' ? 'border-green-200 bg-green-50 text-green-700' : m === 'card' ? 'border-sky-200 bg-sky-50 text-sky-700' : m === 'zelle' ? 'border-purple-200 bg-purple-50 text-purple-700' : 'border-blue-200 bg-blue-50 text-blue-700',
             }))
 
+            // Total tip = main tip + extra tip (stored as tip_amount); extra is also stored on its own.
+            const extraTipStr = () => { const e = parseFloat(cashierExtraTip) || 0; return e > 0 ? e.toFixed(2) : null }
+            const totalTipStr = () => { const t = (parseFloat(cashierTip) || 0) + (parseFloat(cashierExtraTip) || 0); return t > 0 ? t.toFixed(2) : '0' }
+
             const savePayment = async (appt: Appointment, method: string) => {
               if (!cashierAmount) return
               setCashierSavingId(appt.id)
               try {
                 const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                   method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'record-payment', payment_amount: cashierAmount, tip_amount: cashierTip || '0', payment_method: method, payment_status: 'paid' }),
+                  body: JSON.stringify({ action: 'record-payment', payment_amount: cashierAmount, tip_amount: totalTipStr(), extra_tip_amount: extraTipStr(), extra_tip_method: cashierExtraMethod, ...(extraTipStr() ? { tip_method: method } : {}), payment_method: method, payment_status: 'paid' }),
                 })
                 if ((await res.json()).success) {
                   setReportsAppts(prev => prev.map(x => x.id === appt.id
-                    ? { ...x, payment_amount: cashierAmount, tip_amount: cashierTip || '0', payment_method: method, payment_status: 'paid' }
+                    ? { ...x, payment_amount: cashierAmount, tip_amount: totalTipStr(), extra_tip_amount: extraTipStr(), extra_tip_method: extraTipStr() ? cashierExtraMethod : null, payment_method: method, payment_status: 'paid' }
                     : x))
                   setCashierExpandedId(null); setCashierMode(null)
                   showToast('✓ Payment recorded!')
@@ -8096,8 +8105,10 @@ export default function DeskAdmin() {
             const saveEdit = async (appt: Appointment) => {
               setCashierSavingId(appt.id)
               try {
-                const updates: Record<string, string> = { action: 'record-payment', payment_amount: cashierAmount, tip_amount: cashierTip || '0', payment_status: appt.payment_status || 'paid' }
+                const updates: Record<string, string | null> = { action: 'record-payment', payment_amount: cashierAmount, tip_amount: totalTipStr(), extra_tip_amount: extraTipStr(), extra_tip_method: cashierExtraMethod, payment_status: appt.payment_status || 'paid' }
                 if (appt.payment_method) updates.payment_method = appt.payment_method
+                // With an extra tip, the main tip rides with the payment method (the extra is the other way).
+                if (extraTipStr() && appt.payment_method) updates.tip_method = appt.payment_method
                 const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                   method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(updates),
@@ -8107,7 +8118,7 @@ export default function DeskAdmin() {
                   : null
                 if ((await res.json()).success) {
                   setReportsAppts(prev => prev.map(x => x.id === appt.id
-                    ? { ...x, payment_amount: cashierAmount, tip_amount: cashierTip || '0', service: cashierService || x.service }
+                    ? { ...x, payment_amount: cashierAmount, tip_amount: totalTipStr(), extra_tip_amount: extraTipStr(), extra_tip_method: extraTipStr() ? cashierExtraMethod : null, service: cashierService || x.service }
                     : x))
                   setCashierExpandedId(null); setCashierMode(null)
                   showToast('✓ Updated!')
@@ -8119,11 +8130,16 @@ export default function DeskAdmin() {
 
             const openPay = (appt: Appointment) => {
               setCashierExpandedId(appt.id); setCashierMode('pay')
-              setCashierAmount(appt.payment_amount || ''); setCashierTip(''); setCashierService(appt.service)
+              setCashierAmount(appt.payment_amount || ''); setCashierTip(''); setCashierExtraTip(''); setCashierExtraMethod('cash'); setCashierService(appt.service)
             }
             const openEdit = (appt: Appointment) => {
               setCashierExpandedId(appt.id); setCashierMode('edit')
-              setCashierAmount(appt.payment_amount || ''); setCashierTip(appt.tip_amount || ''); setCashierService(appt.service)
+              {
+                const ex = parseFloat(appt.extra_tip_amount || '') || 0
+                const main = (parseFloat(appt.tip_amount || '') || 0) - ex
+                setCashierAmount(appt.payment_amount || ''); setCashierTip(main > 0.004 ? main.toFixed(2) : ''); setCashierService(appt.service)
+                setCashierExtraTip(ex > 0 ? ex.toFixed(2) : ''); setCashierExtraMethod((appt.extra_tip_method as 'cash' | 'card' | 'zelle' | 'venmo') || 'cash')
+              }
             }
             const closeExpanded = () => { setCashierExpandedId(null); setCashierMode(null) }
 
@@ -8191,6 +8207,16 @@ export default function DeskAdmin() {
                           value={cashierTip} onChange={e => setCashierTip(e.target.value)}
                           className="w-16 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
                       </div>
+                      <div className="flex items-center border border-green-200 rounded-lg overflow-hidden bg-green-50" title="Extra tip paid another way (e.g. cash on top of a card tip)">
+                        <span className="text-xs text-green-700 px-2 border-r border-green-200 py-1.5">+ Extra tip $</span>
+                        <input type="number" min="0" step="0.01" placeholder="0"
+                          value={cashierExtraTip} onChange={e => setCashierExtraTip(e.target.value)}
+                          className="w-14 text-sm font-bold text-green-700 bg-transparent py-1.5 px-2 focus:outline-none" />
+                        <select value={cashierExtraMethod} onChange={e => setCashierExtraMethod(e.target.value as 'cash' | 'card' | 'zelle' | 'venmo')}
+                          className="text-xs text-green-700 bg-transparent border-l border-green-200 py-1.5 px-1 focus:outline-none">
+                          <option value="cash">Cash</option><option value="card">Card</option><option value="zelle">Zelle</option><option value="venmo">Venmo</option>
+                        </select>
+                      </div>
                       {(['cash', 'card', 'zelle', 'venmo'] as const).map(m => (
                         <button key={m} disabled={!cashierAmount || cashierSavingId === appt.id}
                           onClick={() => savePayment(appt, m)}
@@ -8225,6 +8251,16 @@ export default function DeskAdmin() {
                         <input type="number" min="0" step="0.01" placeholder="0"
                           value={cashierTip} onChange={e => setCashierTip(e.target.value)}
                           className="w-16 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
+                      </div>
+                      <div className="flex items-center border border-green-200 rounded-lg overflow-hidden bg-green-50" title="Extra tip paid another way (e.g. cash on top of a card tip)">
+                        <span className="text-xs text-green-700 px-2 border-r border-green-200 py-1.5">+ Extra tip $</span>
+                        <input type="number" min="0" step="0.01" placeholder="0"
+                          value={cashierExtraTip} onChange={e => setCashierExtraTip(e.target.value)}
+                          className="w-14 text-sm font-bold text-green-700 bg-transparent py-1.5 px-2 focus:outline-none" />
+                        <select value={cashierExtraMethod} onChange={e => setCashierExtraMethod(e.target.value as 'cash' | 'card' | 'zelle' | 'venmo')}
+                          className="text-xs text-green-700 bg-transparent border-l border-green-200 py-1.5 px-1 focus:outline-none">
+                          <option value="cash">Cash</option><option value="card">Card</option><option value="zelle">Zelle</option><option value="venmo">Venmo</option>
+                        </select>
                       </div>
                       <button onClick={() => saveEdit(appt)} disabled={cashierSavingId === appt.id}
                         className="text-xs bg-sky-500 hover:bg-sky-600 text-white px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50">

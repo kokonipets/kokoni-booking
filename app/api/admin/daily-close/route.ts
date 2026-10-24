@@ -134,13 +134,15 @@ export async function GET(req: NextRequest) {
     const methodsList = ['card', 'cash', 'zelle', 'venmo']
     const perDay: Record<string, { count: number; revenue: number; tips: number; byMethod: Record<string, number> }> = {}
     for (let from = 0; ; from += 1000) {
-      const { data: rows, error } = await sb
-        .from('appointments')
-        .select('appointment_date, payment_method, payment_amount, tip_amount, tip_method')
+      const MCOLS = 'appointment_date, payment_method, payment_amount, tip_amount, tip_method'
+      const monthQ = (cols: string) => sb.from('appointments').select(cols)
         .gte('appointment_date', first).lte('appointment_date', last).eq('payment_status', 'paid')
         .order('appointment_date').order('id').range(from, from + 999)
+      let { data: rows, error } = await monthQ(MCOLS + ', extra_tip_amount, extra_tip_method')
+      if (error) ({ data: rows, error } = await monthQ(MCOLS)) // extra-tip columns not migrated yet
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      for (const a of rows ?? []) {
+      type MRow = { appointment_date: string; payment_method: string | null; payment_amount: string | null; tip_amount: number | string | null; tip_method: string | null; extra_tip_amount?: number | string | null; extra_tip_method?: string | null }
+      for (const a of (rows ?? []) as unknown as MRow[]) {
         const m = a.payment_method && methodsList.includes(a.payment_method) ? a.payment_method : null
         if (!m) continue
         const amount = parseFloat(a.payment_amount ?? '') || 0
@@ -148,7 +150,10 @@ export async function GET(req: NextRequest) {
         const tipTo = a.tip_method && methodsList.includes(a.tip_method) ? a.tip_method : m
         const d = (perDay[a.appointment_date] ??= { count: 0, revenue: 0, tips: 0, byMethod: { card: 0, cash: 0, zelle: 0, venmo: 0 } })
         d.count++; d.revenue = r2(d.revenue + amount); d.tips = r2(d.tips + tip)
-        d.byMethod[m] = r2(d.byMethod[m] + amount); d.byMethod[tipTo] = r2(d.byMethod[tipTo] + tip)
+        const ex = Math.min(parseFloat(String(a.extra_tip_amount ?? '')) || 0, tip)
+        const exTo = a.extra_tip_method && methodsList.includes(a.extra_tip_method) ? a.extra_tip_method : 'cash'
+        d.byMethod[m] = r2(d.byMethod[m] + amount); d.byMethod[tipTo] = r2(d.byMethod[tipTo] + (tip - ex))
+        if (ex > 0) d.byMethod[exTo] = r2(d.byMethod[exTo] + ex)
       }
       if (!rows || rows.length < 1000) break
     }
@@ -186,10 +191,10 @@ export async function GET(req: NextRequest) {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: 'date required' }, { status: 400 })
   const supabase = admin()
 
-  const { data: rows, error } = await supabase
-    .from('appointments')
-    .select('id, client_phone, payment_method, payment_amount, tip_amount, tip_method, checked_out_at, appointment_time, service, assigned_groomer, pets(name), clients(name)')
-    .eq('appointment_date', date).eq('payment_status', 'paid')
+  const DAY_COLS = 'id, client_phone, payment_method, payment_amount, tip_amount, tip_method, checked_out_at, appointment_time, service, assigned_groomer, pets(name), clients(name)'
+  const dayQ = (cols: string) => supabase.from('appointments').select(cols).eq('appointment_date', date).eq('payment_status', 'paid')
+  let { data: rows, error } = await dayQ(DAY_COLS + ', extra_tip_amount, extra_tip_method')
+  if (error) ({ data: rows, error } = await dayQ(DAY_COLS)) // extra-tip columns not migrated yet
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Service id -> display name (new services are stored under numeric ids like svc_1776…).
@@ -202,39 +207,51 @@ export async function GET(req: NextRequest) {
   const totals: Record<string, { amount: number; tips: number; total: number; count: number; extraTips: number }> = {}
   for (const m of methods) totals[m] = { amount: 0, tips: 0, total: 0, count: 0, extraTips: 0 }
   const cardSys: Sys[] = []
-  const report: { id: string; time: string | null; pet: string; client: string; service: string | null; groomer: string | null; method: string | null; amount: number; tip: number; tipMethod: string | null; at: string | null }[] = []
+  const report: { id: string; time: string | null; pet: string; client: string; service: string | null; groomer: string | null; method: string | null; amount: number; tip: number; tipMethod: string | null; extraTip: number; extraMethod: string | null; at: string | null }[] = []
   const lines: Record<string, { id: string; method: string; pet: string; client: string; total: number; at: string | null; tipOnly: boolean }[]> = { zelle: [], venmo: [] }
   for (const a of (rows ?? []) as unknown as {
     id: string; client_phone: string; payment_method: string | null; payment_amount: string | null; tip_amount: number | string | null
-    tip_method: string | null; checked_out_at: string | null; appointment_time: string | null; service: string | null; assigned_groomer: string | null; pets: { name: string } | { name: string }[] | null; clients: { name: string } | { name: string }[] | null
+    tip_method: string | null; extra_tip_amount?: number | string | null; extra_tip_method?: string | null; checked_out_at: string | null; appointment_time: string | null; service: string | null; assigned_groomer: string | null; pets: { name: string } | { name: string }[] | null; clients: { name: string } | { name: string }[] | null
   }[]) {
     const amount = parseFloat(a.payment_amount ?? '') || 0
     const tip = parseFloat(String(a.tip_amount ?? '')) || 0
     report.push({
       id: a.id, time: a.appointment_time, service: a.service ? (svcName[a.service] ?? a.service) : a.service, groomer: a.assigned_groomer,
       pet: (Array.isArray(a.pets) ? a.pets[0]?.name : a.pets?.name) ?? '', client: (Array.isArray(a.clients) ? a.clients[0]?.name : a.clients?.name) ?? '',
-      method: a.payment_method, amount, tip, tipMethod: a.tip_method, at: a.checked_out_at,
+      method: a.payment_method, amount, tip, tipMethod: a.tip_method, extraTip: Math.min(parseFloat(String(a.extra_tip_amount ?? '')) || 0, tip), extraMethod: a.extra_tip_method || 'cash', at: a.checked_out_at,
     })
     const m = a.payment_method && (methods as readonly string[]).includes(a.payment_method) ? a.payment_method : null
     if (!m) continue
     // The tip can be paid a different way than the service (e.g. service on card, tip in cash):
     // it belongs to the drawer / app it actually went through.
     const tipTo = a.tip_method && (methods as readonly string[]).includes(a.tip_method) ? a.tip_method : m
+    // tip_amount is the TOTAL tip; an "extra" part (e.g. cash handed over on top of a card tip) goes
+    // to its own method.
+    const extra = Math.min(parseFloat(String(a.extra_tip_amount ?? '')) || 0, tip)
+    const extraTo = a.extra_tip_method && (methods as readonly string[]).includes(a.extra_tip_method) ? a.extra_tip_method : 'cash'
+    const mainTip = r2(tip - extra)
+    const tipParts: Record<string, number> = {}
+    if (mainTip > 0) tipParts[tipTo] = r2((tipParts[tipTo] ?? 0) + mainTip)
+    if (extra > 0) tipParts[extraTo] = r2((tipParts[extraTo] ?? 0) + extra)
     const t = totals[m]
     t.amount = r2(t.amount + amount); t.total = r2(t.total + amount); t.count++
-    const tt = totals[tipTo]
-    tt.tips = r2(tt.tips + tip); tt.total = r2(tt.total + tip)
-    if (tipTo !== m) tt.extraTips = r2(tt.extraTips + tip)
+    for (const [meth, amt] of Object.entries(tipParts)) {
+      const tt = totals[meth]
+      tt.tips = r2(tt.tips + amt); tt.total = r2(tt.total + amt)
+      if (meth !== m) tt.extraTips = r2(tt.extraTips + amt)
+    }
     {
       const petN = Array.isArray(a.pets) ? a.pets[0]?.name : a.pets?.name
       const clN = Array.isArray(a.clients) ? a.clients[0]?.name : a.clients?.name
-      if (m === 'zelle' || m === 'venmo') lines[m].push({ id: a.id, method: m, pet: petN ?? '', client: clN ?? '', total: r2(amount + (tipTo === m ? tip : 0)), at: a.checked_out_at, tipOnly: false })
-      if (tipTo !== m && (tipTo === 'zelle' || tipTo === 'venmo') && tip > 0) lines[tipTo].push({ id: a.id, method: tipTo, pet: petN ?? '', client: clN ?? '', total: r2(tip), at: a.checked_out_at, tipOnly: true })
+      if (m === 'zelle' || m === 'venmo') lines[m].push({ id: a.id, method: m, pet: petN ?? '', client: clN ?? '', total: r2(amount + (tipParts[m] ?? 0)), at: a.checked_out_at, tipOnly: false })
+      for (const [meth, amt] of Object.entries(tipParts)) {
+        if (meth !== m && (meth === 'zelle' || meth === 'venmo') && amt > 0) lines[meth].push({ id: a.id, method: meth, pet: petN ?? '', client: clN ?? '', total: r2(amt), at: a.checked_out_at, tipOnly: true })
+      }
     }
     if (m === 'card') {
       const pet = Array.isArray(a.pets) ? a.pets[0]?.name : a.pets?.name
       const cl = Array.isArray(a.clients) ? a.clients[0]?.name : a.clients?.name
-      cardSys.push({ id: a.id, phone: a.client_phone, pet: pet ?? '', client: cl ?? '', amount, tip, total: r2(amount + (tipTo === 'card' ? tip : 0)), at: a.checked_out_at, method: 'card' })
+      cardSys.push({ id: a.id, phone: a.client_phone, pet: pet ?? '', client: cl ?? '', amount, tip, total: r2(amount + (tipParts.card ?? 0)), at: a.checked_out_at, method: 'card' })
     }
   }
 
@@ -242,7 +259,7 @@ export async function GET(req: NextRequest) {
   {
     const { start, end } = laDayRange(date)
     for (const r of await fetchRetail(supabase, start, end)) {
-      report.push({ id: r.id, time: null, service: r.label || '零售', groomer: '零售 Retail', pet: '零售 Retail', client: '', method: r.method, amount: r.total, tip: 0, tipMethod: null, at: r.at })
+      report.push({ id: r.id, time: null, service: r.label || '零售', groomer: '零售 Retail', pet: '零售 Retail', client: '', method: r.method, amount: r.total, tip: 0, tipMethod: null, extraTip: 0, extraMethod: null, at: r.at })
       const m = (methods as readonly string[]).includes(r.method) ? r.method : null
       if (!m) continue
       const t = totals[m]

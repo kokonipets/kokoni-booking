@@ -730,7 +730,7 @@ export async function PATCH(
 
   // Record payment
   if (action === 'record-payment') {
-    const { payment_amount, tip_amount, payment_method, payment_status, addons, discount_label, discount_percent, discount_amount, discount_bearer, size_tier, tip_method } = body
+    const { payment_amount, tip_amount, payment_method, payment_status, addons, discount_label, discount_percent, discount_amount, discount_bearer, size_tier, tip_method, extra_tip_amount, extra_tip_method } = body
     const updates: Record<string, unknown> = {}
     if (payment_amount !== undefined) updates.payment_amount = payment_amount || null
     if (tip_amount !== undefined) updates.tip_amount = tip_amount || null
@@ -848,6 +848,15 @@ export async function PATCH(
         .update({ tip_method: tip_method || null })
         .eq('id', id)
       if (tipMethodErr) console.warn('tip_method not saved (run tip_method migration?):', tipMethodErr.message)
+    }
+
+    // Extra tip paid another way (e.g. card tip + extra cash). tip_amount is already the total.
+    if (extra_tip_amount !== undefined) {
+      const { error: extraErr } = await supabase
+        .from('appointments')
+        .update({ extra_tip_amount: extra_tip_amount || null, extra_tip_method: extra_tip_amount ? (extra_tip_method || 'cash') : null })
+        .eq('id', id)
+      if (extraErr) console.warn('extra tip not saved (run extra_tip migration?):', extraErr.message)
     }
 
     return NextResponse.json({ success: true })

@@ -56,6 +56,8 @@ type Appt = {
   payment_amount: string | null
   tip_amount: string | null
   tip_method: string | null
+  extra_tip_amount?: string | null
+  extra_tip_method?: string | null
   payment_status: string | null
   assigned_groomer: string | null
   assigned_bather: string | null
@@ -199,7 +201,15 @@ function CheckoutModal({
       ? (parseFloat(appt.payment_amount) + parseFloat(appt.discount_amount)).toFixed(2)
       : appt.payment_amount || ''
   )
-  const [tip, setTip] = useState(appt.tip_amount && appt.tip_amount !== '0' ? appt.tip_amount : '')
+  // tip_amount is the TOTAL tip; the extra part (paid another way, e.g. cash) is stored separately,
+  // so the main tip field shows total minus extra.
+  const savedExtra = parseFloat(appt.extra_tip_amount ?? '') || 0
+  const savedMain = (parseFloat(appt.tip_amount ?? '') || 0) - savedExtra
+  const [tip, setTip] = useState(savedMain > 0.004 ? savedMain.toFixed(2) : '')
+  const [extraTip, setExtraTip] = useState(savedExtra > 0 ? savedExtra.toFixed(2) : '')
+  const [extraMethod, setExtraMethod] = useState<'card' | 'cash' | 'venmo' | 'zelle'>(
+    (appt.extra_tip_method as 'card' | 'cash' | 'venmo' | 'zelle') || 'cash'
+  )
   const [discount, setDiscount] = useState(initialDiscount)
   const [isFirstTime, setIsFirstTime] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
@@ -227,7 +237,8 @@ function CheckoutModal({
   const discountAmt = discount ? Math.round(rawAmt * 0.20 * 100) / 100 : 0
   const serviceAmt = rawAmt - discountAmt
   const tipAmt = parseFloat(tip) || 0
-  const total = serviceAmt + tipAmt
+  const extraAmt = parseFloat(extraTip) || 0
+  const total = serviceAmt + tipAmt + extraAmt
 
   // Quick tip % for card; manual for others
   const cardTipPcts = [15, 18, 20, 25]
@@ -244,8 +255,10 @@ function CheckoutModal({
         body: JSON.stringify({
           action: 'record-payment',
           payment_amount: serviceAmt.toFixed(2),
-          tip_amount: tip || '0',
-          tip_method: parseFloat(tip) > 0 ? tipMethod : null,
+          tip_amount: (tipAmt + extraAmt) > 0 ? (tipAmt + extraAmt).toFixed(2) : '0',
+          tip_method: tipAmt > 0 ? tipMethod : null,
+          extra_tip_amount: extraAmt > 0 ? extraAmt.toFixed(2) : null,
+          extra_tip_method: extraAmt > 0 ? extraMethod : null,
           payment_method: method,
           payment_status: 'paid',
           discount_label: discount ? 'First-time customer 20% off' : null,
@@ -261,8 +274,10 @@ function CheckoutModal({
         setDone(true)
         onSuccess({
           payment_amount: serviceAmt.toFixed(2),
-          tip_amount: tip || '0',
-          tip_method: parseFloat(tip) > 0 ? tipMethod : null,
+          tip_amount: (tipAmt + extraAmt) > 0 ? (tipAmt + extraAmt).toFixed(2) : '0',
+          tip_method: tipAmt > 0 ? tipMethod : null,
+          extra_tip_amount: extraAmt > 0 ? extraAmt.toFixed(2) : null,
+          extra_tip_method: extraAmt > 0 ? extraMethod : null,
           payment_method: method,
           payment_status: 'paid',
         })
@@ -399,6 +414,18 @@ function CheckoutModal({
                 <TipMethodPicker value={tipMethod} onChange={m => { setTipMethod(m); setTipMethodTouched(true) }} />
               </div>
             )}
+            {/* Extra tip handed over another way (e.g. tip on the card + extra cash) */}
+            <div className="mt-3">
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Extra tip paid another way (optional)</p>
+              <div className="flex items-center rounded-2xl border-2 border-green-200 bg-green-50 overflow-hidden">
+                <span className="text-sm font-bold px-4 py-2.5 border-r-2 border-green-200 text-green-700">+ Tip $</span>
+                <input type="number" min="0" step="0.01" value={extraTip} onChange={e => setExtraTip(e.target.value)}
+                  placeholder="0.00"
+                  className="flex-1 text-lg font-black py-2.5 px-4 bg-transparent focus:outline-none text-green-700 placeholder:text-gray-300" />
+                {extraTip && <button onClick={() => setExtraTip('')} className="px-3 text-gray-300 hover:text-gray-500 text-lg">✕</button>}
+              </div>
+              {extraAmt > 0 && <TipMethodPicker value={extraMethod} onChange={setExtraMethod} />}
+            </div>
           </div>
 
           {/* Total */}
@@ -421,7 +448,7 @@ function CheckoutModal({
                 {discount && discountAmt > 0 && (
                   <p className="text-xs text-pink-400">−{fmtMoney(discountAmt.toFixed(2))}</p>
                 )}
-                <p className={`text-xs ${pm.text} opacity-70`}>+{fmtMoney(tip || '0')}</p>
+                <p className={`text-xs ${pm.text} opacity-70`}>+{fmtMoney((tipAmt + extraAmt).toFixed(2))}</p>
               </div>
             </div>
             <div className={`border-t-2 ${pm.border} mt-3 pt-3 flex items-center justify-between`}>
@@ -1189,11 +1216,11 @@ export default function CashierPage() {
   const fetchData = useCallback(async () => {
     try {
       const todayStr = selectedDateStr
-      const { data } = await supabase
-        .from('appointments')
-        .select('id, appointment_time, appointment_date, service, status, grooming_status, payment_method, payment_amount, tip_amount, payment_status, assigned_groomer, assigned_bather, pets(id, name, breed, photo_url), clients(name, phone)')
-        .eq('appointment_date', todayStr)
-        .order('appointment_time', { ascending: true })
+      const COLS = 'id, appointment_time, appointment_date, service, status, grooming_status, payment_method, payment_amount, tip_amount, payment_status, assigned_groomer, assigned_bather, pets(id, name, breed, photo_url), clients(name, phone)'
+      const runQ = (cols: string) => supabase.from('appointments').select(cols).eq('appointment_date', todayStr).order('appointment_time', { ascending: true })
+      // tip_method / extra tip columns are newer — fall back to the plain list if they're not migrated yet
+      let { data, error: listErr } = await runQ(COLS + ', tip_method, extra_tip_amount, extra_tip_method')
+      if (listErr) ({ data } = await runQ(COLS))
 
       const list = (data ?? []) as Appt[]
 
