@@ -2164,6 +2164,16 @@ export default function DeskAdmin() {
     return { start: fmt(start), end: fmt(end), pay: fmt(pay) }
   }, [])
 
+  // A calendar month for the Payroll tab: 'this' = current month, 'last' = previous month
+  const computePayrollMonth = useCallback((which: 'this' | 'last') => {
+    const now = salonNow(); if (now.getHours() < 4) now.setDate(now.getDate() - 1)
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const m = now.getMonth() - (which === 'last' ? 1 : 0)
+    const start = new Date(now.getFullYear(), m, 1)
+    const end = new Date(now.getFullYear(), m + 1, 0)
+    return { start: fmt(start), end: fmt(end) }
+  }, [])
+
   // Pre-fill the most recently completed pay period (you run payroll after a
   // period ends), plus its default pay date, when entering the Payroll tab.
   useEffect(() => {
@@ -7791,7 +7801,7 @@ export default function DeskAdmin() {
               <div className="bg-white rounded-2xl border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                   <h2 className="text-lg font-bold text-gray-800">📅 Payroll Period</h2>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <button
                       onClick={() => { const p = computePayrollPeriod('next'); setPayrollStartDate(p.start); setPayrollEndDate(p.end); setPayrollPayDate(p.pay) }}
                       className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-semibold rounded-lg transition-colors"
@@ -7809,6 +7819,18 @@ export default function DeskAdmin() {
                       className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
                     >
                       Last Pay Period
+                    </button>
+                    <button
+                      onClick={() => { const p = computePayrollMonth('this'); setPayrollStartDate(p.start); setPayrollEndDate(p.end) }}
+                      className="px-3 py-1.5 bg-violet-100 hover:bg-violet-200 text-violet-700 text-xs font-semibold rounded-lg transition-colors"
+                    >
+                      This Month 本月
+                    </button>
+                    <button
+                      onClick={() => { const p = computePayrollMonth('last'); setPayrollStartDate(p.start); setPayrollEndDate(p.end) }}
+                      className="px-3 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-semibold rounded-lg transition-colors"
+                    >
+                      Last Month 上月
                     </button>
                   </div>
                 </div>
