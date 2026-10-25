@@ -7832,6 +7832,14 @@ export default function DeskAdmin() {
                     >
                       Last Month 上月
                     </button>
+                    <select
+                      value={(() => { const m = payrollStartDate.match(/^(\d{4})-(\d{2})-01$/); if (!m) return ''; const last = new Date(Number(m[1]), Number(m[2]), 0).getDate(); return payrollEndDate === `${m[1]}-${m[2]}-${String(last).padStart(2, '0')}` ? `${m[1]}-${m[2]}` : '' })()}
+                      onChange={e => { const v = e.target.value; if (!v) return; const [y, mo] = v.split('-').map(Number); const last = new Date(y, mo, 0).getDate(); setPayrollStartDate(`${v}-01`); setPayrollEndDate(`${v}-${String(last).padStart(2, '0')}`) }}
+                      className="px-2 py-1.5 bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold rounded-lg"
+                    >
+                      <option value="">Pick a month 選月份…</option>
+                      {Array.from({ length: 24 }, (_, i) => { const n = salonNow(); const d = new Date(n.getFullYear(), n.getMonth() - i, 1); const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; return <option key={v} value={v}>{d.getFullYear()} 年 {d.getMonth() + 1} 月</option> })}
+                    </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
