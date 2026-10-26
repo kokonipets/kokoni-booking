@@ -226,6 +226,34 @@ function firstName(name: string | null | undefined): string {
 // Parse "1:15 PM" or "13:15" or "13:15:00" into a local Date on the given date string
 const SALON_TZ = 'America/Los_Angeles'
 
+// ── Pickup wait: how long a "Ready" dog has been waiting for its owner ──────
+// Front-desk reminder only (no SMS). Orange after 1 hour, red after 2 hours.
+function pickupReadyAt(a: { grooming_finished_at?: string | null; grooming_status_updated_at?: string | null }) {
+  return a.grooming_finished_at || a.grooming_status_updated_at || null
+}
+function pickupWaitMins(a: { grooming_finished_at?: string | null; grooming_status_updated_at?: string | null }, nowMs: number) {
+  const at = pickupReadyAt(a)
+  if (!at) return null
+  return Math.max(0, Math.floor((nowMs - new Date(at).getTime()) / 60000))
+}
+function PickupWaitBadge({ appt, nowMs }: { appt: { grooming_finished_at?: string | null; grooming_status_updated_at?: string | null }; nowMs: number }) {
+  const mins = pickupWaitMins(appt, nowMs)
+  if (mins === null) return null
+  const h = Math.floor(mins / 60), m = mins % 60
+  const label = h > 0 ? `${h}h ${m}m` : `${m} min`
+  const cls = mins >= 120
+    ? 'text-white bg-red-500 border-red-600 animate-pulse'
+    : mins >= 60
+      ? 'text-orange-700 bg-orange-100 border-orange-300'
+      : 'text-green-700 bg-green-50 border-green-200'
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-lg border ${cls}`}
+      title="Time since this dog was marked Ready for pickup">
+      ⏰ Waiting {label}{mins >= 60 ? ' · call owner 請聯絡主人' : ''}
+    </span>
+  )
+}
+
 // How many ms the given timezone is ahead of UTC at `date`.
 function tzOffsetMs(tz: string, date: Date): number {
   const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -776,6 +804,12 @@ export default function DeskAdmin() {
   const [groomingAppts, setGroomingAppts] = useState<Appointment[]>([])
   const [groomingLoading, setGroomingLoading] = useState(false)
   const [groomingView, setGroomingView] = useState<'list' | 'board'>('list')
+  // Ticks every 30s so "Waiting 1h 5m" pickup badges stay current between data refreshes
+  const [pickupNow, setPickupNow] = useState(() => Date.now())
+  useEffect(() => {
+    const iv = setInterval(() => setPickupNow(Date.now()), 30000)
+    return () => clearInterval(iv)
+  }, [])
   const [groomingUpdating, setGroomingUpdating] = useState<string | null>(null)
   const [groomingCelebrate, setGroomingCelebrate] = useState<Appointment | null>(null)
   const [groomingSmsAlert, setGroomingSmsAlert] = useState<string | null>(null)
@@ -5637,21 +5671,29 @@ export default function DeskAdmin() {
                     const nowMs = Date.now()
                     const isOverdue = (a: Appointment) => !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs - 5 * 60000
                     const lateCount    = appointments.filter(isOverdue).length
-                    const comingCount  = appointments.filter(a => !a.grooming_status && !isOverdue(a)).length + lateCount
-                    const inSalonCount = appointments.filter(a => a.grooming_status === 'waiting' || a.grooming_status === 'incare' || a.grooming_status === 'ready').length
+                    // "Not here yet" includes the late ones (shown as a red sub-line) so nothing is counted twice
+                    const notHereCount = appointments.filter(a => !a.grooming_status && a.status !== 'completed').length
+                    const inSalonCount = appointments.filter(a => a.grooming_status === 'waiting' || a.grooming_status === 'incare').length
+                    const readyAppts   = appointments.filter(a => a.grooming_status === 'ready')
+                    const waitingLong  = readyAppts.filter(a => (pickupWaitMins(a, pickupNow) ?? 0) >= 60).length
                     const doneCount    = appointments.filter(a => a.grooming_status === 'done' || a.status === 'completed').length
+                    const tiles: { label: string; value: number; color: string; sub?: string; subColor?: string }[] = [
+                      { label: 'Not here yet 未到店', value: notHereCount, color: 'bg-sky-50 text-sky-700 border-sky-100',
+                        sub: lateCount > 0 ? `${lateCount} late 遲到` : undefined, subColor: 'text-red-600' },
+                      { label: 'In salon 美容中', value: inSalonCount, color: 'bg-amber-50 text-amber-700 border-amber-100' },
+                      { label: 'Ready for pickup 待接回', value: readyAppts.length,
+                        color: waitingLong > 0 ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-green-50 text-green-700 border-green-100',
+                        sub: waitingLong > 0 ? `⏰ ${waitingLong} waiting 1h+ · 請聯絡主人` : undefined, subColor: 'text-orange-700' },
+                      { label: 'Done 已完成', value: doneCount, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+                    ]
                     return (
                       <>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                          {[
-                            { label:'Coming',   value: comingCount,  color:'bg-sky-50 text-sky-700 border-sky-100' },
-                            { label:'Late',     value: lateCount,    color: lateCount > 0 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-gray-50 text-gray-400 border-gray-100' },
-                            { label:'In Salon', value: inSalonCount, color:'bg-amber-50 text-amber-700 border-amber-100' },
-                            { label:'Done',     value: doneCount,    color:'bg-emerald-50 text-emerald-700 border-emerald-100' },
-                          ].map(s => (
+                          {tiles.map(s => (
                             <div key={s.label} className={`rounded-2xl border p-4 ${s.color}`}>
                               <p className="text-3xl font-bold">{s.value}</p>
                               <p className="text-sm font-medium mt-1">{s.label}</p>
+                              {s.sub && <p className={`text-xs font-bold mt-1 ${s.subColor ?? ''}`}>{s.sub}</p>}
                             </div>
                           ))}
                         </div>
@@ -5800,6 +5842,12 @@ export default function DeskAdmin() {
                                     <TimeLine label="Msg sent"    time={fmtTs(appt.owner_notified_at)}    colorClass={isDone ? 'text-gray-500 bg-gray-100' : 'text-emerald-700 bg-emerald-50'} suffix=" ✓" />
                                   )}
                                   <TimeLine label="Checked out" time={fmtTs(appt.checked_out_at)}       colorClass="text-pink-500 bg-pink-50" suffix=" ✓" fallback={isReady ? 'waiting' : 'not yet'} />
+                                  {isReady && !appt.checked_out_at && (
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-20 text-xs text-gray-400 flex-shrink-0">Pickup</span>
+                                      <PickupWaitBadge appt={appt} nowMs={pickupNow} />
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Groom Time / No-Show / Reschedule actions */}
