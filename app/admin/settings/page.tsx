@@ -21,6 +21,7 @@ type StaffMember = {
   hourly_rate?: number
   commission_percent: number
   tip_percent: number
+  rate_history?: { effective_from: string; commission_percent: number; tip_percent: number }[]
   clock_pin?: string
   work_hours: Record<string, { start: string; end: string }>
   days_off: string[]
@@ -131,6 +132,31 @@ export default function SettingsPage() {
   const [formData, setFormData] = useState<Partial<StaffMember> & { password?: string }>({})
   // Date a changed Commission % / Tip % starts to apply (earlier payroll keeps the old rate). Blank = today.
   const [ratesEffectiveFrom, setRatesEffectiveFrom] = useState('')
+  // "Create a new pay rate" mini-form (applies from its start date forward; old rates stay in the history)
+  const [newRateC, setNewRateC] = useState('')
+  const [newRateT, setNewRateT] = useState('')
+  const [newRateDate, setNewRateDate] = useState('')
+  const [savingNewRate, setSavingNewRate] = useState(false)
+  const createNewRate = async () => {
+    if (!editingId) return
+    const c = parseFloat(newRateC), t = parseFloat(newRateT)
+    if (isNaN(c) || isNaN(t) || c < 0 || t < 0 || c > 100 || t > 100) { setSavingMessage({ type: 'error', text: 'Enter both Commission % and Tip % (0–100) for the new rate.' }); return }
+    const start = newRateDate || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+    setSavingNewRate(true)
+    try {
+      const res = await fetch(`/api/admin/staff/${editingId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commission_percent: c, tip_percent: t, rates_effective_from: start }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed')
+      setFormData(prev => ({ ...prev, commission_percent: c, tip_percent: t }))
+      setNewRateC(''); setNewRateT(''); setNewRateDate('')
+      await loadStaff()
+      setSavingMessage({ type: 'success', text: `✅ New pay rate created — starts ${start}` })
+    } catch (e) {
+      setSavingMessage({ type: 'error', text: `Could not create rate: ${e instanceof Error ? e.message : 'error'}` })
+    } finally { setSavingNewRate(false) }
+  }
   const [showForm, setShowForm] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth())
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear())
@@ -939,6 +965,8 @@ export default function SettingsPage() {
                         step="0.5"
                         placeholder="Enter % (optional)"
                         value={formData.commission_percent ?? ''}
+                        readOnly={!!editingId}
+                        title={editingId ? '要改比例請用下面的「新增費率」 Use “Create a new pay rate” below to change this' : undefined}
                         onChange={e => {
                           const val = e.target.value.trim()
                           setFormData(prev => ({
@@ -964,6 +992,8 @@ export default function SettingsPage() {
                         step="0.5"
                         placeholder="Enter % (optional)"
                         value={formData.tip_percent ?? ''}
+                        readOnly={!!editingId}
+                        title={editingId ? '要改比例請用下面的「新增費率」 Use “Create a new pay rate” below to change this' : undefined}
                         onChange={e => {
                           const val = e.target.value.trim()
                           setFormData(prev => ({
@@ -982,10 +1012,50 @@ export default function SettingsPage() {
                 </div>
                 {editingId && (
                   <div className="mt-2 rounded-xl bg-amber-50 border border-amber-200 p-3">
-                    <label className="text-xs font-semibold text-amber-800 block mb-1">📅 新費率從哪天開始算 Rates effective from</label>
-                    <input type="date" value={ratesEffectiveFrom} onChange={e => setRatesEffectiveFrom(e.target.value)}
-                      className="border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none" />
-                    <p className="text-[11px] text-amber-700 mt-1">只在你改了 Commission % 或 Tip % 時有用。留空 = 從今天起；這天以前的薪資仍用舊比例。 If you change a % above, it applies from this date forward (blank = today); earlier payroll keeps the old rate.</p>
+                    <p className="text-xs font-semibold text-amber-800 mb-1">📜 費率紀錄 Pay rate history</p>
+                    {(() => {
+                      const h = (staff.find(x => x.id === editingId)?.rate_history ?? []).slice().sort((x, y) => x.effective_from.localeCompare(y.effective_from))
+                      if (!h.length) return <p className="text-[11px] text-amber-700 mt-2">📜 費率紀錄 Rate history：目前還沒有變更紀錄，所有日期都使用上面的比例。 No changes recorded yet — the % above applies to all dates.</p>
+                      return (
+                        <div className="mt-1">
+                                                    <div className="rounded-lg bg-white border border-amber-100 divide-y divide-amber-50 text-xs">
+                            {h.map((r, idx) => {
+                              const last = idx === h.length - 1
+                              const from = r.effective_from <= '2001-01-01' ? '原本 Original' : new Date(r.effective_from + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' 起 from'
+                              const to = last ? '至今 now' : '到 until ' + new Date(new Date(h[idx + 1].effective_from + 'T12:00:00').getTime() - 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                              return (
+                                <div key={r.effective_from} className={`flex items-center justify-between px-3 py-1.5 ${last ? 'bg-amber-50/60 font-semibold' : ''}`}>
+                                  <span className="text-gray-600">{from} · {to}</span>
+                                  <span className="text-gray-800">Commission {r.commission_percent}% · Tip {r.tip_percent}%{last ? '  ← 目前 current' : ''}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                    <div className="mt-3 pt-3 border-t border-amber-200">
+                      <p className="text-xs font-semibold text-amber-800 mb-2">＋ 新增費率 Create a new pay rate</p>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="text-[11px] text-gray-600">Commission %
+                          <input type="number" min="0" max="100" step="0.5" value={newRateC} onChange={e => setNewRateC(e.target.value)}
+                            className="block w-24 border border-amber-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none" />
+                        </label>
+                        <label className="text-[11px] text-gray-600">Tip %
+                          <input type="number" min="0" max="100" step="0.5" value={newRateT} onChange={e => setNewRateT(e.target.value)}
+                            className="block w-24 border border-amber-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none" />
+                        </label>
+                        <label className="text-[11px] text-gray-600">開始日 Starting (blank = today)
+                          <input type="date" value={newRateDate} onChange={e => setNewRateDate(e.target.value)}
+                            className="block border border-amber-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none" />
+                        </label>
+                        <button type="button" onClick={createNewRate} disabled={savingNewRate}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50">
+                          {savingNewRate ? '…' : '新增 Create'}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-amber-700 mt-2">舊費率和紀錄都會保留；新費率只從開始日起算，這天以前的薪資仍用舊比例。 Old rates stay in the history; the new rate applies from its start date forward.</p>
+                    </div>
                   </div>
                 )}
 
