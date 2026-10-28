@@ -17,7 +17,7 @@ type StaffMember = {
   username?: string
   phone?: string
   address?: string
-  pay_type: 'hourly' | 'salary'
+  pay_type: 'hourly' | 'salary' | 'commission' | 'both'
   hourly_rate?: number
   commission_percent: number
   tip_percent: number
@@ -113,6 +113,14 @@ const getCalendarDates = (year: number, month: number) => {
   return dates
 }
 
+// Pay type shown in the staff form: Hourly or Commission. Rows saved before this (pay_type 'hourly' but with a
+// commission / tip %) show as Commission until the user explicitly picks a type.
+const effPayType = (m: { pay_type?: string | null; commission_percent?: number | null; tip_percent?: number | null; payTypeChosen?: boolean }): 'hourly' | 'commission' => {
+  if (m.pay_type === 'commission' || m.pay_type === 'both') return 'commission'
+  if (m.payTypeChosen) return 'hourly'
+  return ((m.commission_percent ?? 0) > 0 || (m.tip_percent ?? 0) > 0) ? 'commission' : 'hourly'
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const [authChecked, setAuthChecked] = useState(false)
@@ -129,7 +137,7 @@ export default function SettingsPage() {
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('sky')
   const [savingTag, setSavingTag] = useState(false)
-  const [formData, setFormData] = useState<Partial<StaffMember> & { password?: string }>({})
+  const [formData, setFormData] = useState<Partial<StaffMember> & { password?: string; payTypeChosen?: boolean }>({})
   // Date a changed Commission % / Tip % starts to apply (earlier payroll keeps the old rate). Blank = today.
   const [ratesEffectiveFrom, setRatesEffectiveFrom] = useState('')
   // "Create a new pay rate" mini-form (applies from its start date forward; old rates stay in the history)
@@ -137,6 +145,23 @@ export default function SettingsPage() {
   const [newRateT, setNewRateT] = useState('')
   const [newRateDate, setNewRateDate] = useState('')
   const [savingNewRate, setSavingNewRate] = useState(false)
+  const deleteRate = async (effectiveFrom: string) => {
+    if (!editingId) return
+    if (!confirm(`刪除這筆費率（${effectiveFrom} 起）？Delete the rate starting ${effectiveFrom}? Earlier rates stay.`)) return
+    try {
+      const res = await fetch(`/api/admin/staff/${editingId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delete_rate_effective_from: effectiveFrom }),
+      })
+      const out = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(out.error || 'Failed')
+      if (out.commission_percent !== undefined) setFormData(prev => ({ ...prev, commission_percent: out.commission_percent, tip_percent: out.tip_percent }))
+      await loadStaff()
+      setSavingMessage({ type: 'success', text: '✅ Rate removed' })
+    } catch (e) {
+      setSavingMessage({ type: 'error', text: `Could not remove: ${e instanceof Error ? e.message : 'error'}` })
+    }
+  }
   const createNewRate = async () => {
     if (!editingId) return
     const c = parseFloat(newRateC), t = parseFloat(newRateT)
@@ -148,8 +173,9 @@ export default function SettingsPage() {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ commission_percent: c, tip_percent: t, rates_effective_from: start }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed')
-      setFormData(prev => ({ ...prev, commission_percent: c, tip_percent: t }))
+      const out = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(out.error || 'Failed')
+      setFormData(prev => ({ ...prev, commission_percent: out.commission_percent ?? c, tip_percent: out.tip_percent ?? t }))
       setNewRateC(''); setNewRateT(''); setNewRateDate('')
       await loadStaff()
       setSavingMessage({ type: 'success', text: `✅ New pay rate created — starts ${start}` })
@@ -547,8 +573,9 @@ export default function SettingsPage() {
             password: formData.password,
             phone: formData.phone,
             address: formData.address,
-            pay_type: formData.pay_type || 'hourly',
-            hourly_rate: typeof formData.hourly_rate === 'number' ? formData.hourly_rate : null,
+            pay_type: effPayType(formData),
+            // A commission-only person has no hourly rate — clear any stale one so it can't show up anywhere
+            hourly_rate: effPayType(formData) === 'commission' ? null : (typeof formData.hourly_rate === 'number' ? formData.hourly_rate : null),
             commission_percent: typeof formData.commission_percent === 'number' ? formData.commission_percent : 0,
             tip_percent: typeof formData.tip_percent === 'number' ? formData.tip_percent : 0,
             rates_effective_from: ratesEffectiveFrom || undefined,
@@ -594,8 +621,9 @@ export default function SettingsPage() {
             phone: formData.phone,
             address: formData.address,
             password: formData.password,
-            pay_type: formData.pay_type || 'hourly',
-            hourly_rate: typeof formData.hourly_rate === 'number' ? formData.hourly_rate : null,
+            pay_type: effPayType(formData),
+            // A commission-only person has no hourly rate — clear any stale one so it can't show up anywhere
+            hourly_rate: effPayType(formData) === 'commission' ? null : (typeof formData.hourly_rate === 'number' ? formData.hourly_rate : null),
             commission_percent: typeof formData.commission_percent === 'number' ? formData.commission_percent : 0,
             tip_percent: typeof formData.tip_percent === 'number' ? formData.tip_percent : 0,
             clock_pin: formData.clock_pin ?? null,
@@ -878,32 +906,22 @@ export default function SettingsPage() {
                 <>
                 {/* Pay Type */}
                 <div>
-                  <label className="text-xs font-semibold text-gray-600 block mb-1">Pay Type</label>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1">Pay Type 薪資方式</label>
                   <div className="flex items-center gap-2 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, pay_type: 'hourly' }))}
-                      className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${
-                        (formData.pay_type || 'hourly') === 'hourly'
-                          ? 'bg-sky-600 text-white border-sky-600'
-                          : 'bg-white text-gray-600 border-gray-200'
-                      }`}
-                    >
-                      Hourly
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, pay_type: 'salary' }))}
-                      className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${
-                        formData.pay_type === 'salary'
-                          ? 'bg-sky-600 text-white border-sky-600'
-                          : 'bg-white text-gray-600 border-gray-200'
-                      }`}
-                    >
-                      Salary
-                    </button>
+                    {([
+                      { v: 'hourly', label: 'Hourly 時薪' },
+                      { v: 'commission', label: 'Commission 抽成' },
+                    ] as const).map(o => (
+                      <button key={o.v} type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, pay_type: o.v, payTypeChosen: true }))}
+                        className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${
+                          effPayType(formData) === o.v ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200'
+                        }`}>
+                        {o.label}
+                      </button>
+                    ))}
                   </div>
-                  {(formData.pay_type || 'hourly') === 'hourly' && (
+                  {effPayType(formData) !== 'commission' && (
                     <div className="flex items-center border border-gray-200 rounded-xl px-3 py-2">
                       <span className="text-xs text-gray-400 mr-1">$</span>
                       <input
@@ -927,32 +945,13 @@ export default function SettingsPage() {
                       <span className="text-xs text-gray-400 ml-1">/ hr</span>
                     </div>
                   )}
-                  {formData.pay_type === 'salary' && (
-                    <div className="flex items-center border border-gray-200 rounded-xl px-3 py-2">
-                      <span className="text-xs text-gray-400 mr-1">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="100"
-                        placeholder="Annual salary"
-                        value={formData.hourly_rate ?? ''}
-                        onChange={e => {
-                          const val = e.target.value.trim()
-                          setFormData(prev => ({
-                            ...prev,
-                            hourly_rate: val === '' ? undefined : parseFloat(val)
-                          }))
-                        }}
-                        onFocus={(e) => {
-                          setTimeout(() => e.currentTarget.select(), 0)
-                        }}
-                        className="flex-1 text-sm focus:outline-none"
-                      />
-                      <span className="text-xs text-gray-400 ml-1">/ yr</span>
-                    </div>
+                  {effPayType(formData) === 'commission' && (
+                    <p className="text-xs text-gray-400">只有抽成和小費分成，沒有時薪。 Commission and tip share only — no hourly pay.</p>
                   )}
                 </div>
 
+                {effPayType(formData) !== 'hourly' && (
+                <>
                 {/* Commission & Tips */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -1026,7 +1025,11 @@ export default function SettingsPage() {
                               return (
                                 <div key={r.effective_from} className={`flex items-center justify-between px-3 py-1.5 ${last ? 'bg-amber-50/60 font-semibold' : ''}`}>
                                   <span className="text-gray-600">{from} · {to}</span>
-                                  <span className="text-gray-800">Commission {r.commission_percent}% · Tip {r.tip_percent}%{last ? '  ← 目前 current' : ''}</span>
+                                  <span className="text-gray-800">Commission {r.commission_percent}% · Tip {r.tip_percent}%{last ? '  ← 目前 current' : ''}
+                                    {r.effective_from > '2001-01-01' && (
+                                      <button type="button" onClick={() => deleteRate(r.effective_from)} className="ml-2 text-red-400 hover:text-red-600 font-bold" title="刪除這筆費率 Delete this rate">✕</button>
+                                    )}
+                                  </span>
                                 </div>
                               )
                             })}
@@ -1054,9 +1057,12 @@ export default function SettingsPage() {
                           {savingNewRate ? '…' : '新增 Create'}
                         </button>
                       </div>
-                      <p className="text-[11px] text-amber-700 mt-2">舊費率和紀錄都會保留；新費率只從開始日起算，這天以前的薪資仍用舊比例。 Old rates stay in the history; the new rate applies from its start date forward.</p>
+                      <p className="text-[11px] text-amber-700 mt-2">舊費率和紀錄都會保留；新費率只從開始日起算，這天以前的薪資仍用舊比例。 Old rates stay in the history; the new rate applies from its start date forward. 寫錯了？按上面那筆的 ✕ 刪除再重新新增；或用「同一個開始日」再新增一次就會覆蓋。</p>
                     </div>
                   </div>
+                )}
+
+                </>
                 )}
 
                 {/* Clock-in PIN */}
@@ -1585,19 +1591,21 @@ export default function SettingsPage() {
                                 <div>
                                   <span className="text-gray-600 font-semibold">Pay:</span>
                                   <p className="text-gray-800">
-                                    {(member.pay_type || 'hourly') === 'hourly'
-                                      ? `$${member.hourly_rate ?? 0}/hr`
-                                      : `$${(member.hourly_rate ?? 0).toLocaleString()}/yr`
+                                    {effPayType(member) === 'commission'
+                                      ? 'Commission only'
+                                      : (member.pay_type === 'salary'
+                                        ? `$${(member.hourly_rate ?? 0).toLocaleString()}/yr`
+                                        : `$${member.hourly_rate ?? 0}/hr`)
                                     }
                                   </p>
                                 </div>
                                 <div>
                                   <span className="text-gray-600 font-semibold">Commission:</span>
-                                  <p className="text-gray-800">{member.commission_percent}%</p>
+                                  <p className="text-gray-800">{effPayType(member) === 'hourly' ? '—' : `${member.commission_percent}%`}</p>
                                 </div>
                                 <div>
                                   <span className="text-gray-600 font-semibold">Tips:</span>
-                                  <p className="text-gray-800">{member.tip_percent}%</p>
+                                  <p className="text-gray-800">{effPayType(member) === 'hourly' ? '—' : `${member.tip_percent}%`}</p>
                                 </div>
                               </div>
                             </div>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { ratesOn } from '@/lib/commission'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -17,7 +18,7 @@ export async function PATCH(
   context: { params: { id: string } }
 ) {
   const supabase = getAdminClient()
-  const { is_active, first_name, last_name, name, role, phone, address, pay_type, hourly_rate, commission_percent, tip_percent, work_hours, days_off, special_hours, permissions, username, email, password, clock_pin, rates_effective_from } = await req.json()
+  const { is_active, first_name, last_name, name, role, phone, address, pay_type, hourly_rate, commission_percent, tip_percent, work_hours, days_off, special_hours, permissions, username, email, password, clock_pin, rates_effective_from, delete_rate_effective_from } = await req.json()
   const id = context.params.id
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,6 +48,23 @@ export async function PATCH(
   if (email !== undefined) updates.email = email?.trim() || null
   if (password) updates.password_hash = Buffer.from(password).toString('base64')
 
+  // Remove one entry from the rate history (typo / wrong date). The baseline (original) entry can't be removed.
+  // Afterwards the staff row's "current" rates are set to whatever is in force today.
+  let recalculated: { commission_percent: number; tip_percent: number } | null = null
+  const recalcCurrent = async () => {
+    const { data: rows } = await supabase.from('staff_rate_history').select('effective_from, commission_percent, tip_percent').eq('staff_id', id)
+    if (!rows || rows.length === 0) return
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+    const r = ratesOn({ rate_history: rows as { effective_from: string; commission_percent: number; tip_percent: number }[] }, today)
+    updates.commission_percent = r.commission
+    updates.tip_percent = r.tip
+    recalculated = { commission_percent: r.commission, tip_percent: r.tip }
+  }
+  if (typeof delete_rate_effective_from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(delete_rate_effective_from) && delete_rate_effective_from > '2001-01-01') {
+    await supabase.from('staff_rate_history').delete().eq('staff_id', id).eq('effective_from', delete_rate_effective_from)
+    await recalcCurrent()
+  }
+
   // Record commission / tip-share changes with an effective date, so payroll for earlier days keeps the old rate.
   // First change ever: also store the OLD rates as a baseline that covers all earlier dates.
   if (commission_percent !== undefined || tip_percent !== undefined) {
@@ -63,6 +81,7 @@ export async function PATCH(
           await supabase.from('staff_rate_history').upsert({ staff_id: id, effective_from: '2000-01-01', commission_percent: oldC, tip_percent: oldT }, { onConflict: 'staff_id,effective_from' })
         }
         await supabase.from('staff_rate_history').upsert({ staff_id: id, effective_from: eff, commission_percent: newC, tip_percent: newT }, { onConflict: 'staff_id,effective_from' })
+        await recalcCurrent()
       }
     } catch (e) { console.warn('staff_rate_history not recorded (run the staff_rate_history migration?):', e) }
   }
@@ -88,7 +107,7 @@ export async function PATCH(
   }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, ...(recalculated ?? {}) })
 }
 
 export async function DELETE(
