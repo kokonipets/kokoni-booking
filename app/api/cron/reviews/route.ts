@@ -11,6 +11,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Vercel cron runs on UTC and is scheduled twice (summer + winter). Only run at 20:00 Los Angeles time,
+  // so the send time stays the same across daylight-saving changes. Add ?force=1 to run manually.
+  const _laHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23' }).format(new Date()))
+  if (_laHour !== 20 && !new URL(request.url).searchParams.get('force')) {
+    return NextResponse.json({ skipped: true, laHour: _laHour })
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

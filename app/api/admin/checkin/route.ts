@@ -15,7 +15,7 @@ function getAdminClient() {
 // GET today's confirmed appointments with their checkin status
 export async function GET() {
   const supabase = getAdminClient()
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
 
   const { data: appointments, error } = await supabase
     .from('appointments')

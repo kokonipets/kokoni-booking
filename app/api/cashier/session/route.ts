@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const { action, staff_id, staff_name, session_id } = await req.json()
 
   if (action === 'start') {
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
     const { data, error } = await supabase
       .from('cashier_sessions')
       .insert({

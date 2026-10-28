@@ -15,6 +15,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Vercel cron runs on UTC and is scheduled twice (summer + winter). Only run at 11:00 Los Angeles time,
+  // so the send time stays the same across daylight-saving changes. Add ?force=1 to run manually.
+  const _laHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23' }).format(new Date()))
+  if (_laHour !== 11 && !new URL(req.url).searchParams.get('force')) {
+    return NextResponse.json({ skipped: true, laHour: _laHour })
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -61,6 +68,17 @@ export async function GET(req: NextRequest) {
       const clientName = (clientData.name ?? 'there').split(' ')[0]
       const petName = (appt.pets as { name: string } | null)?.name ?? 'your pet'
 
+      // Claim this appointment so a repeated/overlapping run can never text the same client twice.
+      // (If the reminder_sent_at column doesn't exist yet, skip the guard and send as before.)
+      let claimed = false
+      const claim = await supabase.from('appointments')
+        .update({ reminder_sent_at: new Date().toISOString() })
+        .eq('id', appt.id).is('reminder_sent_at', null).select('id')
+      if (!claim.error) {
+        if (!claim.data || claim.data.length === 0) return { id: appt.id, skipped: 'already sent' }
+        claimed = true
+      }
+
       const result = await sendAppointmentReminder({
         to: `+1${phone}`,
         clientName,
@@ -68,6 +86,11 @@ export async function GET(req: NextRequest) {
         service: appt.service,
         time: appt.appointment_time,
       })
+
+      // Sending failed -> release the claim so a later run can retry
+      if (claimed && (result as { success?: boolean })?.success === false) {
+        await supabase.from('appointments').update({ reminder_sent_at: null }).eq('id', appt.id)
+      }
 
       return { id: appt.id, ...result }
     })
