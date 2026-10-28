@@ -17,7 +17,7 @@ export async function PATCH(
   context: { params: { id: string } }
 ) {
   const supabase = getAdminClient()
-  const { is_active, first_name, last_name, name, role, phone, address, pay_type, hourly_rate, commission_percent, tip_percent, work_hours, days_off, special_hours, permissions, username, email, password, clock_pin } = await req.json()
+  const { is_active, first_name, last_name, name, role, phone, address, pay_type, hourly_rate, commission_percent, tip_percent, work_hours, days_off, special_hours, permissions, username, email, password, clock_pin, rates_effective_from } = await req.json()
   const id = context.params.id
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,6 +46,26 @@ export async function PATCH(
   if (username) updates.username = username.trim()
   if (email !== undefined) updates.email = email?.trim() || null
   if (password) updates.password_hash = Buffer.from(password).toString('base64')
+
+  // Record commission / tip-share changes with an effective date, so payroll for earlier days keeps the old rate.
+  // First change ever: also store the OLD rates as a baseline that covers all earlier dates.
+  if (commission_percent !== undefined || tip_percent !== undefined) {
+    try {
+      const { data: before } = await supabase.from('staff').select('commission_percent, tip_percent').eq('id', id).single()
+      const oldC = Number(before?.commission_percent ?? 0), oldT = Number(before?.tip_percent ?? 0)
+      const newC = commission_percent !== undefined ? Number(commission_percent) : oldC
+      const newT = tip_percent !== undefined ? Number(tip_percent) : oldT
+      if (before && (newC !== oldC || newT !== oldT)) {
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+        const eff = typeof rates_effective_from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rates_effective_from) ? rates_effective_from : today
+        const { count } = await supabase.from('staff_rate_history').select('id', { count: 'exact', head: true }).eq('staff_id', id)
+        if (!count) {
+          await supabase.from('staff_rate_history').upsert({ staff_id: id, effective_from: '2000-01-01', commission_percent: oldC, tip_percent: oldT }, { onConflict: 'staff_id,effective_from' })
+        }
+        await supabase.from('staff_rate_history').upsert({ staff_id: id, effective_from: eff, commission_percent: newC, tip_percent: newT }, { onConflict: 'staff_id,effective_from' })
+      }
+    } catch (e) { console.warn('staff_rate_history not recorded (run the staff_rate_history migration?):', e) }
+  }
 
   let { error } = await supabase.from('staff').update(updates).eq('id', id)
 

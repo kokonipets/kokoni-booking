@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { loadRateHistory } from '@/lib/commission'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -20,7 +21,9 @@ export async function GET() {
     .order('created_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ staff: data })
+  // Attach each person's effective-dated rate history (payroll uses the rate in force on each date)
+  const hist = await loadRateHistory(supabase)
+  return NextResponse.json({ staff: (data ?? []).map((m: { id: string }) => ({ ...m, rate_history: hist[m.id] ?? [] })) })
 }
 
 export async function POST(req: NextRequest) {

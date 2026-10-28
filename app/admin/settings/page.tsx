@@ -129,6 +129,8 @@ export default function SettingsPage() {
   const [newTagColor, setNewTagColor] = useState('sky')
   const [savingTag, setSavingTag] = useState(false)
   const [formData, setFormData] = useState<Partial<StaffMember> & { password?: string }>({})
+  // Date a changed Commission % / Tip % starts to apply (earlier payroll keeps the old rate). Blank = today.
+  const [ratesEffectiveFrom, setRatesEffectiveFrom] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth())
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear())
@@ -523,6 +525,7 @@ export default function SettingsPage() {
             hourly_rate: typeof formData.hourly_rate === 'number' ? formData.hourly_rate : null,
             commission_percent: typeof formData.commission_percent === 'number' ? formData.commission_percent : 0,
             tip_percent: typeof formData.tip_percent === 'number' ? formData.tip_percent : 0,
+            rates_effective_from: ratesEffectiveFrom || undefined,
             clock_pin: formData.clock_pin ?? null,
             work_hours: cleanWorkHours(formData.work_hours),
             days_off: formData.days_off,
@@ -546,6 +549,7 @@ export default function SettingsPage() {
         } : s))
         await loadStaff()
         setEditingId(null)
+        setRatesEffectiveFrom('')
         setSavingButton('staff_done')
         setTimeout(() => { setSavingButton(null); setSavingMessage(null) }, 2000)
         setSavingMessage({ type: 'success', text: '✅ Staff updated!' })
@@ -976,6 +980,14 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 </div>
+                {editingId && (
+                  <div className="mt-2 rounded-xl bg-amber-50 border border-amber-200 p-3">
+                    <label className="text-xs font-semibold text-amber-800 block mb-1">📅 新費率從哪天開始算 Rates effective from</label>
+                    <input type="date" value={ratesEffectiveFrom} onChange={e => setRatesEffectiveFrom(e.target.value)}
+                      className="border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none" />
+                    <p className="text-[11px] text-amber-700 mt-1">只在你改了 Commission % 或 Tip % 時有用。留空 = 從今天起；這天以前的薪資仍用舊比例。 If you change a % above, it applies from this date forward (blank = today); earlier payroll keeps the old rate.</p>
+                  </div>
+                )}
 
                 {/* Clock-in PIN */}
                 <div>

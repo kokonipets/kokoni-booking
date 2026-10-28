@@ -32,3 +32,36 @@ export function commissionableAmount(
   if (bearer === 'split') return paymentAmount + discountAmount / 2
   return paymentAmount + discountAmount // 'store' (default)
 }
+
+
+// ── Effective-dated payroll rates ────────────────────────────────────────────
+// staff.commission_percent / tip_percent hold the CURRENT rates; staff_rate_history holds each change
+// with the date it takes effect, so a raise (or cut) only applies from that day forward.
+export type RateHistoryRow = { effective_from: string; commission_percent: number; tip_percent: number }
+
+/** The groomer's commission % and tip-share % that applied on `date` (YYYY-MM-DD). */
+export function ratesOn(
+  member: { commission_percent?: number | null; tip_percent?: number | null; rate_history?: RateHistoryRow[] | null } | null | undefined,
+  date: string
+): { commission: number; tip: number } {
+  const cur = { commission: Number(member?.commission_percent ?? 0), tip: Number(member?.tip_percent ?? 0) }
+  const h = (member?.rate_history ?? []).slice().sort((a, b) => a.effective_from.localeCompare(b.effective_from))
+  if (!h.length) return cur
+  let pick = h[0] // dates before the first entry use the earliest (baseline) rates
+  for (const r of h) if (r.effective_from <= date) pick = r
+  return { commission: Number(pick.commission_percent), tip: Number(pick.tip_percent) }
+}
+
+/** Best-effort load of all staff rate history (empty if the table isn't migrated yet). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function loadRateHistory(sb: any): Promise<Record<string, RateHistoryRow[]>> {
+  const out: Record<string, RateHistoryRow[]> = {}
+  try {
+    const { data, error } = await sb.from('staff_rate_history').select('staff_id, effective_from, commission_percent, tip_percent')
+    if (error || !data) return out
+    for (const r of data as { staff_id: string; effective_from: string; commission_percent: number; tip_percent: number }[]) {
+      (out[r.staff_id] ||= []).push({ effective_from: r.effective_from, commission_percent: Number(r.commission_percent), tip_percent: Number(r.tip_percent) })
+    }
+  } catch { /* table missing */ }
+  return out
+}

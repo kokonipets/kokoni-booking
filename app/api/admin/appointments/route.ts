@@ -90,6 +90,34 @@ export async function GET(req: NextRequest) {
       .eq('status', 'pending')
       .order('appointment_date', { ascending: true })
       .order('appointment_time', { ascending: true })
+
+    // Flag first-time visits so New Client Intake lists only genuinely new clients
+    // (returning clients' online requests are also 'pending' until confirmed — they belong in Pending Request).
+    if (!result.error && result.data?.length) {
+      const phones = [...new Set(result.data.map((a: { client_phone: string }) => a.client_phone))]
+      const { data: allAppts } = await fetchAllRows<{ client_phone: string; appointment_date: string }>((from, to) =>
+        supabase
+          .from('appointments')
+          .select('client_phone, appointment_date')
+          .in('client_phone', phones)
+          .not('status', 'eq', 'cancelled')
+          .order('appointment_date', { ascending: true })
+          .range(from, to)
+      )
+      const firstDateByPhone: Record<string, string> = {}
+      for (const a of (allAppts || [])) {
+        if (!firstDateByPhone[a.client_phone] || a.appointment_date < firstDateByPhone[a.client_phone]) {
+          firstDateByPhone[a.client_phone] = a.appointment_date
+        }
+      }
+      result = {
+        ...result,
+        data: result.data.map((a: { client_phone: string; appointment_date: string }) => ({
+          ...a,
+          is_new_client: firstDateByPhone[a.client_phone] === a.appointment_date,
+        })),
+      }
+    }
   } else if (status === 'requests') {
     // All upcoming pending + confirmed + rescheduled appointments (for Pending Request tab)
     result = await supabase

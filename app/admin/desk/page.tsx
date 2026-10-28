@@ -8,7 +8,7 @@ import ChatSidebarLink from '@/components/ChatSidebarLink'
 import ChatIconButton from '@/components/ChatIconButton'
 import RetailSell from '@/components/RetailSell'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
-import { commissionableAmount } from '@/lib/commission'
+import { commissionableAmount, ratesOn, type RateHistoryRow } from '@/lib/commission'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffMember = {
@@ -21,6 +21,7 @@ type StaffMember = {
   is_active: boolean
   commission_percent: number
   tip_percent: number
+  rate_history?: RateHistoryRow[]
   days_off?: string[]
   work_hours?: Record<string, { start: string; end: string }> | null
   special_hours?: Record<string, { start: string; end: string }> | null
@@ -406,6 +407,7 @@ export default function DeskAdmin() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [pendingCount, setPendingCount] = useState<number>(0)
+  const [intakeCount, setIntakeCount] = useState<number>(0) // pending requests from genuinely NEW clients
   const prevPendingCountRef = useRef<number | null>(null)
   const confirmedGroomerIdsRef = useRef<Set<string>>(new Set())
   const prevPunchesRef = useRef<Map<string, string> | null>(null)
@@ -2107,8 +2109,8 @@ export default function DeskAdmin() {
           byDate[d].tips += tip
           // Look up this appointment's groomer rates
           const apptMember = a.assigned_groomer ? staff.find(s => s.name === a.assigned_groomer) : null
-          const cRate = apptMember ? apptMember.commission_percent / 100 : 0
-          const tRate = apptMember ? apptMember.tip_percent / 100 : 0
+          const cRate = apptMember ? ratesOn(apptMember, d).commission / 100 : 0
+          const tRate = apptMember ? ratesOn(apptMember, d).tip / 100 : 0
           byDate[d].commission += commBase * cRate
           byDate[d].tipShare += tip * tRate
         }
@@ -2126,30 +2128,31 @@ export default function DeskAdmin() {
         const memberAppts = appts.filter((a: any) => a.assigned_groomer === member.name)
         const paidAppts = memberAppts.filter((a: any) => a.payment_status === 'paid')
         const revenue = paidAppts.reduce((s: number, a: any) => s + parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0'), 0)
-        const commissionBase = paidAppts.reduce((s: number, a: any) => s + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat(a.discount_amount || '0'), a.discount_bearer), 0)
         const tips = memberAppts.reduce((s: number, a: any) => s + parseFloat(a.tip_amount || '0'), 0)
-        const commRate = member.commission_percent / 100
-        const tipRate = member.tip_percent / 100
+        // Commission / tip share use the rate in force on each appointment's date (rates can change mid-period).
+        const commissionTotal = paidAppts.reduce((s: number, a: any) => s + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat(a.discount_amount || '0'), a.discount_bearer) * ratesOn(member, a.appointment_date).commission / 100, 0)
+        const tipShareTotal = memberAppts.reduce((s: number, a: any) => s + parseFloat(a.tip_amount || '0') * ratesOn(member, a.appointment_date).tip / 100, 0)
+        const lastDay = (memberAppts.map((a: any) => a.appointment_date as string).sort().pop()) || ''
         return {
           name: member.name,
           appts: memberAppts.length,
           revenue,
           tips,
-          commission: commissionBase * commRate,
-          tipShare: tips * tipRate,
-          commRate: member.commission_percent,
-          tipRate: member.tip_percent,
+          commission: commissionTotal,
+          tipShare: tipShareTotal,
+          commRate: ratesOn(member, lastDay || '9999-12-31').commission,
+          tipRate: ratesOn(member, lastDay || '9999-12-31').tip,
         }
       }).filter(g => g.appts > 0 || payrollSelectedGroomer)
 
       // ── Per-groomer daily breakdown (for per-groomer PDF detail tables) ──
       const dailyByGroomer: Record<string, PayrollDailyRow[]> = {}
       groomersToShow.forEach(member => {
-        const cRate = member.commission_percent / 100
-        const tRate = member.tip_percent / 100
         const mByDate: Record<string, {appts:number;revenue:number;tips:number;commission:number;tipShare:number}> = {}
         appts.filter((a: any) => a.assigned_groomer === member.name).forEach((a: any) => {
           const d = a.appointment_date
+          const cRate = ratesOn(member, d).commission / 100
+          const tRate = ratesOn(member, d).tip / 100
           if (!mByDate[d]) mByDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
           mByDate[d].appts += 1
           if (a.payment_status === 'paid') {
@@ -2791,6 +2794,7 @@ export default function DeskAdmin() {
       }
       prevPendingCountRef.current = count
       setPendingCount(count)
+      setIntakeCount((data.appointments || []).filter((x: { is_new_client?: boolean }) => x.is_new_client !== false).length)
 
       // Check for new groomer confirmations (confirmed appointments)
       const res2 = await fetch('/api/admin/appointments?status=upcoming')
@@ -2962,6 +2966,7 @@ export default function DeskAdmin() {
       setPendingCount(appointments.filter(a => a.status === 'pending').length)
     } else if (tab === 'intake') {
       setPendingCount(appointments.length)
+      setIntakeCount(appointments.filter(x => x.is_new_client !== false).length)
     }
   }, [tab, appointments])
 
@@ -5489,7 +5494,7 @@ export default function DeskAdmin() {
                   {key === 'requests' && badge(pendingCount)}
                   {key === 'vaccines' && badge(vaccineCount)}
                   {key === 'not_opted_in' && badge(notOptedInCount)}
-                  {key === 'intake' && badge(pendingCount)}
+                  {key === 'intake' && badge(intakeCount)}
                 </button>
               )
             }
@@ -6565,19 +6570,19 @@ export default function DeskAdmin() {
           })()}
 
           {/* ── INTAKE FORM SUBMISSIONS ───────────────────────────────────── */}
-          {tab === 'intake' && (
+          {tab === 'intake' && (() => { const intakeList = appointments.filter(x => x.is_new_client !== false); return (
             <div>
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm text-gray-500">New booking requests — review profile &amp; confirm.</p>
-                {appointments.length > 0 && <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">{appointments.length} pending</span>}
+                {intakeList.length > 0 && <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">{intakeList.length} pending</span>}
               </div>
               {loading && <p className="text-gray-400 text-sm">Loading...</p>}
-              {!loading && appointments.length === 0 && (
+              {!loading && intakeList.length === 0 && (
                 <div className="bg-white rounded-2xl border border-gray-200 py-16 text-center text-gray-400">No new client submissions</div>
               )}
-              {!loading && appointments.length > 0 && (
+              {!loading && intakeList.length > 0 && (
                 <div className="grid gap-4">
-                  {appointments.map(appt => {
+                  {intakeList.map(appt => {
                     const vaccineStatus = appt.pets?.vaccine_status
                     const vaccineLabel =
                       vaccineStatus === 'verified' ? '✓ Verified'
@@ -6807,7 +6812,7 @@ export default function DeskAdmin() {
                 </div>
               )}
             </div>
-          )}
+          ) })()}
 
           {/* ── PET PARENTS ───────────────────────────────────────────────── */}
           {tab === 'clients' && (
