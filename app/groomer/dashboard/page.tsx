@@ -2026,10 +2026,37 @@ export default function GroomerDashboard() {
                   <span className="font-semibold text-red-500">−${(helperPaidComm + helperPaidTip).toFixed(2)}</span>
                 </div>
               )}
+              {(helperPaidComm > 0 || helperPaidTip > 0) && (
+                <div className="border-t border-amber-100 pt-1.5 mt-1 space-y-1">
+                  {paidAppts.filter(a => a.helper_groomer).map(a => {
+                    const c = commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * commissionPct / 100
+                    const cut = helperCut(a, c, parseFloat(a.tip_amount || '0') * tipPct / 100)
+                    return (
+                      <div key={a.id} className="flex justify-between gap-3 text-xs">
+                        <span className="text-gray-500 min-w-0 truncate">{formatDate(a.appointment_date)} · {a.pets?.name ?? 'Pet'} · Assist by {a.helper_groomer}</span>
+                        <span className="font-semibold text-red-500 whitespace-nowrap">−${(cut.comm + cut.tip).toFixed(2)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
               {helperJobs.length > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Earned assisting others · {helperJobs.length} appt{helperJobs.length !== 1 ? 's' : ''} (added above)</span>
                   <span className="font-semibold text-emerald-600">+${(helperEarnComm + helperEarnTip).toFixed(2)}</span>
+                </div>
+              )}
+              {helperJobs.length > 0 && (
+                <div className="border-t border-amber-100 pt-1.5 mt-1 space-y-1">
+                  {helperJobs.map(a => {
+                    const e = (a as unknown as { helper_earn?: { comm: number; tip: number } }).helper_earn
+                    return (
+                      <div key={a.id} className="flex justify-between gap-3 text-xs">
+                        <span className="text-gray-500 min-w-0 truncate">{formatDate(a.appointment_date)} · {a.pets?.name ?? 'Pet'} · Assist for {a.assigned_groomer ?? '—'}</span>
+                        <span className="font-semibold text-emerald-600 whitespace-nowrap">+${((e?.comm || 0) + (e?.tip || 0)).toFixed(2)}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>

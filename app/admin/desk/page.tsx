@@ -755,7 +755,8 @@ export default function DeskAdmin() {
   const [payrollSelectedGroomer, setPayrollSelectedGroomer] = useState('')
   type PayrollDailyRow = {date:string;appts:number;revenue:number;tips:number;commission:number;tipShare:number}
   type PayrollGroomerRow = {name:string;helperJobs?:number;appts:number;revenue:number;tips:number;commission:number;tipShare:number;commRate:number;tipRate:number}
-  type PayrollReportData = {daily: PayrollDailyRow[]; groomers: PayrollGroomerRow[]; dailyByGroomer: Record<string, PayrollDailyRow[]>}
+  type PayrollAssistLine = {date:string;pet:string;kind:'by'|'for';other:string;amount:number}
+  type PayrollReportData = {daily: PayrollDailyRow[]; groomers: PayrollGroomerRow[]; dailyByGroomer: Record<string, PayrollDailyRow[]>; assistByGroomer?: Record<string, PayrollAssistLine[]>}
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
 
   // Reports
@@ -2198,7 +2199,18 @@ export default function DeskAdmin() {
           .map(([date, v]) => ({ date, appts: v.appts, revenue: v.revenue, tips: v.tips, commission: v.commission, tipShare: v.tipShare }))
       })
 
-      setPayrollReport({ daily, groomers, dailyByGroomer })
+      // Assist detail per groomer: who they paid ('by') and who they assisted ('for')
+      const assistByGroomer: Record<string, PayrollAssistLine[]> = {}
+      appts.filter((a: any) => a.helper_groomer && a.payment_status === 'paid').forEach((a: any) => {
+        const cut = ownerShare(a).cut
+        const amt = cut.comm + cut.tip
+        const pet = (a.pets as { name?: string } | null)?.name ?? 'Pet'
+        if (a.assigned_groomer) (assistByGroomer[a.assigned_groomer] ||= []).push({ date: a.appointment_date, pet, kind: 'by', other: a.helper_groomer, amount: amt })
+        ;(assistByGroomer[a.helper_groomer] ||= []).push({ date: a.appointment_date, pet, kind: 'for', other: a.assigned_groomer || '—', amount: amt })
+      })
+      Object.values(assistByGroomer).forEach(l => l.sort((x, y) => x.date.localeCompare(y.date)))
+
+      setPayrollReport({ daily, groomers, dailyByGroomer, assistByGroomer })
     } catch (e) {
       console.error(e)
       alert('Error generating payroll report')
@@ -2629,6 +2641,23 @@ export default function DeskAdmin() {
           dy += drH + 2
         }
 
+        // ── Assist detail (who this person paid / assisted) ──
+        const assistLines = payrollReport.assistByGroomer?.[g.name] || []
+        if (assistLines.length > 0) {
+          dy += 18
+          if (dy > H - 90) { doc.addPage(); dy = M }
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK)
+          doc.text('Assist (already included above)', M, dy)
+          dy += 16
+          assistLines.forEach(l => {
+            if (dy > H - 70) { doc.addPage(); dy = M }
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...INK)
+            doc.text(`${fmtDate(l.date)}  ·  ${l.pet}  ·  ${l.kind === 'by' ? 'Assist by' : 'Assist for'} ${l.other}`, M + 8, dy)
+            doc.text(`${l.kind === 'by' ? '-' : '+'}${money(l.amount)}`, W - M - 8, dy, { align: 'right' })
+            dy += 16
+          })
+        }
+
         // ── Footer on every statement page (skip the cover) ──
         const pageCount = doc.getNumberOfPages()
         const firstContentPage = hasCover ? 2 : 1
@@ -2645,7 +2674,7 @@ export default function DeskAdmin() {
         return doc
       }
 
-      const groomersWithData = payrollReport.groomers.filter(g => g.appts > 0 || payrollSelectedGroomer)
+      const groomersWithData = payrollReport.groomers.filter(g => g.appts > 0 || (g.helperJobs ?? 0) > 0 || payrollSelectedGroomer)
       if (groomersWithData.length === 0) { alert('No groomer data to export.'); return }
 
       const coverUrl = await loadCover()
@@ -8104,6 +8133,20 @@ export default function DeskAdmin() {
                                 <p className="text-xs text-gray-400 mt-0.5">${g.tips.toFixed(2)} collected × {g.tipRate}%</p>
                               </div>
                             </div>
+                            {(payrollReport.assistByGroomer?.[g.name]?.length ?? 0) > 0 && (
+                              <div className="px-4 pb-3 border-t border-gray-100 pt-3">
+                                <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">🤝 Assist</p>
+                                <div className="space-y-1">
+                                  {payrollReport.assistByGroomer![g.name].map((l, i) => (
+                                    <div key={i} className="flex justify-between text-xs text-gray-600">
+                                      <span>{l.date} · {l.pet} · {l.kind === 'by' ? `Assist by ${l.other}` : `Assist for ${l.other}`}</span>
+                                      <span className={`font-semibold ${l.kind === 'by' ? 'text-red-500' : 'text-emerald-600'}`}>{l.kind === 'by' ? '−' : '+'}${l.amount.toFixed(2)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <p className="text-[11px] text-gray-400 mt-1">Already included in the totals above.</p>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
