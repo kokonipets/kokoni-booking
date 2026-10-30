@@ -9881,12 +9881,14 @@ export default function DeskAdmin() {
                 return `${h12}:${m.toString().padStart(2, '0')} ${ap}`
               }
 
-              const columns: { key: string; label: string; icon: string; colorClass: string; appts: Appointment[] }[] = [
+              const dayDowD = new Date(selectedDay + 'T12:00:00').getDay()
+              const columns: { key: string; label: string; icon: string; colorClass: string; appts: Appointment[]; off?: boolean }[] = [
                 ...activeGroomers.map((s, i) => ({
                   key: s.id,
                   label: s.name.split(' ')[0],
                   icon: s.name.slice(0,1).toUpperCase(),
                   colorClass: i % 2 === 0 ? 'bg-sky-500' : 'bg-teal-500',
+                  off: !isStaffWorking(s, selectedDay, dayDowD), // marked off / not scheduled this day
                   appts: dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name) || sameStaff(a.assigned_bather, s.name)),
                 })),
                 ...(unassignedAppts.length > 0 ? [{
@@ -9948,10 +9950,11 @@ export default function DeskAdmin() {
                       {columns.map(col => {
                         const grid = buildGrid(col.appts)
                         return (
-                          <div key={col.key} className="flex-1 min-w-[220px] flex flex-col">
-                            <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-3 py-2 flex items-center gap-2">
+                          <div key={col.key} className={`flex-1 min-w-[220px] flex flex-col ${col.off ? 'bg-gray-100' : ''}`}>
+                            <div className={`sticky top-0 z-10 border-b border-gray-100 px-3 py-2 flex items-center gap-2 ${col.off ? 'bg-gray-200' : 'bg-white'}`}>
                               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 ${col.colorClass}`}>{col.icon}</div>
                               <span className="text-xs font-bold text-gray-800 truncate">{col.label}</span>
+                              {col.off && <span className="text-[10px] font-bold text-gray-500 bg-gray-300/70 rounded-full px-2 py-0.5 flex-shrink-0">Off</span>}
                               <span className="text-[10px] font-semibold text-gray-400 ml-auto flex-shrink-0">{col.appts.length} appt{col.appts.length!==1?'s':''}</span>
                             </div>
                             <div className="flex flex-col">
@@ -9963,7 +9966,7 @@ export default function DeskAdmin() {
                                 return (
                                   <div key={slot} className={`flex items-stretch min-h-[44px] group transition-opacity ${
                                     noSep ? '' : 'border-b border-gray-50'
-                                  } ${segs ? '' : blocked ? 'bg-rose-50/60' : 'hover:bg-gray-50/60'}`}>
+                                  } ${segs ? '' : blocked ? 'bg-rose-50/60' : col.off ? 'bg-gray-100' : 'hover:bg-gray-50/60'}`}>
                                     {/* Time label */}
                                     <div className="w-16 flex-shrink-0 flex items-center justify-end pr-2 py-1">
                                       <span className="text-[11px] font-semibold text-gray-400">{slot}</span>
@@ -10036,6 +10039,11 @@ export default function DeskAdmin() {
                                           </button>
                                           <button onClick={() => { setBlockingSlot(null); setBlockReason('') }}
                                             className="text-[10px] text-gray-400 hover:text-gray-600 px-0.5 flex-shrink-0">✕</button>
+                                        </div>
+                                      ) : col.off ? (
+                                        <div className="flex-1 flex items-center">
+                                          <button onClick={() => startAddAppt(slot)} title="Staff is off — add anyway"
+                                            className="w-5 h-5 rounded-full text-gray-400 hover:bg-gray-300 text-xs font-bold flex items-center justify-center opacity-40 hover:opacity-100">+</button>
                                         </div>
                                       ) : (
                                         <div className="flex-1 flex items-center gap-1.5">
