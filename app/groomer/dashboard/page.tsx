@@ -374,7 +374,8 @@ export default function GroomerDashboard() {
   const [helperCommPct, setHelperCommPct] = useState('')
   const [helperTipPct, setHelperTipPct] = useState('')
   const [savingHelper, setSavingHelper] = useState(false)
-  useEffect(() => { setHelperEditing(false) }, [selectedAppt?.id])
+  const [showPastVisits, setShowPastVisits] = useState(false)
+  useEffect(() => { setHelperEditing(false); setShowPastVisits(false) }, [selectedAppt?.id])
   const [assigningStaff, setAssigningStaff] = useState(false)
   // Reschedule modal state
   const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null)
@@ -2624,13 +2625,16 @@ export default function GroomerDashboard() {
               {/* ── Past Visits (service + price history for this pet) ── */}
               {selectedAppt.pets?.id && (
                 <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Past Visits</p>
-                  {loadingHistory ? (
+                  <button type="button" onClick={() => setShowPastVisits(v => !v)} className="w-full flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Past Visits{!loadingHistory && petHistory.length > 0 ? ` (${petHistory.length})` : ''}</p>
+                    <span className="text-xs font-semibold text-gray-400">{showPastVisits ? '▲ Hide' : '▼ Show'}</span>
+                  </button>
+                  {!showPastVisits ? null : loadingHistory ? (
                     <p className="text-sm text-gray-400 text-center py-3">Loading…</p>
                   ) : petHistory.length === 0 ? (
                     <p className="text-sm text-gray-400 text-center py-3">No previous paid visits yet</p>
                   ) : (
-                    <div className="space-y-2 max-h-56 overflow-y-auto">
+                    <div className="space-y-2 mt-3">
                       {petHistory.map(v => {
                         const addOns = (v.notes_list ?? []).filter(n => n.is_addon)
                         const groomerName = v.assigned_groomer || v.assigned_bather
