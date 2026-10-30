@@ -10,6 +10,9 @@ import RetailSell from '@/components/RetailSell'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 import { commissionableAmount, ratesOn, helperCut, type RateHistoryRow } from '@/lib/commission'
 
+// Staff names are matched on exact name OR first name, so an appointment saved as "Wylie" still belongs to the staff member "Wylie Shen"
+const sameStaff = (a?: string | null, b?: string | null) => !!a && !!b && (a === b || a.trim().split(/\s+/)[0].toLowerCase() === b.trim().split(/\s+/)[0].toLowerCase())
+
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffMember = {
   id: string
@@ -2087,13 +2090,13 @@ export default function DeskAdmin() {
       const appts = allAppts.filter((a: any) => {
         if (a.status === 'cancelled' || a.status === 'no_show') return false
         if (a.appointment_date < payrollStartDate || a.appointment_date > payrollEndDate) return false
-        if (payrollSelectedGroomer && a.assigned_groomer !== payrollSelectedGroomer && a.helper_groomer !== payrollSelectedGroomer) return false
+        if (payrollSelectedGroomer && !sameStaff(a.assigned_groomer, payrollSelectedGroomer) && !sameStaff(a.helper_groomer, payrollSelectedGroomer)) return false
         return true
       })
 
       // Helper (partner) groomer: owner's commission/tip share on an appointment, and the cut the helper takes out of it.
       const ownerShare = (a: any) => {
-        const m = a.assigned_groomer ? staff.find(s => s.name === a.assigned_groomer) : null
+        const m = a.assigned_groomer ? staff.find(s => sameStaff(s.name, a.assigned_groomer)) : null
         const d = a.appointment_date
         const comm = m ? commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat(a.discount_amount || '0'), a.discount_bearer) * ratesOn(m, d).commission / 100 : 0
         const tip = m ? parseFloat(a.tip_amount || '0') * ratesOn(m, d).tip / 100 : 0
@@ -2135,7 +2138,7 @@ export default function DeskAdmin() {
         : staff
 
       const groomers = groomersToShow.map(member => {
-        const memberAppts = appts.filter((a: any) => a.assigned_groomer === member.name)
+        const memberAppts = appts.filter((a: any) => sameStaff(a.assigned_groomer, member.name))
         const helperJobsList = appts.filter((a: any) => a.helper_groomer === member.name && a.assigned_groomer !== member.name && a.payment_status === 'paid')
         const paidAppts = memberAppts.filter((a: any) => a.payment_status === 'paid')
         const revenue = paidAppts.reduce((s: number, a: any) => s + parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0'), 0)
@@ -2165,7 +2168,7 @@ export default function DeskAdmin() {
       const dailyByGroomer: Record<string, PayrollDailyRow[]> = {}
       groomersToShow.forEach(member => {
         const mByDate: Record<string, {appts:number;revenue:number;tips:number;commission:number;tipShare:number}> = {}
-        appts.filter((a: any) => a.assigned_groomer === member.name).forEach((a: any) => {
+        appts.filter((a: any) => sameStaff(a.assigned_groomer, member.name)).forEach((a: any) => {
           const d = a.appointment_date
           const cRate = ratesOn(member, d).commission / 100
           const tRate = ratesOn(member, d).tip / 100
@@ -3334,7 +3337,7 @@ export default function DeskAdmin() {
                           {groomers.map(s => {
                             const w = workFor(s)
                             const colHeight = (CAL_END - CAL_START) * CAL_PX
-                            const colAppts = dayAppts.filter(a => a.assigned_groomer === s.name || a.assigned_bather === s.name)
+                            const colAppts = dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name) || sameStaff(a.assigned_bather, s.name))
                             const pickable = staffCalSelectingId !== null && !!w
                             return (
                               <div key={s.id}
@@ -9847,6 +9850,8 @@ export default function DeskAdmin() {
                     const nextMin = idx + 1 < halfHourSlots.length ? toMinsD(halfHourSlots[idx + 1]) : sMin + 30
                     if (startMin < nextMin && endMin > sMin) coveredIdx.push(idx)
                   })
+                  // Appointment outside the open-hours timeline (e.g. booked before opening): pin it to the nearest row instead of hiding it
+                  if (coveredIdx.length === 0 && halfHourSlots.length > 0) coveredIdx.push(startMin < toMinsD(halfHourSlots[0]) ? 0 : halfHourSlots.length - 1)
                   if (coveredIdx.length === 0) return
                   coveredIdx.forEach((idx, i) => {
                     const kind: Seg['kind'] = coveredIdx.length === 1 ? 'solo' : i === 0 ? 'top' : i === coveredIdx.length - 1 ? 'bottom' : 'mid'
@@ -9882,7 +9887,7 @@ export default function DeskAdmin() {
                   label: s.name.split(' ')[0],
                   icon: s.name.slice(0,1).toUpperCase(),
                   colorClass: i % 2 === 0 ? 'bg-sky-500' : 'bg-teal-500',
-                  appts: dayAppts.filter(a => a.assigned_groomer === s.name || a.assigned_bather === s.name),
+                  appts: dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name) || sameStaff(a.assigned_bather, s.name)),
                 })),
                 ...(unassignedAppts.length > 0 ? [{
                   key: '__unassigned',
@@ -9891,6 +9896,21 @@ export default function DeskAdmin() {
                   colorClass: 'bg-gray-400',
                   appts: unassignedAppts,
                 }] : []),
+                // Appointments assigned to someone who has no column here (inactive staff, bather-only, a team name, etc.)
+                // — previously these silently vanished from the day view.
+                ...(() => {
+                  const shownIds = new Set<string>()
+                  activeGroomers.forEach(s => dayAppts.forEach(a => { if (sameStaff(a.assigned_groomer, s.name) || sameStaff(a.assigned_bather, s.name)) shownIds.add(a.id) }))
+                  unassignedAppts.forEach(a => shownIds.add(a.id))
+                  const other = dayAppts.filter(a => !shownIds.has(a.id))
+                  return other.length > 0 ? [{
+                    key: '__other',
+                    label: [...new Set(other.map(a => a.assigned_groomer || a.assigned_bather || '?'))].join(', ').slice(0, 24),
+                    icon: '•',
+                    colorClass: 'bg-amber-400',
+                    appts: other,
+                  }] : []
+                })(),
               ]
 
               return (
