@@ -2624,7 +2624,7 @@ export default function GroomerDashboard() {
 
               {/* ── Past Visits (service + price history for this pet) ── */}
               {selectedAppt.pets?.id && (
-                <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
                   <button type="button" onClick={() => setShowPastVisits(v => !v)} className="w-full flex items-center justify-between">
                     <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Past Visits{!loadingHistory && petHistory.length > 0 ? ` (${petHistory.length})` : ''}</p>
                     <span className="text-xs font-semibold text-gray-400">{showPastVisits ? '▲ Hide' : '▼ Show'}</span>
@@ -2634,7 +2634,7 @@ export default function GroomerDashboard() {
                   ) : petHistory.length === 0 ? (
                     <p className="text-sm text-gray-400 text-center py-3">No previous paid visits yet</p>
                   ) : (
-                    <div className="space-y-2 mt-3">
+                    <div className="space-y-2 mt-3 min-w-0 overflow-hidden">
                       {petHistory.map(v => {
                         const addOns = (v.notes_list ?? []).filter(n => n.is_addon)
                         const groomerName = v.assigned_groomer || v.assigned_bather
@@ -2644,10 +2644,10 @@ export default function GroomerDashboard() {
                             key={v.id}
                             type="button"
                             onClick={() => openApptPopup(v, { readOnly: true })}
-                            className="w-full flex flex-col gap-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-gray-200 transition-colors px-3 py-2 text-left"
+                            className="w-full min-w-0 overflow-hidden flex flex-col gap-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-gray-200 transition-colors px-3 py-2 text-left"
                           >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
+                          <div className="flex items-start justify-between gap-3 w-full min-w-0">
+                            <div className="min-w-0 flex-1">
                               <p className="text-sm font-semibold text-gray-800 truncate">{serviceMap[v.service] ?? v.service}</p>
                               <p className="text-xs text-gray-400">
                                 {formatDate(v.appointment_date)}
@@ -2667,7 +2667,7 @@ export default function GroomerDashboard() {
                             </div>
                           </div>
                           {diaryNote ? (
-                            <p className="text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1.5 whitespace-pre-wrap">
+                            <p className="text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1.5 whitespace-pre-wrap break-words">
                               📓 {diaryNote}
                             </p>
                           ) : (
