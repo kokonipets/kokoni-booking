@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, type Tag as PetTag } from '@/lib/tags'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
-import { commissionableAmount } from '@/lib/commission'
+import { commissionableAmount, helperCut } from '@/lib/commission'
 
 type Appointment = {
   id: string
@@ -20,6 +20,11 @@ type Appointment = {
   confirmed_at?: string | null
   assigned_groomer: string | null
   assigned_bather: string | null
+  helper_groomer?: string | null
+  helper_pay_type?: string | null
+  helper_flat_amount?: number | string | null
+  helper_commission_percent?: number | string | null
+  helper_tip_percent?: number | string | null
   clients: { name: string; phone: string; email: string | null } | null
   pets: { id?: string; name: string; breed: string | null; weight: string | null; photo_url: string | null } | null
   notes_list?: { id: string; text: string; author?: string; price?: string; is_addon?: boolean }[] | null
@@ -360,6 +365,16 @@ export default function GroomerDashboard() {
   }
   // All staff for assignment dropdowns
   const [allStaff, setAllStaff] = useState<string[]>([])
+  // Helper (partner) groomer — appointments where I'm the helper, plus the add/edit form state
+  const [helperAppts, setHelperAppts] = useState<Appointment[]>([])
+  const [helperEditing, setHelperEditing] = useState(false)
+  const [helperName, setHelperName] = useState('')
+  const [helperPayType, setHelperPayType] = useState<'flat' | 'percent'>('percent')
+  const [helperFlat, setHelperFlat] = useState('')
+  const [helperCommPct, setHelperCommPct] = useState('')
+  const [helperTipPct, setHelperTipPct] = useState('')
+  const [savingHelper, setSavingHelper] = useState(false)
+  useEffect(() => { setHelperEditing(false) }, [selectedAppt?.id])
   const [assigningStaff, setAssigningStaff] = useState(false)
   // Reschedule modal state
   const [rescheduleAppt, setRescheduleAppt] = useState<Appointment | null>(null)
@@ -426,6 +441,7 @@ export default function GroomerDashboard() {
       }
 
       setAppointments(appts)
+      setHelperAppts((data.helper_appointments || []) as Appointment[])
     } catch (err) {
       console.error(err)
       if (!silent) showToast('Failed to load appointments')
@@ -984,6 +1000,34 @@ export default function GroomerDashboard() {
     finally { setSavingPopupNote(false) }
   }
 
+  // Add / change / remove the helper (partner) groomer on the open appointment. Helper pay comes out of the owner's share.
+  const saveHelper = async (remove = false) => {
+    if (!selectedAppt) return
+    if (!remove && !helperName) { showToast('Pick a partner groomer · 請選擇幫忙的美容師'); return }
+    setSavingHelper(true)
+    try {
+      const res = await fetch(`/api/admin/appointments/${selectedAppt.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(remove
+          ? { action: 'set-helper', helper_groomer: null }
+          : { action: 'set-helper', helper_groomer: helperName, helper_pay_type: helperPayType, helper_flat_amount: helperFlat, helper_commission_percent: helperCommPct, helper_tip_percent: helperTipPct }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { showToast('Could not save helper (run the helper SQL?) · 儲存失敗'); return }
+      const patch = {
+        helper_groomer: data.helper_groomer ?? null, helper_pay_type: data.helper_pay_type ?? null,
+        helper_flat_amount: data.helper_flat_amount ?? null, helper_commission_percent: data.helper_commission_percent ?? null,
+        helper_tip_percent: data.helper_tip_percent ?? null,
+      }
+      const updated = { ...selectedAppt, ...patch }
+      setSelectedAppt(updated)
+      setAppointments(prev => prev.map(a => a.id === selectedAppt.id ? updated : a))
+      setHelperEditing(false)
+      showToast(remove ? '✓ Helper removed · 已移除' : '✓ Helper saved · 已儲存')
+    } catch { showToast('Could not save helper · 儲存失敗') }
+    finally { setSavingHelper(false) }
+  }
+
   // Save/update the customer request (legacy appointments.notes field)
   const saveCustomerRequest = async () => {
     const text = noteInputRef.current?.value?.trim() ?? ''
@@ -1262,8 +1306,32 @@ export default function GroomerDashboard() {
     const bearer = (a as { discount_bearer?: string | null }).discount_bearer
     return s + commissionableAmount(paymentAmount, discountAmount, bearer)
   }, 0)
-  const commission = commissionableTotal * commissionPct / 100
-  const tipInPaycheck = totalTips * tipPct / 100
+  const ownCommission = commissionableTotal * commissionPct / 100
+  const ownTipShare = totalTips * tipPct / 100
+  // Helper (partner) groomer: what I pay out of my share on appointments where I added a helper…
+  let helperPaidComm = 0, helperPaidTip = 0
+  for (const a of paidAppts) {
+    if (!a.helper_groomer) continue
+    const c = commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * commissionPct / 100
+    const t = parseFloat(a.tip_amount || '0') * tipPct / 100
+    const cut = helperCut(a, c, t)
+    helperPaidComm += cut.comm; helperPaidTip += cut.tip
+  }
+  // …and what I earn as the helper on someone else's appointments (computed server-side from the owner's rates)
+  const helperInRange = (d: string) =>
+    earningsRange === 'today' ? d === todayStr
+    : earningsRange === 'week' ? d >= weekAgoStr
+    : earningsRange === 'this_payroll' ? d >= thisPayrollStartStr && d <= thisPayrollEndStr
+    : earningsRange === 'next_payroll' ? d >= nextPayrollStartStr && d <= nextPayrollEndStr
+    : earningsRange === 'last_payroll' ? d >= lastPayrollStartStr && d <= lastPayrollEndStr
+    : earningsRange === 'month' ? d >= monthStart
+    : earningsRange === 'year' ? d >= yearStart
+    : true
+  const helperJobs = helperAppts.filter(a => a.payment_status === 'paid' && helperInRange(a.appointment_date))
+  const helperEarnComm = helperJobs.reduce((s, a) => s + Number((a as unknown as { helper_earn?: { comm: number } }).helper_earn?.comm || 0), 0)
+  const helperEarnTip = helperJobs.reduce((s, a) => s + Number((a as unknown as { helper_earn?: { tip: number } }).helper_earn?.tip || 0), 0)
+  const commission = ownCommission - helperPaidComm + helperEarnComm
+  const tipInPaycheck = ownTipShare - helperPaidTip + helperEarnTip
   const rangeLabelMap = {
     today: 'Today',
     week: 'This Week',
@@ -1946,6 +2014,25 @@ export default function GroomerDashboard() {
               <p className="text-base font-bold text-emerald-700">${tipInPaycheck.toFixed(2)}</p>
             </div>
           </div>
+
+          {/* Helper adjustments */}
+          {(helperPaidComm > 0 || helperPaidTip > 0 || helperJobs.length > 0) && (
+            <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4 space-y-1.5">
+              <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-1">🤝 Helper · 幫忙</p>
+              {(helperPaidComm > 0 || helperPaidTip > 0) && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Paid to my helpers (already deducted above)</span>
+                  <span className="font-semibold text-red-500">−${(helperPaidComm + helperPaidTip).toFixed(2)}</span>
+                </div>
+              )}
+              {helperJobs.length > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Earned helping others · {helperJobs.length} appt{helperJobs.length !== 1 ? 's' : ''} (added above)</span>
+                  <span className="font-semibold text-emerald-600">+${(helperEarnComm + helperEarnTip).toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Take-home total */}
           <div className="bg-white rounded-2xl border border-gray-200 p-4">
@@ -2744,6 +2831,96 @@ export default function GroomerDashboard() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* ─── HELPER (partner) GROOMER — owner keeps the appointment; helper is paid out of the owner's share ─── */}
+              {(user?.name === selectedAppt.assigned_groomer || selectedAppt.helper_groomer) && (
+                <div className="space-y-2 px-1">
+                  <p className="text-xs font-bold uppercase tracking-widest text-amber-500">🤝 Helper · 幫忙的美容師</p>
+                  {selectedAppt.helper_groomer && !helperEditing && (
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{selectedAppt.helper_groomer}</p>
+                        <p className="text-xs text-amber-700">
+                          {selectedAppt.helper_pay_type === 'flat'
+                            ? `One-time $${Number(selectedAppt.helper_flat_amount || 0).toFixed(2)} · 一次性`
+                            : `${Number(selectedAppt.helper_commission_percent || 0)}% of commission · ${Number(selectedAppt.helper_tip_percent || 0)}% of tip share`}
+                        </p>
+                      </div>
+                      {user?.name === selectedAppt.assigned_groomer && (
+                        <button
+                          onClick={() => {
+                            setHelperName(selectedAppt.helper_groomer || '')
+                            setHelperPayType(selectedAppt.helper_pay_type === 'flat' ? 'flat' : 'percent')
+                            setHelperFlat(selectedAppt.helper_flat_amount ? String(selectedAppt.helper_flat_amount) : '')
+                            setHelperCommPct(selectedAppt.helper_commission_percent ? String(selectedAppt.helper_commission_percent) : '')
+                            setHelperTipPct(selectedAppt.helper_tip_percent ? String(selectedAppt.helper_tip_percent) : '')
+                            setHelperEditing(true)
+                          }}
+                          className="text-xs font-semibold text-amber-700 px-2.5 py-1 rounded-lg hover:bg-amber-100">✏️ Edit</button>
+                      )}
+                    </div>
+                  )}
+                  {!selectedAppt.helper_groomer && !helperEditing && user?.name === selectedAppt.assigned_groomer && (
+                    <button
+                      onClick={() => { setHelperName(''); setHelperPayType('percent'); setHelperFlat(''); setHelperCommPct(''); setHelperTipPct(''); setHelperEditing(true) }}
+                      className="w-full text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-2.5 hover:bg-amber-100">
+                      ＋ Add a helper · 請人幫忙
+                    </button>
+                  )}
+                  {helperEditing && (
+                    <div className="bg-white rounded-2xl border border-amber-200 p-4 space-y-3">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500">Partner groomer · 幫忙的美容師</label>
+                        <select value={helperName} onChange={e => setHelperName(e.target.value)}
+                          className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+                          <option value="">— Select —</option>
+                          {allStaff.filter(n => n !== selectedAppt.assigned_groomer).map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button onClick={() => setHelperPayType('flat')}
+                          className={`py-2 rounded-xl text-sm font-semibold border ${helperPayType === 'flat' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200'}`}>
+                          One-time $ · 一次性金額
+                        </button>
+                        <button onClick={() => setHelperPayType('percent')}
+                          className={`py-2 rounded-xl text-sm font-semibold border ${helperPayType === 'percent' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200'}`}>
+                          Percent · 百分比
+                        </button>
+                      </div>
+                      {helperPayType === 'flat' ? (
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500">Amount ($) · 金額</label>
+                          <input type="number" inputMode="decimal" min="0" step="0.01" value={helperFlat} onChange={e => setHelperFlat(e.target.value)}
+                            className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="10" />
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500">% of my commission · 抽成 %</label>
+                            <input type="number" inputMode="decimal" min="0" max="100" value={helperCommPct} onChange={e => setHelperCommPct(e.target.value)}
+                              className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="20" />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500">% of my tip share · 小費 %</label>
+                            <input type="number" inputMode="decimal" min="0" max="100" value={helperTipPct} onChange={e => setHelperTipPct(e.target.value)}
+                              className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="20" />
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-[11px] text-gray-400">The helper&apos;s pay is taken out of your earnings on this appointment. · 幫忙者的錢從你這單的收入中扣。</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => saveHelper(false)} disabled={savingHelper}
+                          className="flex-1 bg-amber-500 text-white font-semibold text-sm py-2.5 rounded-xl disabled:opacity-50">{savingHelper ? 'Saving…' : 'Save · 儲存'}</button>
+                        {selectedAppt.helper_groomer && (
+                          <button onClick={() => saveHelper(true)} disabled={savingHelper}
+                            className="px-4 text-sm font-semibold text-red-500 border border-red-200 rounded-xl disabled:opacity-50">Remove</button>
+                        )}
+                        <button onClick={() => setHelperEditing(false)} className="px-4 text-sm font-semibold text-gray-500 border border-gray-200 rounded-xl">Cancel</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { commissionableAmount, helperCut, ratesOn, loadRateHistory } from '@/lib/commission'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -45,9 +46,7 @@ export async function GET(req: NextRequest) {
   try {
     // Fetch appointments assigned to this groomer/bather (by name if provided, else by id)
     const filterValue = staffName || staffId!
-    const { data: appointments, error } = await supabase
-      .from('appointments')
-      .select(`
+    const SELECT_BASE = `
         id,
         client_phone,
         service,
@@ -88,10 +87,24 @@ export async function GET(req: NextRequest) {
           weight,
           photo_url
         )
-      `)
+      `
+    const SELECT_WITH_HELPER = SELECT_BASE.replace('assigned_bather,', `assigned_bather,
+        helper_groomer,
+        helper_pay_type,
+        helper_flat_amount,
+        helper_commission_percent,
+        helper_tip_percent,`)
+    const runQuery = (sel: string) => supabase
+      .from('appointments')
+      .select(sel)
       .or(`assigned_groomer.eq.${filterValue},assigned_bather.eq.${filterValue}`)
       .in('status', ['confirmed', 'in_progress', 'completed'])
       .order('appointment_date', { ascending: true })
+    // Falls back to the old column list if the helper_* migration hasn't been run yet
+    let res = await runQuery(SELECT_WITH_HELPER)
+    if (res.error) res = await runQuery(SELECT_BASE)
+    const appointments = res.data as unknown as any[] | null
+    const error = res.error
 
     if (error) {
       console.error('Supabase error:', error)
@@ -125,7 +138,42 @@ export async function GET(req: NextRequest) {
       }))
     }
 
-    return NextResponse.json({ appointments: appointmentsWithFirstVisit })
+    // Appointments where this person was added as the HELPER (their pay comes out of the owner's share). Best-effort: empty if migration not run.
+    let helperAppointments: unknown[] = []
+    try {
+      const { data: hd, error: he } = await supabase
+        .from('appointments')
+        .select('id, appointment_date, appointment_time, service, status, assigned_groomer, payment_amount, payment_status, tip_amount, discount_amount, discount_bearer, helper_groomer, helper_pay_type, helper_flat_amount, helper_commission_percent, helper_tip_percent, pets (name)')
+        .eq('helper_groomer', filterValue)
+        .in('status', ['confirmed', 'in_progress', 'completed'])
+        .order('appointment_date', { ascending: true })
+      if (!he && hd && hd.length) {
+        // Work out what the helper earns on each one, using the OWNER's commission / tip-share rates on that date
+        const owners = [...new Set((hd as { assigned_groomer: string | null }[]).map(x => x.assigned_groomer).filter(Boolean))] as string[]
+        const { data: ownerRows } = await supabase.from('staff').select('name, commission_percent, tip_percent').in('name', owners)
+        const hist = await loadRateHistory(supabase)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const byName: Record<string, any> = {}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const o of (ownerRows || []) as any[]) byName[o.name] = o
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: idRows } = await supabase.from('staff').select('id, name').in('name', owners) as any
+        const idByName: Record<string, string> = {}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const r of (idRows || []) as any[]) idByName[r.name] = String(r.id)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        helperAppointments = (hd as any[]).map(x => {
+          const o = x.assigned_groomer ? byName[x.assigned_groomer] : null
+          const rates = o ? ratesOn({ ...o, rate_history: hist[idByName[x.assigned_groomer]] || [] }, x.appointment_date) : { commission: 0, tip: 0 }
+          const ownerComm = commissionableAmount(parseFloat(x.payment_amount || '0'), parseFloat(x.discount_amount || '0'), x.discount_bearer) * rates.commission / 100
+          const ownerTip = parseFloat(x.tip_amount || '0') * rates.tip / 100
+          const cut = helperCut(x, ownerComm, ownerTip)
+          return { ...x, helper_earn: { comm: cut.comm, tip: cut.tip } }
+        })
+      }
+    } catch { /* column missing */ }
+
+    return NextResponse.json({ appointments: appointmentsWithFirstVisit, helper_appointments: helperAppointments })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })

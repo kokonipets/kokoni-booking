@@ -65,3 +65,25 @@ export async function loadRateHistory(sb: any): Promise<Record<string, RateHisto
   } catch { /* table missing */ }
   return out
 }
+
+
+// ── Helper (partner) groomer ─────────────────────────────────────────────────
+// The assigned groomer stays the owner of the appointment and can add a helper. The helper's pay comes OUT of the owner's
+// earnings: either a one-time flat $ amount, or a % of the owner's commission and a % of the owner's tip share on that appointment.
+export type HelperFields = {
+  helper_groomer?: string | null
+  helper_pay_type?: string | null
+  helper_flat_amount?: number | string | null
+  helper_commission_percent?: number | string | null
+  helper_tip_percent?: number | string | null
+}
+
+/** What the helper earns on this appointment (taken from the owner's commission / tip share). */
+export function helperCut(a: HelperFields, ownerCommission: number, ownerTipShare: number): { comm: number; tip: number } {
+  if (!a.helper_groomer) return { comm: 0, tip: 0 }
+  if (a.helper_pay_type === 'flat') return { comm: Number(a.helper_flat_amount || 0), tip: 0 }
+  return {
+    comm: ownerCommission * Number(a.helper_commission_percent || 0) / 100,
+    tip: ownerTipShare * Number(a.helper_tip_percent || 0) / 100,
+  }
+}

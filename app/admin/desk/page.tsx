@@ -8,7 +8,7 @@ import ChatSidebarLink from '@/components/ChatSidebarLink'
 import ChatIconButton from '@/components/ChatIconButton'
 import RetailSell from '@/components/RetailSell'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
-import { commissionableAmount, ratesOn, type RateHistoryRow } from '@/lib/commission'
+import { commissionableAmount, ratesOn, helperCut, type RateHistoryRow } from '@/lib/commission'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffMember = {
@@ -754,7 +754,7 @@ export default function DeskAdmin() {
   const [payrollNotes, setPayrollNotes] = useState('')
   const [payrollSelectedGroomer, setPayrollSelectedGroomer] = useState('')
   type PayrollDailyRow = {date:string;appts:number;revenue:number;tips:number;commission:number;tipShare:number}
-  type PayrollGroomerRow = {name:string;appts:number;revenue:number;tips:number;commission:number;tipShare:number;commRate:number;tipRate:number}
+  type PayrollGroomerRow = {name:string;helperJobs?:number;appts:number;revenue:number;tips:number;commission:number;tipShare:number;commRate:number;tipRate:number}
   type PayrollReportData = {daily: PayrollDailyRow[]; groomers: PayrollGroomerRow[]; dailyByGroomer: Record<string, PayrollDailyRow[]>}
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
 
@@ -2086,9 +2086,18 @@ export default function DeskAdmin() {
       const appts = allAppts.filter((a: any) => {
         if (a.status === 'cancelled' || a.status === 'no_show') return false
         if (a.appointment_date < payrollStartDate || a.appointment_date > payrollEndDate) return false
-        if (payrollSelectedGroomer && a.assigned_groomer !== payrollSelectedGroomer) return false
+        if (payrollSelectedGroomer && a.assigned_groomer !== payrollSelectedGroomer && a.helper_groomer !== payrollSelectedGroomer) return false
         return true
       })
+
+      // Helper (partner) groomer: owner's commission/tip share on an appointment, and the cut the helper takes out of it.
+      const ownerShare = (a: any) => {
+        const m = a.assigned_groomer ? staff.find(s => s.name === a.assigned_groomer) : null
+        const d = a.appointment_date
+        const comm = m ? commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat(a.discount_amount || '0'), a.discount_bearer) * ratesOn(m, d).commission / 100 : 0
+        const tip = m ? parseFloat(a.tip_amount || '0') * ratesOn(m, d).tip / 100 : 0
+        return { comm, tip, cut: helperCut(a, comm, tip) }
+      }
 
       // ── Daily totals (all groomers combined for the filtered set) ──
       const byDate: Record<string, {appts: number; revenue: number; tips: number; commission: number; tipShare: number}> = {}
@@ -2126,6 +2135,7 @@ export default function DeskAdmin() {
 
       const groomers = groomersToShow.map(member => {
         const memberAppts = appts.filter((a: any) => a.assigned_groomer === member.name)
+        const helperJobsList = appts.filter((a: any) => a.helper_groomer === member.name && a.assigned_groomer !== member.name && a.payment_status === 'paid')
         const paidAppts = memberAppts.filter((a: any) => a.payment_status === 'paid')
         const revenue = paidAppts.reduce((s: number, a: any) => s + parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0'), 0)
         const tips = memberAppts.reduce((s: number, a: any) => s + parseFloat(a.tip_amount || '0'), 0)
@@ -2133,17 +2143,22 @@ export default function DeskAdmin() {
         const commissionTotal = paidAppts.reduce((s: number, a: any) => s + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat(a.discount_amount || '0'), a.discount_bearer) * ratesOn(member, a.appointment_date).commission / 100, 0)
         const tipShareTotal = memberAppts.reduce((s: number, a: any) => s + parseFloat(a.tip_amount || '0') * ratesOn(member, a.appointment_date).tip / 100, 0)
         const lastDay = (memberAppts.map((a: any) => a.appointment_date as string).sort().pop()) || ''
+        // Helper adjustments: subtract what my helpers take from my own paid appointments, add what I earn helping others
+        let helperOut = { comm: 0, tip: 0 }, helperIn = { comm: 0, tip: 0 }
+        paidAppts.forEach((a: any) => { const c = ownerShare(a).cut; helperOut.comm += c.comm; helperOut.tip += c.tip })
+        helperJobsList.forEach((a: any) => { const c = ownerShare(a).cut; helperIn.comm += c.comm; helperIn.tip += c.tip })
         return {
           name: member.name,
+          helperJobs: helperJobsList.length,
           appts: memberAppts.length,
           revenue,
           tips,
-          commission: commissionTotal,
-          tipShare: tipShareTotal,
+          commission: commissionTotal - helperOut.comm + helperIn.comm,
+          tipShare: tipShareTotal - helperOut.tip + helperIn.tip,
           commRate: ratesOn(member, lastDay || '9999-12-31').commission,
           tipRate: ratesOn(member, lastDay || '9999-12-31').tip,
         }
-      }).filter(g => g.appts > 0 || payrollSelectedGroomer)
+      }).filter(g => g.appts > 0 || (g.helperJobs ?? 0) > 0 || payrollSelectedGroomer)
 
       // ── Per-groomer daily breakdown (for per-groomer PDF detail tables) ──
       const dailyByGroomer: Record<string, PayrollDailyRow[]> = {}
@@ -2165,9 +2180,18 @@ export default function DeskAdmin() {
             const tip = parseFloat(a.tip_amount || '0')
             mByDate[d].revenue += rev
             mByDate[d].tips += tip
-            mByDate[d].commission += commBase * cRate
-            mByDate[d].tipShare += tip * tRate
+            const cut = ownerShare(a).cut
+            mByDate[d].commission += commBase * cRate - cut.comm
+            mByDate[d].tipShare += tip * tRate - cut.tip
           }
+        })
+        // Helper income on other groomers' appointments
+        appts.filter((a: any) => a.helper_groomer === member.name && a.assigned_groomer !== member.name && a.payment_status === 'paid').forEach((a: any) => {
+          const d = a.appointment_date
+          if (!mByDate[d]) mByDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
+          const cut = ownerShare(a).cut
+          mByDate[d].commission += cut.comm
+          mByDate[d].tipShare += cut.tip
         })
         dailyByGroomer[member.name] = Object.entries(mByDate)
           .sort(([a], [b]) => a.localeCompare(b))

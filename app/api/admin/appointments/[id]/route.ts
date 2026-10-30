@@ -413,6 +413,24 @@ export async function PATCH(
     return NextResponse.json({ success: true })
   }
 
+  // Add / change / remove a helper (partner) groomer. The assigned groomer stays the owner; the helper is paid out of the owner's share.
+  if (action === 'set-helper') {
+    const { helper_groomer, helper_pay_type, helper_flat_amount, helper_commission_percent, helper_tip_percent } = body
+    const clean = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0 }
+    const updates = helper_groomer
+      ? {
+          helper_groomer: String(helper_groomer),
+          helper_pay_type: helper_pay_type === 'flat' ? 'flat' : 'percent',
+          helper_flat_amount: helper_pay_type === 'flat' ? clean(helper_flat_amount) : null,
+          helper_commission_percent: helper_pay_type === 'flat' ? null : Math.min(100, clean(helper_commission_percent)),
+          helper_tip_percent: helper_pay_type === 'flat' ? null : Math.min(100, clean(helper_tip_percent)),
+        }
+      : { helper_groomer: null, helper_pay_type: null, helper_flat_amount: null, helper_commission_percent: null, helper_tip_percent: null }
+    const { error } = await supabase.from('appointments').update(updates).eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true, ...updates })
+  }
+
   // Add a note to notes_list
   if (action === 'add-note') {
     const { note } = body // { id, text, notes_english, notes_chinese, author, created_at }
