@@ -1004,7 +1004,7 @@ export default function GroomerDashboard() {
   // Add / change / remove the helper (partner) groomer on the open appointment. Helper pay comes out of the owner's share.
   const saveHelper = async (remove = false) => {
     if (!selectedAppt) return
-    if (!remove && !helperName) { showToast('Pick a partner groomer · 請選擇幫忙的美容師'); return }
+    if (!remove && !helperName) { showToast('Pick an assist groomer'); return }
     setSavingHelper(true)
     try {
       const res = await fetch(`/api/admin/appointments/${selectedAppt.id}`, {
@@ -1014,7 +1014,7 @@ export default function GroomerDashboard() {
           : { action: 'set-helper', helper_groomer: helperName, helper_pay_type: helperPayType, helper_flat_amount: helperFlat, helper_commission_percent: helperCommPct, helper_tip_percent: helperTipPct }),
       })
       const data = await res.json()
-      if (!res.ok || data.error) { showToast('Could not save helper (run the helper SQL?) · 儲存失敗'); return }
+      if (!res.ok || data.error) { showToast('Could not save assist (run the helper SQL?)'); return }
       const patch = {
         helper_groomer: data.helper_groomer ?? null, helper_pay_type: data.helper_pay_type ?? null,
         helper_flat_amount: data.helper_flat_amount ?? null, helper_commission_percent: data.helper_commission_percent ?? null,
@@ -1024,8 +1024,8 @@ export default function GroomerDashboard() {
       setSelectedAppt(updated)
       setAppointments(prev => prev.map(a => a.id === selectedAppt.id ? updated : a))
       setHelperEditing(false)
-      showToast(remove ? '✓ Helper removed · 已移除' : '✓ Helper saved · 已儲存')
-    } catch { showToast('Could not save helper · 儲存失敗') }
+      showToast(remove ? '✓ Assist removed' : '✓ Assist saved')
+    } catch { showToast('Could not save assist') }
     finally { setSavingHelper(false) }
   }
 
@@ -2019,16 +2019,16 @@ export default function GroomerDashboard() {
           {/* Helper adjustments */}
           {(helperPaidComm > 0 || helperPaidTip > 0 || helperJobs.length > 0) && (
             <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4 space-y-1.5">
-              <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-1">🤝 Helper · 幫忙</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-1">🤝 Assist</p>
               {(helperPaidComm > 0 || helperPaidTip > 0) && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Paid to my helpers (already deducted above)</span>
+                  <span className="text-gray-600">Paid to my assists (already deducted above)</span>
                   <span className="font-semibold text-red-500">−${(helperPaidComm + helperPaidTip).toFixed(2)}</span>
                 </div>
               )}
               {helperJobs.length > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Earned helping others · {helperJobs.length} appt{helperJobs.length !== 1 ? 's' : ''} (added above)</span>
+                  <span className="text-gray-600">Earned assisting others · {helperJobs.length} appt{helperJobs.length !== 1 ? 's' : ''} (added above)</span>
                   <span className="font-semibold text-emerald-600">+${(helperEarnComm + helperEarnTip).toFixed(2)}</span>
                 </div>
               )}
@@ -2841,14 +2841,14 @@ export default function GroomerDashboard() {
               {/* ─── HELPER (partner) GROOMER — owner keeps the appointment; helper is paid out of the owner's share ─── */}
               {(user?.name === selectedAppt.assigned_groomer || selectedAppt.helper_groomer) && (
                 <div className="space-y-2 px-1">
-                  <p className="text-xs font-bold uppercase tracking-widest text-amber-500">🤝 Helper · 幫忙的美容師</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-amber-500">🤝 Assist</p>
                   {selectedAppt.helper_groomer && !helperEditing && (
                     <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
                       <div>
                         <p className="text-sm font-semibold text-gray-800">{selectedAppt.helper_groomer}</p>
                         <p className="text-xs text-amber-700">
                           {selectedAppt.helper_pay_type === 'flat'
-                            ? `One-time $${Number(selectedAppt.helper_flat_amount || 0).toFixed(2)} · 一次性`
+                            ? `One-time $${Number(selectedAppt.helper_flat_amount || 0).toFixed(2)}`
                             : `${Number(selectedAppt.helper_commission_percent || 0)}% of commission · ${Number(selectedAppt.helper_tip_percent || 0)}% of tip share`}
                         </p>
                       </div>
@@ -2870,13 +2870,13 @@ export default function GroomerDashboard() {
                     <button
                       onClick={() => { setHelperName(''); setHelperPayType('percent'); setHelperFlat(''); setHelperCommPct(''); setHelperTipPct(''); setHelperEditing(true) }}
                       className="w-full text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-2.5 hover:bg-amber-100">
-                      ＋ Add a helper · 請人幫忙
+                      ＋ Add assist
                     </button>
                   )}
                   {helperEditing && (
                     <div className="bg-white rounded-2xl border border-amber-200 p-4 space-y-3">
                       <div>
-                        <label className="text-xs font-semibold text-gray-500">Partner groomer · 幫忙的美容師</label>
+                        <label className="text-xs font-semibold text-gray-500">Assist groomer</label>
                         <select value={helperName} onChange={e => setHelperName(e.target.value)}
                           className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
                           <option value="">— Select —</option>
@@ -2886,37 +2886,37 @@ export default function GroomerDashboard() {
                       <div className="grid grid-cols-2 gap-2">
                         <button onClick={() => setHelperPayType('flat')}
                           className={`py-2 rounded-xl text-sm font-semibold border ${helperPayType === 'flat' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200'}`}>
-                          One-time $ · 一次性金額
+                          One-time $
                         </button>
                         <button onClick={() => setHelperPayType('percent')}
                           className={`py-2 rounded-xl text-sm font-semibold border ${helperPayType === 'percent' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200'}`}>
-                          Percent · 百分比
+                          Percent %
                         </button>
                       </div>
                       {helperPayType === 'flat' ? (
                         <div>
-                          <label className="text-xs font-semibold text-gray-500">Amount ($) · 金額</label>
+                          <label className="text-xs font-semibold text-gray-500">Amount ($)</label>
                           <input type="number" inputMode="decimal" min="0" step="0.01" value={helperFlat} onChange={e => setHelperFlat(e.target.value)}
                             className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="10" />
                         </div>
                       ) : (
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-xs font-semibold text-gray-500">% of my commission · 抽成 %</label>
+                            <label className="text-xs font-semibold text-gray-500">% of my commission</label>
                             <input type="number" inputMode="decimal" min="0" max="100" value={helperCommPct} onChange={e => setHelperCommPct(e.target.value)}
                               className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="20" />
                           </div>
                           <div>
-                            <label className="text-xs font-semibold text-gray-500">% of my tip share · 小費 %</label>
+                            <label className="text-xs font-semibold text-gray-500">% of my tip share</label>
                             <input type="number" inputMode="decimal" min="0" max="100" value={helperTipPct} onChange={e => setHelperTipPct(e.target.value)}
                               className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="20" />
                           </div>
                         </div>
                       )}
-                      <p className="text-[11px] text-gray-400">The helper&apos;s pay is taken out of your earnings on this appointment. · 幫忙者的錢從你這單的收入中扣。</p>
+                      <p className="text-[11px] text-gray-400">The assist&apos;s pay is taken out of your earnings on this appointment.</p>
                       <div className="flex gap-2">
                         <button onClick={() => saveHelper(false)} disabled={savingHelper}
-                          className="flex-1 bg-amber-500 text-white font-semibold text-sm py-2.5 rounded-xl disabled:opacity-50">{savingHelper ? 'Saving…' : 'Save · 儲存'}</button>
+                          className="flex-1 bg-amber-500 text-white font-semibold text-sm py-2.5 rounded-xl disabled:opacity-50">{savingHelper ? 'Saving…' : 'Save'}</button>
                         {selectedAppt.helper_groomer && (
                           <button onClick={() => saveHelper(true)} disabled={savingHelper}
                             className="px-4 text-sm font-semibold text-red-500 border border-red-200 rounded-xl disabled:opacity-50">Remove</button>
