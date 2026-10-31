@@ -249,6 +249,16 @@ export default function GroomerDashboard() {
   const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'next_payroll' | 'last_payroll' | 'month' | 'year'>('this_payroll')
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [calendarSelected, setCalendarSelected] = useState<string | null>(null)
+  // Store days off (weekly closed days + specific closed dates) so the calendar can mark them "Closed"
+  const [storeOpenDays, setStoreOpenDays] = useState<number[] | null>(null)
+  const [storeSpecialOpen, setStoreSpecialOpen] = useState<string[]>([])
+  const [storeBlockedDates, setStoreBlockedDates] = useState<string[]>([])
+  const isStoreClosed = (dateStr: string) => {
+    if (storeBlockedDates.includes(dateStr)) return true
+    if (!storeOpenDays) return false
+    const dow = new Date(dateStr + 'T12:00:00').getDay()
+    return !storeOpenDays.includes(dow) && !storeSpecialOpen.includes(dateStr)
+  }
   const selectedDayPanelRef = useRef<HTMLDivElement>(null)
   const [calView, setCalView] = useState<'3day' | 'week' | 'month'>('month')
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
@@ -468,6 +478,11 @@ export default function GroomerDashboard() {
       const settingsObj: Record<string, string> = d?.settings ?? {}
       const svcValue = settingsObj['services']
       if (svcValue) { try { setServiceDefs(JSON.parse(svcValue)) } catch { /**/ } }
+      if (settingsObj['open_days']) { try { setStoreOpenDays(JSON.parse(settingsObj['open_days'])) } catch { /**/ } }
+      if (settingsObj['special_open_dates']) { try { setStoreSpecialOpen(JSON.parse(settingsObj['special_open_dates'])) } catch { /**/ } }
+    }).catch(() => {})
+    fetch('/api/admin/blocked-dates').then(r => r.json()).then(d => {
+      setStoreBlockedDates(((d.blocked_dates ?? []) as { date: string }[]).map(b => b.date))
     }).catch(() => {})
 
     // Load active coupons for groomer popup discount selector
@@ -1689,17 +1704,19 @@ export default function GroomerDashboard() {
                   const dayAppts = apptsByDate[dateStr] || []
                   const isToday = dateStr === today
                   const isSelected = dateStr === calendarSelected
+                  const closed = isStoreClosed(dateStr)
                   return (
                     <button
                       key={day}
                       onClick={() => setCalendarSelected(isSelected ? null : dateStr)}
                       className={`flex flex-col items-start p-0.5 rounded-lg text-left transition-colors min-h-[52px] border
-                        ${isSelected ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-400' : isToday ? 'bg-sky-50 border-sky-200' : 'border-gray-100 hover:bg-gray-50 hover:border-gray-200'}`}
+                        ${isSelected ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-400' : isToday ? 'bg-sky-50 border-sky-200' : closed ? 'bg-gray-100 border-gray-200' : 'border-gray-100 hover:bg-gray-50 hover:border-gray-200'}`}
                     >
                       <span className={`text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full mb-0.5 self-center
                         ${isToday ? 'bg-sky-500 text-white' : isSelected ? 'text-sky-600' : 'text-gray-600'}`}>
                         {day}
                       </span>
+                      {closed && <span className="w-full text-center text-[9px] font-semibold text-gray-400 leading-tight">Closed</span>}
                       {dayAppts.slice(0, 3).map((a, idx) => {
                         const timeStr = formatTime(a.appointment_time).replace(':00', '').replace(' AM', 'a').replace(' PM', 'p')
                         const svcLabel = serviceMap[a.service] ?? a.service
@@ -1734,18 +1751,20 @@ export default function GroomerDashboard() {
                   const dayAppts = apptsByDate[dateStr] || []
                   const isToday = dateStr === today
                   const isSelected = dateStr === calendarSelected
+                  const closed = isStoreClosed(dateStr)
                   return (
                     <button
                       key={i}
                       onClick={() => setCalendarSelected(isSelected ? null : dateStr)}
                       className={`flex-1 flex flex-col items-center py-2 px-0.5 rounded-xl transition-colors
-                        ${isSelected ? 'bg-sky-50 ring-2 ring-sky-400' : isToday ? 'bg-sky-50' : 'bg-white border border-gray-100 hover:bg-gray-50'}`}
+                        ${isSelected ? 'bg-sky-50 ring-2 ring-sky-400' : isToday ? 'bg-sky-50' : closed ? 'bg-gray-100 border border-gray-200' : 'bg-white border border-gray-100 hover:bg-gray-50'}`}
                     >
                       <span className="text-[10px] font-semibold text-gray-400 mb-0.5">{dayNames[d.getDay()]}</span>
                       <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full
                         ${isToday ? 'bg-sky-500 text-white' : isSelected ? 'text-sky-600' : 'text-gray-700'}`}>
                         {d.getDate()}
                       </span>
+                      {closed && <span className="text-[9px] font-semibold text-gray-400 mt-0.5">Closed</span>}
                       <div className="flex flex-wrap justify-center gap-0.5 mt-1.5">
                         {dayAppts.slice(0, 3).map((a, idx) => {
                           const dotColor = a.is_new_client ? 'bg-amber-400' : a.service === 'bath_brush' ? 'bg-teal-400' : a.service === 'asian_fusion' ? 'bg-pink-400' : 'bg-sky-400'
@@ -1773,12 +1792,13 @@ export default function GroomerDashboard() {
                   const dayAppts = apptsByDate[dateStr] || []
                   const isToday = dateStr === today
                   const isSelected = dateStr === calendarSelected
+                  const closed = isStoreClosed(dateStr)
                   return (
                     <button
                       key={i}
                       onClick={() => setCalendarSelected(isSelected ? null : dateStr)}
                       className={`flex flex-col items-start p-2 rounded-xl transition-colors min-h-[110px]
-                        ${isSelected ? 'bg-sky-50 ring-2 ring-sky-400' : isToday ? 'bg-sky-50' : 'bg-white border border-gray-100 hover:bg-gray-50'}`}
+                        ${isSelected ? 'bg-sky-50 ring-2 ring-sky-400' : isToday ? 'bg-sky-50' : closed ? 'bg-gray-100 border border-gray-200' : 'bg-white border border-gray-100 hover:bg-gray-50'}`}
                     >
                       <div className="flex items-center justify-between w-full mb-1.5">
                         <span className="text-[10px] font-semibold text-gray-400">{dayNames[d.getDay()]}</span>
@@ -1787,6 +1807,7 @@ export default function GroomerDashboard() {
                           {d.getDate()}
                         </span>
                       </div>
+                      {closed && <span className="text-[10px] font-semibold text-gray-400 mb-1">Closed</span>}
                       {dayAppts.slice(0, 4).map((a, idx) => {
                         const timeStr = formatTime(a.appointment_time).replace(':00', '').replace(' AM', 'a').replace(' PM', 'p')
                         const svcLabel = serviceMap[a.service] ?? a.service
