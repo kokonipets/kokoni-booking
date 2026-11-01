@@ -33,7 +33,7 @@ export async function sendPushToStaff(
     const { count: rawCount } = await supabase
       .from('appointments')
       .select('id', { count: 'exact', head: true })
-      .or(`assigned_groomer.eq.${staffName},assigned_bather.eq.${staffName}`)
+      .or(`assigned_groomer.ilike.${staffName.trim().split(/\s+/)[0]}%,assigned_bather.ilike.${staffName.trim().split(/\s+/)[0]}%`)
       .in('status', ['pending', 'rescheduled', 'confirmed'])
       .eq('groomer_confirmed', false)
 
@@ -44,7 +44,7 @@ export async function sendPushToStaff(
     const { data: subs } = await supabase
       .from('push_subscriptions')
       .select('endpoint, p256dh, auth')
-      .or(`staff_name.eq.${staffName},staff_name.ilike.${staffName} %`)
+      .or(`staff_name.eq.${staffName},staff_name.ilike.${staffName.trim().split(/\s+/)[0]},staff_name.ilike.${staffName.trim().split(/\s+/)[0]} %`)
 
     if (!subs || subs.length === 0) return
 

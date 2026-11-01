@@ -9,9 +9,8 @@ import ChatIconButton from '@/components/ChatIconButton'
 import RetailSell from '@/components/RetailSell'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 import { commissionableAmount, ratesOn, helperCut, type RateHistoryRow } from '@/lib/commission'
+import { sameStaff } from '@/lib/staff-name'
 
-// Staff names are matched on exact name OR first name, so an appointment saved as "Wylie" still belongs to the staff member "Wylie Shen"
-const sameStaff = (a?: string | null, b?: string | null) => !!a && !!b && (a === b || a.trim().split(/\s+/)[0].toLowerCase() === b.trim().split(/\s+/)[0].toLowerCase())
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffMember = {
@@ -2121,7 +2120,7 @@ export default function DeskAdmin() {
           byDate[d].revenue += rev
           byDate[d].tips += tip
           // Look up this appointment's groomer rates
-          const apptMember = a.assigned_groomer ? staff.find(s => s.name === a.assigned_groomer) : null
+          const apptMember = a.assigned_groomer ? staff.find(s => sameStaff(s.name, a.assigned_groomer)) : null
           const cRate = apptMember ? ratesOn(apptMember, d).commission / 100 : 0
           const tRate = apptMember ? ratesOn(apptMember, d).tip / 100 : 0
           byDate[d].commission += commBase * cRate
@@ -2139,7 +2138,7 @@ export default function DeskAdmin() {
 
       const groomers = groomersToShow.map(member => {
         const memberAppts = appts.filter((a: any) => sameStaff(a.assigned_groomer, member.name))
-        const helperJobsList = appts.filter((a: any) => a.helper_groomer === member.name && a.assigned_groomer !== member.name && a.payment_status === 'paid')
+        const helperJobsList = appts.filter((a: any) => sameStaff(a.helper_groomer, member.name) && !sameStaff(a.assigned_groomer, member.name) && a.payment_status === 'paid')
         const paidAppts = memberAppts.filter((a: any) => a.payment_status === 'paid')
         const revenue = paidAppts.reduce((s: number, a: any) => s + parseFloat(a.payment_amount || '0') + parseFloat(a.discount_amount || '0'), 0)
         const tips = memberAppts.reduce((s: number, a: any) => s + parseFloat(a.tip_amount || '0'), 0)
@@ -2190,7 +2189,7 @@ export default function DeskAdmin() {
           }
         })
         // Helper income on other groomers' appointments
-        appts.filter((a: any) => a.helper_groomer === member.name && a.assigned_groomer !== member.name && a.payment_status === 'paid').forEach((a: any) => {
+        appts.filter((a: any) => sameStaff(a.helper_groomer, member.name) && !sameStaff(a.assigned_groomer, member.name) && a.payment_status === 'paid').forEach((a: any) => {
           const d = a.appointment_date
           if (!mByDate[d]) mByDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
           const cut = ownerShare(a).cut
@@ -8957,7 +8956,7 @@ export default function DeskAdmin() {
               if (a.payment_status !== 'paid') return
               const d = a.appointment_date || ''
               if (!d.startsWith(`${REVENUE_YEAR}-`)) return
-              if (revenueChartGroomer && a.assigned_groomer !== revenueChartGroomer) return
+              if (revenueChartGroomer && !sameStaff(a.assigned_groomer, revenueChartGroomer)) return
               const m = parseInt(d.slice(5, 7), 10) - 1
               if (m >= 0 && m < 12) monthlyRevenue[m] += parseFloat(a.payment_amount || '0')
             })
@@ -8973,7 +8972,7 @@ export default function DeskAdmin() {
             reportsAppts.forEach(a => {
               const d = a.appointment_date || ''
               if (!d.startsWith(`${REVENUE_YEAR}-`)) return
-              if (tipsChartGroomer && a.assigned_groomer !== tipsChartGroomer) return
+              if (tipsChartGroomer && !sameStaff(a.assigned_groomer, tipsChartGroomer)) return
               const m = parseInt(d.slice(5, 7), 10) - 1
               if (m < 0 || m > 11) return
               if (a.payment_status === 'paid') {
@@ -9002,7 +9001,7 @@ export default function DeskAdmin() {
               return date >= lastMonthStart && date < lastMonthEnd
             }
             const perfAppts = reportsAppts
-              .filter(a => a.status !== 'cancelled' && a.assigned_groomer === activePerfGroomer && perfInRange(a.appointment_date))
+              .filter(a => a.status !== 'cancelled' && sameStaff(a.assigned_groomer, activePerfGroomer) && perfInRange(a.appointment_date))
               .sort((a, b) => parseApptTime(a.appointment_date, a.appointment_time).getTime() - parseApptTime(b.appointment_date, b.appointment_time).getTime())
             const perfPaid = perfAppts.filter(a => a.payment_status === 'paid')
             const perfRevenue = perfPaid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
