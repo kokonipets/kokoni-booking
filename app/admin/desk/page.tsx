@@ -3270,7 +3270,7 @@ export default function DeskAdmin() {
                               <div className="flex flex-col gap-1">
                                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-full w-fit">✓ Confirmed</span>
                                 {appt.assigned_groomer && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">✂️ {firstName(appt.assigned_groomer)} ✓</span>}
-                                {appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)} ✓</span>}
+                                {false && appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)} ✓</span>}
                               </div>
                             </div>
                           ))}
@@ -3320,7 +3320,7 @@ export default function DeskAdmin() {
                             const staffColor = STAFF_BANNER_COLORS[colIdx % STAFF_BANNER_COLORS.length]
                             return (
                               <div key={s.id} className={`sticky top-0 border-b-2 border-r border-gray-200 z-10 text-center py-2 px-2 ${staffColor.bg} ${staffColor.border}`}>
-                                <p className={`text-xs font-bold ${staffColor.text}`}>{s.name}</p>
+                                <p className={`text-xs font-bold ${staffColor.text}`}>{firstName(s.name)}</p>
                                 {isEditingHours ? (
                                   <div className="mt-1 flex flex-col items-center gap-1">
                                     <div className="flex items-center gap-1">
@@ -4002,7 +4002,7 @@ export default function DeskAdmin() {
                     })()}
                     {(detailAppt.assigned_groomer || detailAppt.assigned_bather) && (
                       <p className="text-xs text-gray-400 mt-2">
-                        Saved: {detailAppt.assigned_groomer ? `✂️ ${firstName(detailAppt.assigned_groomer)}` : ''}{detailAppt.assigned_groomer && detailAppt.assigned_bather ? '  ' : ''}{detailAppt.assigned_bather ? `🛁 ${firstName(detailAppt.assigned_bather)}` : ''}
+                        Saved: {detailAppt.assigned_groomer ? `✂️ ${firstName(detailAppt.assigned_groomer)}` : ''}
                       </p>
                     )}
                     {staff.filter(s => s.is_active).length === 0 && (
@@ -5033,7 +5033,7 @@ export default function DeskAdmin() {
                                 <p className="text-xs text-gray-400">{formatDate(a.appointment_date)} · {a.appointment_time}</p>
                                 {(a.assigned_groomer || a.assigned_bather) && (
                                   <p className="text-xs text-gray-400 mt-0.5">
-                                    {a.assigned_groomer && `✂️ ${firstName(a.assigned_groomer)}`}{a.assigned_groomer && a.assigned_bather ? ' · ' : ''}{a.assigned_bather && `🛁 ${firstName(a.assigned_bather)}`}
+                                    {a.assigned_groomer && `✂️ ${firstName(a.assigned_groomer)}`}{false && a.assigned_bather && `🛁 ${firstName(a.assigned_bather)}`}
                                   </p>
                                 )}
                                 {/* Health Check Summary */}
@@ -5954,7 +5954,7 @@ export default function DeskAdmin() {
                                 {/* Staff */}
                                 <div className={`text-xs space-y-0.5 ${isDone ? 'text-gray-400' : 'text-gray-500'}`}>
                                   {appt.assigned_groomer && <p>✂️ {firstName(appt.assigned_groomer)}</p>}
-                                  {appt.assigned_bather  && <p>🛁 {firstName(appt.assigned_bather)}</p>}
+                                  {false && appt.assigned_bather && <p>🛁 {firstName(appt.assigned_bather)}</p>}
                                   {assistTag(appt)}
                                   {!appt.assigned_groomer && !appt.assigned_bather && (
                                     appt.status === 'confirmed'
@@ -6315,7 +6315,7 @@ export default function DeskAdmin() {
                                 {appt.assigned_groomer && (
                                   <span className="text-xs font-bold bg-violet-50 border border-violet-100 text-violet-700 px-2 py-0.5 rounded-lg">✂️ {firstName(appt.assigned_groomer)}</span>
                                 )}
-                                {appt.assigned_bather && (
+                                {false && appt.assigned_bather && (
                                   <span className="text-xs font-bold bg-sky-50 border border-sky-100 text-sky-700 px-2 py-0.5 rounded-lg">🛁 {firstName(appt.assigned_bather)}</span>
                                 )}
                               </div>
@@ -6401,7 +6401,7 @@ export default function DeskAdmin() {
                                   {(appt.assigned_groomer || appt.assigned_bather) && (
                                     <div className="flex gap-1 mb-2 flex-wrap">
                                       {appt.assigned_groomer && <span className="text-xs font-bold text-violet-600">✂️{firstName(appt.assigned_groomer)}</span>}
-                                      {appt.assigned_bather && <span className="text-xs font-bold text-sky-600 ml-1">🛁{firstName(appt.assigned_bather)}</span>}
+                                      {false && appt.assigned_bather && <span className="text-xs font-bold text-sky-600 ml-1">🛁{firstName(appt.assigned_bather)}</span>}
                                     </div>
                                   )}
                                   {si < 4 ? (
@@ -6686,7 +6686,7 @@ export default function DeskAdmin() {
                         <span className="text-sm text-gray-500">{serviceMap[appt.service] ?? appt.service}</span>
                         <div className="flex flex-col gap-1">
                           {appt.assigned_groomer && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-1 rounded-full w-fit">✂️ {firstName(appt.assigned_groomer)}</span>}
-                          {appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)}</span>}
+                          {false && appt.assigned_bather && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-1 rounded-full w-fit">🛁 {firstName(appt.assigned_bather)}</span>}
                         </div>
                       </div>
                     ))}
@@ -7521,7 +7521,7 @@ export default function DeskAdmin() {
                                                               <p className="text-sm font-medium text-gray-700">{serviceMap[appt.service]??appt.service}</p>
                                                               <p className="text-xs text-gray-400">{formatDate(appt.appointment_date)} · {appt.appointment_time}
                                                                 {appt.assigned_groomer && <span className="ml-1">· ✂️ {firstName(appt.assigned_groomer)}</span>}
-                                                                {appt.assigned_bather && <span className="ml-1">· 🛁 {firstName(appt.assigned_bather)}</span>}
+                                                                {false && appt.assigned_bather && <span className="ml-1">· 🛁 {firstName(appt.assigned_bather)}</span>}
                                                               </p>
                                                             </div>
                                                             <div className="flex items-center gap-2 flex-shrink-0">
@@ -10541,7 +10541,7 @@ export default function DeskAdmin() {
                       <select value={newStaffRole} onChange={e => setNewStaffRole(e.target.value)}
                         className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300">
                         <option value="groomer">Groomer</option>
-                        <option value="bather">Bather</option>
+                        
                         <option value="receptionist">Receptionist</option>
                         <option value="manager">Manager</option>
                       </select>

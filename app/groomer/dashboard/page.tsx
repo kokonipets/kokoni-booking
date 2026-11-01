@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, type Tag as PetTag } from '@/lib/tags'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
-import { commissionableAmount, helperCut, stackedCoupons, restoreCoupons } from '@/lib/commission'
+import { commissionableAmount, helperCut, stackedCoupons, restoreCoupons, ratesOn } from '@/lib/commission'
+import { displayName } from '@/lib/staff-name'
 
 type Appointment = {
   id: string
@@ -253,8 +254,9 @@ export default function GroomerDashboard() {
   const prevPendingCountRef = useRef<number | null>(null)
   const [updateLoading, setUpdateLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'next_payroll' | 'last_payroll' | 'month' | 'year'>('this_payroll')
+  const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'next_payroll' | 'last_payroll' | 'month' | 'year'>('today')
   const [showEarnDetail, setShowEarnDetail] = useState(false)
+  const [myRates, setMyRates] = useState<{ commission_percent: number; tip_percent: number; rate_history?: { effective_from: string; commission_percent: number; tip_percent: number }[] } | null>(null)
   const [todayFilter, setTodayFilter] = useState<'all' | 'mine' | 'assist'>('all')
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [calendarSelected, setCalendarSelected] = useState<string | null>(null)
@@ -463,6 +465,7 @@ export default function GroomerDashboard() {
 
       setAppointments(appts)
       setHelperAppts((data.helper_appointments || []) as Appointment[])
+      if (data.my_rates) setMyRates(data.my_rates)
     } catch (err) {
       console.error(err)
       if (!silent) showToast('Failed to load appointments')
@@ -1309,7 +1312,7 @@ export default function GroomerDashboard() {
         <div key={a.id} className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-2">
           <p className="text-xs font-bold uppercase tracking-widest text-amber-600">🤝 Assist request</p>
           <p className="text-sm font-semibold text-gray-800">
-            {a.assigned_groomer ?? 'A groomer'} wants you to assist with {a.pets?.name ?? 'a pet'}
+            {displayName(a.assigned_groomer) || 'A groomer'} wants you to assist with {a.pets?.name ?? 'a pet'}
           </p>
           <p className="text-xs text-gray-500">{formatDate(a.appointment_date)} · {a.appointment_time}</p>
           <p className="text-xs text-amber-700">
@@ -1337,7 +1340,7 @@ export default function GroomerDashboard() {
               const amt = Number(e?.comm || 0) + Number(e?.tip || 0)
               return (
                 <div key={a.id} className="flex justify-between gap-3 text-xs text-gray-600">
-                  <span className="min-w-0 truncate">{a.appointment_time} · {a.pets?.name ?? 'Pet'} · for {a.assigned_groomer ?? '—'}</span>
+                  <span className="min-w-0 truncate">{a.appointment_time} · {a.pets?.name ?? 'Pet'} · for {displayName(a.assigned_groomer) || '—'}</span>
                   <span className="font-semibold whitespace-nowrap">{a.payment_status === 'paid' ? `+$${amt.toFixed(2)}` : 'not paid yet'}</span>
                 </div>
               )
@@ -1372,8 +1375,10 @@ export default function GroomerDashboard() {
     : []
 
   // Earnings
-  const commissionPct = user?.commission_percent ?? 0
-  const tipPct = user?.tip_percent ?? 0
+  // Rates come from the server (current + dated history), not the login cache, so a raise applies from its effective date
+  const rateOn = (date: string) => ratesOn(myRates ?? { commission_percent: user?.commission_percent ?? 0, tip_percent: user?.tip_percent ?? 0 }, date)
+  const commissionPct = rateOn(today).commission
+  const tipPct = rateOn(today).tip
   const now = salonNow(); if (now.getHours() < 4) now.setDate(now.getDate() - 1) // salon (LA) time
   const currentYear = now.getFullYear()
   const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 6)
@@ -1436,14 +1441,14 @@ export default function GroomerDashboard() {
     const bearer = (a as { discount_bearer?: string | null }).discount_bearer
     return s + commissionableAmount(paymentAmount, discountAmount, bearer)
   }, 0)
-  const ownCommission = commissionableTotal * commissionPct / 100
-  const ownTipShare = totalTips * tipPct / 100
+  const ownCommission = paidAppts.reduce((sum, a) => sum + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * rateOn(a.appointment_date).commission / 100, 0)
+  const ownTipShare = paidAppts.reduce((sum, a) => sum + parseFloat(a.tip_amount || '0') * rateOn(a.appointment_date).tip / 100, 0)
   // Helper (partner) groomer: what I pay out of my share on appointments where I added a helper…
   let helperPaidComm = 0, helperPaidTip = 0
   for (const a of paidAppts) {
     if (!a.helper_groomer) continue
-    const c = commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * commissionPct / 100
-    const t = parseFloat(a.tip_amount || '0') * tipPct / 100
+    const c = commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * rateOn(a.appointment_date).commission / 100
+    const t = parseFloat(a.tip_amount || '0') * rateOn(a.appointment_date).tip / 100
     const cut = helperCut(a, c, t)
     helperPaidComm += cut.comm; helperPaidTip += cut.tip
   }
@@ -1528,7 +1533,7 @@ export default function GroomerDashboard() {
           <div className="flex items-center gap-2.5">
             <Image src="/logo.png" alt="Kokoni" width={34} height={34} className="rounded-full" />
             <div>
-              <p className="text-sm font-bold text-gray-800 leading-tight">{user?.name ?? '—'}</p>
+              <p className="text-sm font-bold text-gray-800 leading-tight">{displayName(user?.name) || '—'}</p>
               <p className="text-xs text-gray-500 capitalize leading-tight">{user?.role ?? ''}</p>
             </div>
           </div>
@@ -2145,7 +2150,7 @@ export default function GroomerDashboard() {
               <p className="text-xs text-sky-400 mt-0.5">{paidAppts.length} appt{paidAppts.length !== 1 ? 's' : ''}{cashPendingCount > 0 ? ` · ${cashPendingCount} cash pending` : ''}{totalDiscount > 0 ? ' · before discount' : ''}</p>
             </div>
             <div className="bg-violet-50 rounded-2xl p-4 border border-violet-100">
-              <p className="text-xl font-bold text-violet-700">${commission.toFixed(2)}</p>
+              <p className="text-xl font-bold text-violet-700">${ownCommission.toFixed(2)}</p>
               <p className="text-xs text-violet-600 font-medium mt-1">Commission</p>
               <p className="text-xs text-violet-400 mt-0.5">{commissionPct}% commission rate</p>
             </div>
@@ -2170,7 +2175,7 @@ export default function GroomerDashboard() {
             </div>
             <div className="flex justify-between text-sm border-t border-gray-100 pt-1.5">
               <span className="text-violet-600 font-semibold">Your commission</span>
-              <span className="font-bold text-violet-700">${commission.toFixed(2)}</span>
+              <span className="font-bold text-violet-700">${ownCommission.toFixed(2)}</span>
             </div>
             {totalDiscount > 0 && <p className="text-[11px] text-gray-400 pt-1">Your commission base reflects each coupon&apos;s discount settings — store-covered discounts don&apos;t reduce your commission, groomer-covered ones do.</p>}
           </div>
@@ -2185,7 +2190,7 @@ export default function GroomerDashboard() {
               <div>
                 <p className="text-xs font-semibold text-gray-700">Average tip{netCollected > 0 ? ` (${(totalTips / netCollected * 100).toFixed(1)}%)` : ''}</p>
               </div>
-              <p className="text-base font-bold text-emerald-700">${tipInPaycheck.toFixed(2)}</p>
+              <p className="text-base font-bold text-emerald-700">${ownTipShare.toFixed(2)}</p>
             </div>
           </div>
 
@@ -2195,18 +2200,18 @@ export default function GroomerDashboard() {
               <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-1">🤝 Assist</p>
               {(helperPaidComm > 0 || helperPaidTip > 0) && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Paid to my assists (already deducted above)</span>
+                  <span className="text-gray-600">Paid to my assists (deducted from Take-Home)</span>
                   <span className="font-semibold text-red-500">−${(helperPaidComm + helperPaidTip).toFixed(2)}</span>
                 </div>
               )}
               {(helperPaidComm > 0 || helperPaidTip > 0) && (
                 <div className="border-t border-amber-100 pt-1.5 mt-1 space-y-1">
                   {paidAppts.filter(a => a.helper_groomer).map(a => {
-                    const c = commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * commissionPct / 100
-                    const cut = helperCut(a, c, parseFloat(a.tip_amount || '0') * tipPct / 100)
+                    const c = commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * rateOn(a.appointment_date).commission / 100
+                    const cut = helperCut(a, c, parseFloat(a.tip_amount || '0') * rateOn(a.appointment_date).tip / 100)
                     return (
                       <div key={a.id} className="flex justify-between gap-3 text-xs">
-                        <span className="text-gray-500 min-w-0 truncate">{formatDate(a.appointment_date)} · {a.pets?.name ?? 'Pet'} · Assist by {a.helper_groomer}</span>
+                        <span className="text-gray-500 min-w-0 truncate">{formatDate(a.appointment_date)} · {a.pets?.name ?? 'Pet'} · Assist by {displayName(a.helper_groomer)}</span>
                         <span className="font-semibold text-red-500 whitespace-nowrap">−${(cut.comm + cut.tip).toFixed(2)}</span>
                       </div>
                     )
@@ -2215,7 +2220,7 @@ export default function GroomerDashboard() {
               )}
               {helperJobs.length > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Earned assisting others · {helperJobs.length} appt{helperJobs.length !== 1 ? 's' : ''} (added above)</span>
+                  <span className="text-gray-600">Earned assisting others · {helperJobs.length} appt{helperJobs.length !== 1 ? 's' : ''} (added to Take-Home)</span>
                   <span className="font-semibold text-emerald-600">+${(helperEarnComm + helperEarnTip).toFixed(2)}</span>
                 </div>
               )}
@@ -2225,7 +2230,7 @@ export default function GroomerDashboard() {
                     const e = (a as unknown as { helper_earn?: { comm: number; tip: number } }).helper_earn
                     return (
                       <div key={a.id} className="flex justify-between gap-3 text-xs">
-                        <span className="text-gray-500 min-w-0 truncate">{formatDate(a.appointment_date)} · {a.pets?.name ?? 'Pet'} · Assist for {a.assigned_groomer ?? '—'}</span>
+                        <span className="text-gray-500 min-w-0 truncate">{formatDate(a.appointment_date)} · {a.pets?.name ?? 'Pet'} · Assist for {displayName(a.assigned_groomer) || '—'}</span>
                         <span className="font-semibold text-emerald-600 whitespace-nowrap">+${((e?.comm || 0) + (e?.tip || 0)).toFixed(2)}</span>
                       </div>
                     )
@@ -2259,8 +2264,8 @@ export default function GroomerDashboard() {
                   const pay = parseFloat(a.payment_amount || '0')
                   const disc = parseFloat((a as { discount_amount?: string | null }).discount_amount || '0')
                   const c = commissionableAmount(pay, disc, (a as { discount_bearer?: string | null }).discount_bearer)
-                  const comm = c * commissionPct / 100
-                  const tipShare = parseFloat(a.tip_amount || '0') * tipPct / 100
+                  const comm = c * rateOn(a.appointment_date).commission / 100
+                  const tipShare = parseFloat(a.tip_amount || '0') * rateOn(a.appointment_date).tip / 100
                   const cut = a.helper_groomer ? helperCut(a, c, tipShare) : { comm: 0, tip: 0 }
                   const net = comm + tipShare - cut.comm - cut.tip
                   return (
@@ -2279,7 +2284,7 @@ export default function GroomerDashboard() {
                     <div key={a.id} className="flex items-start justify-between gap-3 text-xs">
                       <div className="min-w-0">
                         <p className="font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'}</p>
-                        <p className="text-gray-400">Assist for {a.assigned_groomer ?? '—'}</p>
+                        <p className="text-gray-400">Assist for {displayName(a.assigned_groomer) || '—'}</p>
                       </div>
                       <span className="font-bold text-emerald-600 whitespace-nowrap">+${((e?.comm || 0) + (e?.tip || 0)).toFixed(2)}</span>
                     </div>
@@ -2289,7 +2294,7 @@ export default function GroomerDashboard() {
                   <div key={a.id} className="flex items-start justify-between gap-3 text-xs">
                     <div className="min-w-0">
                       <p className="font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'}</p>
-                      <p className="text-gray-400">Assist for {a.assigned_groomer ?? '—'}</p>
+                      <p className="text-gray-400">Assist for {displayName(a.assigned_groomer) || '—'}</p>
                     </div>
                     <span className="text-gray-400 whitespace-nowrap">not paid yet</span>
                   </div>
@@ -3100,13 +3105,7 @@ export default function GroomerDashboard() {
                     {selectedAppt.assigned_groomer && (
                       <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2">
                         <span className="text-xs font-semibold text-indigo-400">✂️ Groomer</span>
-                        <span className="text-sm font-semibold text-gray-800">{selectedAppt.assigned_groomer}</span>
-                      </div>
-                    )}
-                    {selectedAppt.assigned_bather && (
-                      <div className="flex items-center gap-2 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2">
-                        <span className="text-xs font-semibold text-sky-400">🛁 Bather</span>
-                        <span className="text-sm font-semibold text-gray-800">{selectedAppt.assigned_bather}</span>
+                        <span className="text-sm font-semibold text-gray-800">{displayName(selectedAppt.assigned_groomer)}</span>
                       </div>
                     )}
                   </div>
@@ -3120,7 +3119,7 @@ export default function GroomerDashboard() {
                   {selectedAppt.helper_groomer && !helperEditing && (
                     <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-gray-800">{selectedAppt.helper_groomer}{' '}
+                        <p className="text-sm font-semibold text-gray-800">{displayName(selectedAppt.helper_groomer)}{' '}
                           {selectedAppt.helper_status === 'pending'
                             ? <span className="text-[11px] font-semibold text-amber-600 bg-amber-100 rounded-full px-2 py-0.5">⏳ Waiting for confirmation</span>
                             : <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-100 rounded-full px-2 py-0.5">✓ Confirmed</span>}
@@ -3159,7 +3158,7 @@ export default function GroomerDashboard() {
                         <select value={helperName} onChange={e => setHelperName(e.target.value)}
                           className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
                           <option value="">— Select —</option>
-                          {allStaff.filter(n => n !== selectedAppt.assigned_groomer).map(n => <option key={n} value={n}>{n}</option>)}
+                          {allStaff.filter(n => n !== selectedAppt.assigned_groomer).map(n => <option key={n} value={n}>{displayName(n)}</option>)}
                         </select>
                       </div>
                       <div className="grid grid-cols-2 gap-2">

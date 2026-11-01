@@ -182,7 +182,22 @@ export async function GET(req: NextRequest) {
       }
     } catch { /* column missing */ }
 
-    return NextResponse.json({ appointments: appointmentsWithFirstVisit, helper_appointments: helperAppointments })
+    // The logged-in staff member's CURRENT rates + rate history (so the groomer's earnings never rely on a stale login cache)
+    let myRates: unknown = null
+    try {
+      const q = staffId
+        ? await supabase.from('staff').select('id, name, commission_percent, tip_percent').eq('id', staffId).limit(1)
+        : await supabase.from('staff').select('id, name, commission_percent, tip_percent').ilike('name', `${staffName!.trim().split(/\s+/)[0].replace(/[,()%]/g, '')}%`).limit(5)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = (q.data || []) as any[]
+      const me = rows.find(r => String(r.name).toLowerCase() === (staffName || '').trim().toLowerCase()) || rows[0]
+      if (me) {
+        const hist = await loadRateHistory(supabase)
+        myRates = { commission_percent: Number(me.commission_percent ?? 0), tip_percent: Number(me.tip_percent ?? 0), rate_history: hist[String(me.id)] || [] }
+      }
+    } catch { /* best effort */ }
+
+    return NextResponse.json({ appointments: appointmentsWithFirstVisit, helper_appointments: helperAppointments, my_rates: myRates })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })

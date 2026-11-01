@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
-import { sameStaff } from '@/lib/staff-name'
+import { sameStaff, displayName } from '@/lib/staff-name'
 import { stackedCoupons, restoreCoupons } from '@/lib/commission'
 
 // Dashboard-tab permissions are managed once, on the desktop admin's tab set
@@ -2446,7 +2446,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                         <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">{serviceMap[appt.service] ?? appt.service}</span>
                         {appt.assigned_groomer && <span className="text-[11px] font-bold text-white bg-rose-500 px-2 py-0.5 rounded-full">✂️ {appt.assigned_groomer.split(' ')[0]}</span>}
-                        {appt.assigned_bather  && <span className="text-[11px] font-bold text-white bg-sky-500 px-2 py-0.5 rounded-full">🛁 {appt.assigned_bather.split(' ')[0]}</span>}
+                        {false && appt.assigned_bather && <span className="text-[11px] font-bold text-white bg-sky-500 px-2 py-0.5 rounded-full">🛁 {appt.assigned_bather?.split(' ')[0]}</span>}
                         {isDone && (appt.payment_status === 'paid'
                           ? <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded ml-auto">✓ ${appt.payment_amount}</span>
                           : appt.payment_status === 'cash_pending'
@@ -2771,14 +2771,6 @@ export default function AdminPage() {
                                     <option value="">✂️ Groomer…</option>
                                     {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
-                                  <select defaultValue="" onChange={async e => {
-                                    if (!e.target.value) return
-                                    await fetch(`/api/admin/appointments/${appt.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'assign-staff', assigned_groomer: appt.assigned_groomer || '', assigned_bather: e.target.value }) })
-                                    fetchAppointments()
-                                  }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white">
-                                    <option value="">🛁 Bather…</option>
-                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                                  </select>
                                 </div>
                               </div>
                             </div>
@@ -2819,8 +2811,8 @@ export default function AdminPage() {
                                   <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">Pending confirm</span>
                                 </div>
                                 <div className="mt-2 flex flex-wrap gap-2">
-                                  {appt.assigned_groomer && <span className="text-xs bg-sky-50 text-sky-700 px-2 py-1 rounded-lg">✂️ {appt.assigned_groomer}</span>}
-                                  {appt.assigned_bather  && <span className="text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded-lg">🛁 {appt.assigned_bather}</span>}
+                                  {appt.assigned_groomer && <span className="text-xs bg-sky-50 text-sky-700 px-2 py-1 rounded-lg">✂️ {displayName(appt.assigned_groomer)}</span>}
+                                  {false && appt.assigned_bather && <span className="text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded-lg">🛁 {appt.assigned_bather}</span>}
                                 </div>
                                 {/* Allow re-assigning staff */}
                                 <div className="grid grid-cols-2 gap-2 mt-2">
@@ -2830,14 +2822,6 @@ export default function AdminPage() {
                                     fetchAppointments()
                                   }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white">
                                     <option value="">✂️ Change groomer…</option>
-                                    {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                                  </select>
-                                  <select defaultValue="" onChange={async e => {
-                                    if (!e.target.value) return
-                                    await fetch(`/api/admin/appointments/${appt.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'assign-staff', assigned_groomer: appt.assigned_groomer || '', assigned_bather: e.target.value }) })
-                                    fetchAppointments()
-                                  }} className="border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white">
-                                    <option value="">🛁 Change bather…</option>
                                     {staff.filter(s => s.is_active && s.role !== 'admin').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                   </select>
                                 </div>
@@ -3725,7 +3709,7 @@ export default function AdminPage() {
               const activeStaffDay = staff.filter(s => s.is_active && s.role !== 'admin')
               const staffTabs = activeStaffDay.map(s => ({
                 key: s.name,
-                label: s.name,
+                label: displayName(s.name),
                 icon: s.role === 'groomer' ? '✂️' : '🛁',
                 dot: s.role === 'groomer' ? 'bg-sky-500' : 'bg-teal-500',
                 count: dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name) || sameStaff(a.assigned_bather, s.name)).length,
@@ -3936,7 +3920,7 @@ export default function AdminPage() {
                                               <p className="text-[10px] font-semibold text-sky-600">
                                                 {fmtMin(t.startMin)}–{fmtMin(t.endMin)}
                                                 {activeTabKey === 'all' && (t.a.assigned_groomer || t.a.assigned_bather) && (
-                                                  <span className="ml-1.5 text-[13px] font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">{t.a.assigned_groomer || t.a.assigned_bather}</span>
+                                                  <span className="ml-1.5 text-[13px] font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">{displayName(t.a.assigned_groomer || t.a.assigned_bather)}</span>
                                                 )}
                                               </p>
                                             </div>
@@ -4104,22 +4088,7 @@ export default function AdminPage() {
                               return (
                                 <button key={name} onClick={() => patchAppt({ action:'assign-staff', assigned_groomer: val, assigned_bather: a.assigned_bather||'' })}
                                   className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all ${active ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-gray-600 border-gray-200 hover:border-rose-300'}`}>
-                                  {name}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-2">🛁 Bather</p>
-                          <div className="flex flex-wrap gap-2">
-                            {['None', ...activeStaff.map(s => s.name)].map(name => {
-                              const val = name === 'None' ? '' : name
-                              const active = (a.assigned_bather || '') === val
-                              return (
-                                <button key={name} onClick={() => patchAppt({ action:'assign-staff', assigned_groomer: a.assigned_groomer||'', assigned_bather: val })}
-                                  className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-all ${active ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}`}>
-                                  {name}
+                                  {displayName(name)}
                                 </button>
                               )
                             })}
@@ -4695,7 +4664,7 @@ export default function AdminPage() {
                               </div>
                               {(appt.assigned_groomer || appt.assigned_bather) && (
                                 <p className="text-xs text-gray-400">
-                                  {appt.assigned_groomer && `✂️ ${appt.assigned_groomer}`}{appt.assigned_groomer && appt.assigned_bather ? ' · ' : ''}{appt.assigned_bather && `🛁 ${appt.assigned_bather}`}
+                                  {appt.assigned_groomer && `✂️ ${displayName(appt.assigned_groomer)}`}{false && appt.assigned_bather && `🛁 ${appt.assigned_bather}`}
                                 </p>
                               )}
                               {hcDetail}
@@ -5517,7 +5486,7 @@ export default function AdminPage() {
                                   <p className="text-xs text-gray-400 mt-0.5">
                                     {appt.assigned_groomer && `✂️ ${appt.assigned_groomer.split(' ')[0]}`}
                                     {appt.assigned_groomer && appt.assigned_bather && ' · '}
-                                    {appt.assigned_bather && `🛁 ${appt.assigned_bather.split(' ')[0]}`}
+                                    {false && appt.assigned_bather && `🛁 ${appt.assigned_bather?.split(' ')[0]}`}
                                   </p>
                                 </div>
                                 <div className="text-right shrink-0">
@@ -5752,8 +5721,8 @@ export default function AdminPage() {
                                                           <p className="text-sm font-medium text-gray-700">{serviceMap[appt.service] ?? appt.service}</p>
                                                           <p className="text-xs text-gray-400">
                                                             {formatDate(appt.appointment_date)}
-                                                            {appt.assigned_groomer && <span className="ml-1">· ✂️ {appt.assigned_groomer}</span>}
-                                                            {appt.assigned_bather && <span className="ml-1">· 🛁 {appt.assigned_bather}</span>}
+                                                            {appt.assigned_groomer && <span className="ml-1">· ✂️ {displayName(appt.assigned_groomer)}</span>}
+                                                            {false && appt.assigned_bather && <span className="ml-1">· 🛁 {appt.assigned_bather}</span>}
                                                           </p>
                                                         </div>
                                                         <div className="flex flex-col items-end flex-shrink-0 gap-0.5">

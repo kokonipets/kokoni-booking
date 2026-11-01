@@ -170,7 +170,7 @@ export default function TVBoard() {
                     {(appt.assigned_groomer || appt.assigned_bather) && (
                       <div className="flex gap-2 mb-2 flex-wrap">
                         {appt.assigned_groomer && <span className="text-xs font-bold text-violet-300 bg-violet-500/20 px-2 py-0.5 rounded-lg">✂️ {firstName(appt.assigned_groomer)}</span>}
-                        {appt.assigned_bather && <span className="text-xs font-bold text-sky-300 bg-sky-500/20 px-2 py-0.5 rounded-lg">🛁 {firstName(appt.assigned_bather)}</span>}
+                        {false && appt.assigned_bather && <span className="text-xs font-bold text-sky-300 bg-sky-500/20 px-2 py-0.5 rounded-lg">🛁 {firstName(appt.assigned_bather)}</span>}
                       </div>
                     )}
                     {appt.grooming_status_updated_at && (

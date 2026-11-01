@@ -814,7 +814,7 @@ export default function SettingsPage() {
                     onChange={e => setFormData(prev => ({ ...prev, role: e.target.value }))}
                     className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
                   >
-                    <option value="bather">Bather</option>
+                    
                     <option value="assistant_groomer">Assistant Groomer (AG)</option>
                     <option value="groomer">Groomer</option>
                     <option value="head_groomer">Head Groomer</option>

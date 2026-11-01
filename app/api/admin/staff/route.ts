@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { loadRateHistory } from '@/lib/commission'
+import { loadRateHistory, ratesOn } from '@/lib/commission'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -23,7 +23,17 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   // Attach each person's effective-dated rate history (payroll uses the rate in force on each date)
   const hist = await loadRateHistory(supabase)
-  return NextResponse.json({ staff: (data ?? []).map((m: { id: string }) => ({ ...m, rate_history: hist[m.id] ?? [] })) })
+  // staff.commission_percent / tip_percent only change when someone saves the staff form, so a raise scheduled for a future
+  // date would keep showing the old rate after that date arrives. Report the rate actually in force today instead.
+  const todayLA = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  return NextResponse.json({
+    staff: (data ?? []).map((m: { id: string; commission_percent?: number | null; tip_percent?: number | null }) => {
+      const h = hist[m.id] ?? []
+      if (!h.length) return { ...m, rate_history: h }
+      const r = ratesOn({ commission_percent: m.commission_percent, tip_percent: m.tip_percent, rate_history: h }, todayLA)
+      return { ...m, commission_percent: r.commission, tip_percent: r.tip, rate_history: h }
+    }),
+  })
 }
 
 export async function POST(req: NextRequest) {

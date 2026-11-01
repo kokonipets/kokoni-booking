@@ -2140,12 +2140,6 @@ export default function CashierPage() {
                               <option value="">✂️ Groomer</option>
                               {staffList.map(s => <option key={s} value={s}>{s.split(' ')[0]}</option>)}
                             </select>
-                            <select value={a.assigned_bather || ''} disabled={assigningId === a.id}
-                              onChange={e => assignStaff(a.id, a.assigned_groomer, e.target.value || null)}
-                              className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none">
-                              <option value="">🛁 Bather</option>
-                              {staffList.map(s => <option key={s} value={s}>{s.split(' ')[0]}</option>)}
-                            </select>
                           </div>
                         )}
                       </div>
@@ -2288,12 +2282,6 @@ export default function CashierPage() {
                                   onChange={e => assignStaff(a.id, e.target.value || null, a.assigned_bather)}
                                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none">
                                   <option value="">✂️ Groomer</option>
-                                  {staffList.map(s => <option key={s} value={s}>{s.split(' ')[0]}</option>)}
-                                </select>
-                                <select value={a.assigned_bather || ''} disabled={assigningId === a.id}
-                                  onChange={e => assignStaff(a.id, a.assigned_groomer, e.target.value || null)}
-                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none">
-                                  <option value="">🛁 Bather</option>
                                   {staffList.map(s => <option key={s} value={s}>{s.split(' ')[0]}</option>)}
                                 </select>
                               </div>

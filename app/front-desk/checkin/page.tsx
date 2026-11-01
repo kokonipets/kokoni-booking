@@ -582,15 +582,6 @@ export default function StaffCheckinPage() {
                                   <option value="">✂️ Groomer</option>
                                   {staffList.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
-                                <select
-                                  value={appt.assigned_bather || ''}
-                                  disabled={assigningId === appt.id}
-                                  onChange={e => assignStaff(appt.id, appt.assigned_groomer, e.target.value || null)}
-                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-blue-300"
-                                >
-                                  <option value="">🛁 Bather</option>
-                                  {staffList.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
                               </div>
                             )}
                           </div>
