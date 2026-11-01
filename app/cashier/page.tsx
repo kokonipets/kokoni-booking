@@ -1083,6 +1083,21 @@ function NewClientForm({ onDone }: { onDone: () => void }) {
 
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
+// Per-method totals. Service $ goes to the payment method; tips go to the method they were actually paid with, so an extra tip
+// (e.g. $20 cash on a card visit) shows up under Cash instead of being lumped in with Card.
+type RevAcc = Record<string, { amount: number; tips: number; count: number }>
+function addToRevenue(acc: RevAcc, a: { payment_method?: string | null; payment_amount?: string | null; tip_amount?: string | null; tip_method?: string | null; extra_tip_amount?: string | null; extra_tip_method?: string | null }) {
+  const m = a.payment_method ?? 'unknown'
+  const amt = parseFloat(a.payment_amount ?? '0') || 0
+  const tipTotal = parseFloat(a.tip_amount ?? '0') || 0
+  const extra = Math.min(tipTotal, parseFloat(a.extra_tip_amount ?? '0') || 0)
+  const mainM = a.tip_method || m
+  const extraM = a.extra_tip_method || 'cash'
+  acc[m] = { amount: (acc[m]?.amount ?? 0) + amt, tips: acc[m]?.tips ?? 0, count: (acc[m]?.count ?? 0) + 1 }
+  acc[mainM] = { amount: acc[mainM]?.amount ?? 0, tips: (acc[mainM]?.tips ?? 0) + (tipTotal - extra), count: acc[mainM]?.count ?? 0 }
+  if (extra > 0) acc[extraM] = { amount: acc[extraM]?.amount ?? 0, tips: (acc[extraM]?.tips ?? 0) + extra, count: acc[extraM]?.count ?? 0 }
+}
+
 export default function CashierPage() {
   // Who's currently signed in to this Cashier screen (separate from the
   // Admin/Desk login) — persisted in localStorage across refreshes.
@@ -1202,13 +1217,7 @@ export default function CashierPage() {
   const totalService = allCollected.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
   const totalTips = allCollected.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
 
-  const revenue = allCollected.reduce((acc, a) => {
-    const m = a.payment_method ?? 'unknown'
-    const amt = parseFloat(a.payment_amount ?? '0') || 0
-    const tip = parseFloat(a.tip_amount ?? '0') || 0
-    acc[m] = { amount: (acc[m]?.amount ?? 0) + amt, tips: (acc[m]?.tips ?? 0) + tip, count: (acc[m]?.count ?? 0) + 1 }
-    return acc
-  }, {} as Record<string, { amount: number; tips: number; count: number }>)
+  const revenue = allCollected.reduce((acc, a) => { addToRevenue(acc, a); return acc }, {} as RevAcc)
   // The payment-method boxes read from whichever period is selected — today's
   // live breakdown, or the fetched This Week / This Month aggregate.
   const activeRevenue = selectedPeriod === 'today' ? revenue : (periodRevenue ?? {})
@@ -1398,19 +1407,20 @@ export default function CashierPage() {
     if (period === 'today') { setPeriodRevenue(null); return }
     try {
       const { start, end } = getPeriodRange(period)
-      const { data } = await supabase.from('appointments')
-        .select('payment_method, payment_amount, tip_amount')
+      const { data, error } = await supabase.from('appointments')
+        .select('payment_method, payment_amount, tip_amount, tip_method, extra_tip_amount, extra_tip_method')
         .eq('payment_status', 'paid')
         .gte('appointment_date', start)
         .lte('appointment_date', end)
-      const rows = (data as { payment_method: string | null; payment_amount: string | null; tip_amount: string | null }[]) || []
-      const agg = rows.reduce((acc, a) => {
-        const m = a.payment_method ?? 'unknown'
-        const amt = parseFloat(a.payment_amount ?? '0') || 0
-        const tip = parseFloat(a.tip_amount ?? '0') || 0
-        acc[m] = { amount: (acc[m]?.amount ?? 0) + amt, tips: (acc[m]?.tips ?? 0) + tip, count: (acc[m]?.count ?? 0) + 1 }
-        return acc
-      }, {} as Record<string, { amount: number; tips: number; count: number }>)
+      let { data: pdata, error: perr } = { data, error: null as unknown } as { data: typeof data; error: unknown }
+      if (error) {
+        // extra-tip columns not migrated yet — fall back to the old column list
+        const fb = await supabase.from('appointments').select('payment_method, payment_amount, tip_amount').eq('payment_status', 'paid').gte('appointment_date', start).lte('appointment_date', end)
+        pdata = fb.data as typeof data
+      }
+      void perr
+      const rows = (pdata as unknown as { payment_method: string | null; payment_amount: string | null; tip_amount: string | null; tip_method?: string | null; extra_tip_amount?: string | null; extra_tip_method?: string | null }[]) || []
+      const agg = rows.reduce((acc, a) => { addToRevenue(acc, a); return acc }, {} as RevAcc)
       setPeriodRevenue(agg)
     } catch {
       setPeriodRevenue(null)

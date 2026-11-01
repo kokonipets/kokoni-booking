@@ -2706,7 +2706,11 @@ export default function GroomerDashboard() {
                               )}
                             </div>
                             <div className="text-right flex-shrink-0 whitespace-nowrap">
+                              {(v.status === 'no_show' || (parseFloat(v.payment_amount || '0') === 0 && !v.checked_in_at && !v.grooming_started_at)) ? (
+                                <p className="text-sm font-bold text-rose-500 whitespace-nowrap">No show</p>
+                              ) : (
                               <p className="text-sm font-bold text-gray-700 whitespace-nowrap">${v.payment_amount}</p>
+                              )}
                               {v.tip_amount && parseFloat(v.tip_amount) > 0 ? (
                                 <p className="text-[11px] text-emerald-600 whitespace-nowrap">+${v.tip_amount} tip</p>
                               ) : (
@@ -2718,6 +2722,8 @@ export default function GroomerDashboard() {
                             <p className="text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1.5 whitespace-pre-wrap break-words">
                               📓 {diaryNote}
                             </p>
+                          ) : (v.status === 'no_show' || (parseFloat(v.payment_amount || '0') === 0 && !v.checked_in_at && !v.grooming_started_at)) ? (
+                            <p className="text-xs text-rose-400 bg-rose-50 rounded-lg px-2 py-1.5">Client did not show up for this appointment</p>
                           ) : (
                             <p className="text-xs text-gray-300 bg-gray-50 rounded-lg px-2 py-1.5">
                               📓 Groomer Notes — none saved for this visit

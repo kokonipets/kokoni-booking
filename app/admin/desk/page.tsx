@@ -8228,7 +8228,14 @@ export default function DeskAdmin() {
               key: m,
               label: methodLabels[m],
               amount: paid.filter(a => a.payment_method === m).reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0),
-              tips: paid.filter(a => a.payment_method === m).reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0),
+              // Tips are credited to the method they were actually paid with: an extra tip (e.g. $20 cash on a card visit) goes to its own method
+              tips: paid.reduce((s, a) => {
+                const T = parseFloat(a.tip_amount || '0')
+                const E = Math.min(T, parseFloat(a.extra_tip_amount || '0') || 0)
+                const mainM = (a as { tip_method?: string | null }).tip_method || a.payment_method
+                const extraM = a.extra_tip_method || 'cash'
+                return s + (mainM === m ? T - E : 0) + (E > 0 && extraM === m ? E : 0)
+              }, 0),
               count: paid.filter(a => a.payment_method === m).length,
               color: m === 'cash' ? 'border-green-200 bg-green-50 text-green-700' : m === 'card' ? 'border-sky-200 bg-sky-50 text-sky-700' : m === 'zelle' ? 'border-purple-200 bg-purple-50 text-purple-700' : 'border-blue-200 bg-blue-50 text-blue-700',
             }))
@@ -8514,14 +8521,14 @@ export default function DeskAdmin() {
                   {/* Payment method breakdown */}
                   <div className="grid grid-cols-2 gap-2">
                     {methodBreakdown.map(m => (
-                      <div key={m.key} className={`rounded-xl border px-3 py-2.5 ${m.count > 0 ? m.color : 'bg-gray-50 border-gray-100 text-gray-300'}`}>
+                      <div key={m.key} className={`rounded-xl border px-3 py-2.5 ${m.count > 0 || m.tips > 0 ? m.color : 'bg-gray-50 border-gray-100 text-gray-300'}`}>
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-semibold">{m.label}</span>
-                          <span className="text-sm font-black">{m.count > 0 ? `$${m.amount.toFixed(2)}` : '—'}</span>
+                          <span className="text-sm font-black">{m.count > 0 || m.tips > 0 ? `$${(m.amount + m.tips).toFixed(2)}` : '—'}</span>
                         </div>
-                        {m.count > 0 && (
+                        {(m.count > 0 || m.tips > 0) && (
                           <p className="text-[11px] mt-0.5 opacity-70">
-                            {m.count} payment{m.count !== 1 ? 's' : ''}
+                            {m.count > 0 ? `${m.count} payment${m.count !== 1 ? 's' : ''}` : 'tips only'}
                             {m.tips > 0 && ` · +$${m.tips.toFixed(2)} tip`}
                           </p>
                         )}
@@ -9154,7 +9161,18 @@ export default function DeskAdmin() {
               if (!rangeMethodTotals[key]) rangeMethodTotals[key] = { count: 0, amount: 0, tips: 0 }
               rangeMethodTotals[key].count += 1
               rangeMethodTotals[key].amount += parseFloat(a.payment_amount || '0')
-              rangeMethodTotals[key].tips += parseFloat(a.tip_amount || '0')
+              // Tips go to the method they were actually paid with: an extra tip (e.g. $20 cash on top of a card visit)
+              // lands on its own method instead of being lumped under the service payment method.
+              const tipTotal = parseFloat(a.tip_amount || '0')
+              const extraTip = isPaid ? Math.min(tipTotal, parseFloat(a.extra_tip_amount || '0') || 0) : 0
+              const mainTipMethod = (isPaid && ((a as { tip_method?: string | null }).tip_method || a.payment_method)) || key
+              const extraTipMethod = a.extra_tip_method || 'cash'
+              if (!rangeMethodTotals[mainTipMethod]) rangeMethodTotals[mainTipMethod] = { count: 0, amount: 0, tips: 0 }
+              rangeMethodTotals[mainTipMethod].tips += tipTotal - extraTip
+              if (extraTip > 0) {
+                if (!rangeMethodTotals[extraTipMethod]) rangeMethodTotals[extraTipMethod] = { count: 0, amount: 0, tips: 0 }
+                rangeMethodTotals[extraTipMethod].tips += extraTip
+              }
             })
             return (
               <div className="space-y-5">
@@ -9249,7 +9267,7 @@ export default function DeskAdmin() {
                             const labels: Record<string, string> = { cash: 'Cash', card: 'Credit Card', zelle: 'Zelle', venmo: 'Venmo', check: 'Check' }
                             const t = rangeMethodTotals[m]
                             return (
-                              <div key={m} className={`rounded-xl border px-3 py-2.5 ${colors[m]} ${t.count === 0 ? 'opacity-30' : ''}`}>
+                              <div key={m} className={`rounded-xl border px-3 py-2.5 ${colors[m]} ${t.count === 0 && t.tips === 0 ? 'opacity-30' : ''}`}>
                                 <p className="text-base font-bold" title="Total received, including tips">${(t.amount + t.tips).toFixed(2)}</p>
                                 <p className="text-[11px] font-semibold mt-0.5">{labels[m]}</p>
                                 <p className="text-[10px] opacity-70">{t.count} appt{t.count !== 1 ? 's' : ''}</p>

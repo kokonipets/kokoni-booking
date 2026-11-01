@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
   try {
     // Fetch appointments assigned to this groomer/bather (by name if provided, else by id)
     const filterValue = staffName || staffId!
+    // Match on first name too, so an appointment saved as "Wylie" still shows for the staff login "Wylie Shen"
+    const namePattern = staffName ? `%${staffName.trim().split(/\s+/)[0].replace(/[,()%]/g, '')}%` : null
     const SELECT_BASE = `
         id,
         client_phone,
@@ -97,7 +99,7 @@ export async function GET(req: NextRequest) {
     const runQuery = (sel: string) => supabase
       .from('appointments')
       .select(sel)
-      .or(`assigned_groomer.eq.${filterValue},assigned_bather.eq.${filterValue}`)
+      .or(namePattern ? `assigned_groomer.ilike.${namePattern},assigned_bather.ilike.${namePattern}` : `assigned_groomer.eq.${filterValue},assigned_bather.eq.${filterValue}`)
       .in('status', ['confirmed', 'in_progress', 'completed'])
       .order('appointment_date', { ascending: true })
     // Falls back to the old column list if the helper_* migration hasn't been run yet
@@ -144,7 +146,7 @@ export async function GET(req: NextRequest) {
       const { data: hd, error: he } = await supabase
         .from('appointments')
         .select('id, appointment_date, appointment_time, service, status, assigned_groomer, payment_amount, payment_status, tip_amount, discount_amount, discount_bearer, helper_groomer, helper_pay_type, helper_flat_amount, helper_commission_percent, helper_tip_percent, pets (name)')
-        .eq('helper_groomer', filterValue)
+        .or(namePattern ? `helper_groomer.ilike.${namePattern}` : `helper_groomer.eq.${filterValue}`)
         .in('status', ['confirmed', 'in_progress', 'completed'])
         .order('appointment_date', { ascending: true })
       if (!he && hd && hd.length) {
