@@ -1279,13 +1279,15 @@ export default function GroomerDashboard() {
   const showAssist = todayFilter !== 'mine'
   const secCount = (mine: TodayAppt[], assist: TodayAppt[]) => (showMine ? mine.length : 0) + (showAssist ? assist.length : 0)
   const assistRow = (a: TodayAppt) => (
-    <div key={a.id} className="bg-amber-50 border border-amber-200 border-l-4 border-l-amber-400 rounded-xl px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold text-amber-700">{a.appointment_time}</span>
-        <span className="text-[11px] font-bold uppercase tracking-wide text-amber-700">🤝 Assist for {a.assigned_groomer ? a.assigned_groomer.trim().split(/\s+/)[0] : '—'}</span>
-      </div>
-      <p className="text-sm font-semibold text-gray-800 mt-0.5">{a.pets?.name ?? 'Pet'}</p>
-      <p className="text-xs text-gray-500">{serviceMap[a.service] ?? a.service}</p>
+    <div key={a.id} className="border-l-4 border-amber-400 rounded-xl">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700 px-2 pt-1">🤝 Assist for {a.assigned_groomer ? a.assigned_groomer.trim().split(/\s+/)[0] : '—'}</p>
+      <ApptCard
+        appt={a}
+        onAction={handleAction}
+        onTap={(x) => openApptPopup(x, { readOnly: true })}
+        loadingId={updateLoading}
+        serviceLabels={serviceMap}
+      />
     </div>
   )
   const mixed = (mine: TodayAppt[], assist: TodayAppt[], renderMine: (a: TodayAppt) => React.ReactNode) =>
