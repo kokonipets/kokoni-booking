@@ -3854,6 +3854,7 @@ function ApptCard({
   serviceLabels?: Record<string, string>
   assistFor?: string
 }) {
+  const [showPhoto, setShowPhoto] = useState(false)
   const isLoading = loadingId === appt.id
   const hasActions = showStart || showComplete || showConfirm || showAccept || showNoShow || showReschedule
 
@@ -3904,7 +3905,7 @@ function ApptCard({
           onClick={() => onTap?.(appt)}>
           {/* Pet photo */}
           {appt.pets?.photo_url ? (
-            <img src={appt.pets.photo_url} alt={appt.pets.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0 mt-0.5" />
+            <img src={appt.pets.photo_url} alt={appt.pets.name} onClick={e => { e.stopPropagation(); setShowPhoto(true) }} className="w-10 h-10 rounded-xl object-cover flex-shrink-0 mt-0.5 cursor-zoom-in" />
           ) : (
             <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0 text-lg mt-0.5">🐾</div>
           )}
@@ -4050,6 +4051,15 @@ function ApptCard({
           </div>{/* end content */}
         </div>{/* end flex-1 + photo */}
       </div>{/* end outer flex */}
+      {showPhoto && appt.pets?.photo_url && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-6" onClick={e => { e.stopPropagation(); setShowPhoto(false) }}>
+          <div className="relative bg-white rounded-2xl p-2 shadow-2xl" style={{ width: 'min(300px, 80vw)' }}>
+            <img src={appt.pets.photo_url} alt={appt.pets.name} className="w-full rounded-xl object-cover" style={{ maxHeight: '60vh' }} />
+            <p className="text-center text-sm font-semibold text-gray-700 pt-2 pb-1">{appt.pets.name}</p>
+            <button onClick={e => { e.stopPropagation(); setShowPhoto(false) }} aria-label="Close" className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-gray-500 shadow text-lg leading-none">×</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
