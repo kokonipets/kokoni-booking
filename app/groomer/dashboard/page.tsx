@@ -1279,19 +1279,15 @@ export default function GroomerDashboard() {
   const showAssist = todayFilter !== 'mine'
   const secCount = (mine: TodayAppt[], assist: TodayAppt[]) => (showMine ? mine.length : 0) + (showAssist ? assist.length : 0)
   const assistRow = (a: TodayAppt) => (
-    <div key={a.id} className="bg-amber-200 border-2 border-amber-400 rounded-2xl p-1.5">
-      <div className="flex items-center gap-2 px-1.5 pb-1.5">
-        <span className="bg-amber-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">🤝 ASSIST</span>
-        <span className="text-sm font-bold text-amber-900">for {a.assigned_groomer ? a.assigned_groomer.trim().split(/\s+/)[0] : '—'}</span>
-      </div>
-      <ApptCard
-        appt={a}
-        onAction={handleAction}
-        onTap={(x) => openApptPopup(x, { readOnly: true })}
-        loadingId={updateLoading}
-        serviceLabels={serviceMap}
-      />
-    </div>
+    <ApptCard
+      key={a.id}
+      appt={a}
+      onAction={handleAction}
+      onTap={(x) => openApptPopup(x, { readOnly: true })}
+      loadingId={updateLoading}
+      serviceLabels={serviceMap}
+      assistFor={a.assigned_groomer ? a.assigned_groomer.trim().split(/\s+/)[0] : '—'}
+    />
   )
   const mixed = (mine: TodayAppt[], assist: TodayAppt[], renderMine: (a: TodayAppt) => React.ReactNode) =>
     [...(showMine ? mine.map(a => ({ a, mine: true })) : []), ...(showAssist ? assist.map(a => ({ a, mine: false })) : [])]
@@ -3836,6 +3832,7 @@ function ApptCard({
   showNoShow,
   showReschedule,
   serviceLabels,
+  assistFor,
 }: {
   appt: Appointment
   onAction: (id: string, action: string) => void
@@ -3852,18 +3849,19 @@ function ApptCard({
   showNoShow?: boolean
   showReschedule?: boolean
   serviceLabels?: Record<string, string>
+  assistFor?: string
 }) {
   const isLoading = loadingId === appt.id
   const hasActions = showStart || showComplete || showConfirm || showAccept || showNoShow || showReschedule
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${
-      appt.grooming_status === 'incare' ? 'border-sky-200' : appt.status === 'pending' && appt.confirmed_at ? 'border-orange-300' : 'border-gray-100'
+    <div className={`${assistFor ? 'bg-amber-100 border-l-4 border-l-amber-400' : 'bg-white'} rounded-2xl border shadow-sm overflow-hidden ${
+      assistFor ? 'border-amber-300' : appt.grooming_status === 'incare' ? 'border-sky-200' : appt.status === 'pending' && appt.confirmed_at ? 'border-orange-300' : 'border-gray-100'
     }`}>
       <div className="flex">
         {/* Time column — left, standalone (only for Today tab; hidden when showing date badge) */}
         {!showDateBadge && (
-          <div className="w-16 shrink-0 flex flex-col items-center justify-start pt-3 pb-3 px-1 bg-gray-50 border-r border-gray-100 gap-1">
+          <div className="w-16 shrink-0 flex flex-col items-center justify-start pt-3 pb-3 px-1 ${assistFor ? 'bg-amber-50 border-r border-amber-200' : 'bg-gray-50 border-r border-gray-100'} gap-1">
             {/* Scheduled time */}
             <span className={`text-xs font-bold tabular-nums text-center leading-tight ${appt.grooming_status === 'incare' ? 'text-sky-600' : 'text-gray-500'}`}>
               {formatTime(appt.appointment_time).replace(' ', '\n')}
@@ -3934,9 +3932,12 @@ function ApptCard({
                   🔄 Rescheduled
                 </span>
               ) : onTap ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-gray-300 flex-shrink-0 mt-0.5">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {assistFor && <span className="bg-amber-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">🤝 ASSIST · {assistFor}</span>}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-gray-300 flex-shrink-0 mt-0.5">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                </div>
               ) : null}
             </div>
             {/* Owner name */}
