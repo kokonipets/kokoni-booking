@@ -2400,11 +2400,11 @@ export default function GroomerDashboard() {
             </div>
 
             {popupReadOnly && (
-              <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-2 flex-shrink-0">
-                <span className="text-xs font-semibold text-amber-700">👁️ Past visit · view only</span>
+              <div className={`px-5 py-2.5 border-b flex items-center justify-between gap-2 flex-shrink-0 ${selectedAppt.helper_groomer && !sameStaffName(user?.name, selectedAppt.assigned_groomer) ? 'bg-amber-400 border-amber-500' : 'bg-indigo-600 border-indigo-700'}`}>
+                <span className="text-sm font-bold text-white">{selectedAppt.helper_groomer && !sameStaffName(user?.name, selectedAppt.assigned_groomer) ? `🤝 Assist for ${(selectedAppt.assigned_groomer ?? '').trim().split(/\s+/)[0]} · view only` : '🕘 Past visit · view only'}</span>
                 {popupHomeAppt && popupHomeAppt.id !== selectedAppt.id && (
                   <button onClick={() => openApptPopup(popupHomeAppt)}
-                    className="text-xs font-bold text-amber-700 hover:text-amber-900 underline underline-offset-2 flex-shrink-0">
+                    className="text-xs font-bold text-white underline underline-offset-2 flex-shrink-0">
                     ← Back to current visit
                   </button>
                 )}
@@ -2857,10 +2857,10 @@ export default function GroomerDashboard() {
 
               {/* ── Past Visits (service + price history for this pet) ── */}
               {selectedAppt.pets?.id && (
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
+                <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-4 min-w-0 overflow-hidden">
                   <button type="button" onClick={() => setShowPastVisits(v => !v)} className="w-full flex items-center justify-between">
-                    <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Past Visits{!loadingHistory && petHistory.length > 0 ? ` (${petHistory.length})` : ''}</p>
-                    <span className="text-xs font-semibold text-gray-400">{showPastVisits ? '▲ Hide' : '▼ Show'}</span>
+                    <p className="text-xs font-bold uppercase tracking-widest text-indigo-700">🕘 Past Visits{!loadingHistory && petHistory.length > 0 ? ` (${petHistory.length})` : ''}</p>
+                    <span className="text-xs font-bold text-indigo-600">{showPastVisits ? '▲ Hide' : '▼ Show'}</span>
                   </button>
                   {!showPastVisits ? null : loadingHistory ? (
                     <p className="text-sm text-gray-400 text-center py-3">Loading…</p>
