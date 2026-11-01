@@ -1227,6 +1227,7 @@ export default function GroomerDashboard() {
   const nowMins = _now.getHours() * 60 + _now.getMinutes()
   const isLate = (a: Appointment) =>
     !a.grooming_status &&
+    !a.checked_in_at &&
     a.status !== 'cancelled' &&
     a.status !== 'completed' &&
     parseApptMins(a.appointment_time) < nowMins - 5
@@ -1235,9 +1236,15 @@ export default function GroomerDashboard() {
   const todayLate = todayAppts
     .filter(isLate)
     .sort((a, b) => parseApptMins(a.appointment_time) - parseApptMins(b.appointment_time))
+  const isWaiting = (a: { checked_in_at?: string | null; grooming_status?: string | null; status?: string }) =>
+    !!a.checked_in_at && !a.grooming_status && a.status !== 'completed' && a.status !== 'cancelled'
+  const todayWaiting = todayAppts
+    .filter(isWaiting)
+    .sort((a, b) => parseApptMins(a.appointment_time) - parseApptMins(b.appointment_time))
   const todayComingUp = todayAppts
     .filter(a =>
       !isLate(a) &&
+      !isWaiting(a) &&
       a.grooming_status !== 'incare' &&
       a.grooming_status !== 'ready' &&
       a.grooming_status !== 'done' &&
@@ -1274,7 +1281,8 @@ export default function GroomerDashboard() {
   const isDoneStatus = (a: TodayAppt) => a.grooming_status === 'ready' || a.grooming_status === 'done' || a.status === 'completed'
   const assistProg = todayAssistJobs.filter(a => a.grooming_status === 'incare') as TodayAppt[]
   const assistDone = todayAssistJobs.filter(a => a.grooming_status !== 'incare' && isDoneStatus(a as TodayAppt)) as TodayAppt[]
-  const assistUp = todayAssistJobs.filter(a => a.grooming_status !== 'incare' && !isDoneStatus(a as TodayAppt)) as TodayAppt[]
+  const assistWait = todayAssistJobs.filter(a => a.grooming_status !== 'incare' && !isDoneStatus(a as TodayAppt) && isWaiting(a)) as TodayAppt[]
+  const assistUp = todayAssistJobs.filter(a => a.grooming_status !== 'incare' && !isDoneStatus(a as TodayAppt) && !isWaiting(a)) as TodayAppt[]
   const showMine = todayFilter !== 'assist'
   const showAssist = todayFilter !== 'mine'
   const secCount = (mine: TodayAppt[], assist: TodayAppt[]) => (showMine ? mine.length : 0) + (showAssist ? assist.length : 0)
@@ -1558,11 +1566,16 @@ export default function GroomerDashboard() {
                   on the page (e.g. the pet-tag picker) for the rest of the session. */}
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' })}
             </p>
-            <p className="text-xs font-medium mt-1">
-              {todayLate.length > 0 && <><span className="text-rose-600 font-bold">Late: {todayLate.length}</span> · </>}
-              <span className="text-blue-700 font-bold">In Progress: {secCount(todayInProgress, assistProg)}</span>
-              {' · '}
+            <p className="text-sm font-bold text-gray-700 mt-1">
+              Total: {(showMine ? todayAppts.length : 0) + (showAssist ? todayAssistJobs.length : 0)}
+            </p>
+            <p className="text-xs font-medium mt-0.5">
+              {todayLate.length > 0 && showMine && <><span className="text-rose-600 font-bold">Late: {todayLate.length}</span> · </>}
               <span className="text-orange-700 font-bold">Upcoming: {secCount(todayComingUp, assistUp)}</span>
+              {' · '}
+              <span className="text-violet-700 font-bold">Waiting: {secCount(todayWaiting, assistWait)}</span>
+              {' · '}
+              <span className="text-blue-700 font-bold">In Progress: {secCount(todayInProgress, assistProg)}</span>
               {' · '}
               <span className="text-green-700 font-bold">Done: {secCount(todayDone, assistDone)}</span>
             </p>
@@ -1617,6 +1630,50 @@ export default function GroomerDashboard() {
                 </section>
               )}
 
+              {/* Coming Up — sorted earliest first */}
+              {secCount(todayComingUp, assistUp) > 0 && (
+                <section className="bg-orange-100 border-2 border-orange-300 rounded-2xl p-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-orange-700 mb-2.5">
+                    Coming Up · {secCount(todayComingUp, assistUp)}
+                  </p>
+                  <div className="space-y-2">
+                    {mixed(todayComingUp, assistUp, a => (
+                      <ApptCard
+                        key={a.id}
+                        appt={a}
+                        onAction={handleAction}
+                        onTap={(a) => openApptPopup(a)}
+                        loadingId={updateLoading}
+                        showStart
+                        serviceLabels={serviceMap}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Waiting — checked in, not started */}
+              {secCount(todayWaiting, assistWait) > 0 && (
+                <section className="bg-violet-100 border-2 border-violet-300 rounded-2xl p-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-violet-700 mb-2.5">
+                    Waiting · {secCount(todayWaiting, assistWait)}
+                  </p>
+                  <div className="space-y-2">
+                    {mixed(todayWaiting, assistWait, a => (
+                      <ApptCard
+                        key={a.id}
+                        appt={a}
+                        onAction={handleAction}
+                        onTap={(a) => openApptPopup(a)}
+                        loadingId={updateLoading}
+                        showStart
+                        serviceLabels={serviceMap}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {/* In Progress */}
               {secCount(todayInProgress, assistProg) > 0 && (
                 <section className="bg-blue-100 border-2 border-blue-300 rounded-2xl p-3">
@@ -1633,28 +1690,6 @@ export default function GroomerDashboard() {
                         onTap={(a) => openApptPopup(a)}
                         loadingId={updateLoading}
                         showComplete
-                        serviceLabels={serviceMap}
-                      />
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Coming Up — sorted earliest first */}
-              {secCount(todayComingUp, assistUp) > 0 && (
-                <section className="bg-orange-100 border-2 border-orange-300 rounded-2xl p-3">
-                  <p className="text-xs font-bold uppercase tracking-widest text-orange-700 mb-2.5">
-                    Coming Up · {secCount(todayComingUp, assistUp)}
-                  </p>
-                  <div className="space-y-2">
-                    {mixed(todayComingUp, assistUp, a => (
-                      <ApptCard
-                        key={a.id}
-                        appt={a}
-                        onAction={handleAction}
-                        onTap={(a) => openApptPopup(a)}
-                        loadingId={updateLoading}
-                        showStart
                         serviceLabels={serviceMap}
                       />
                     ))}
