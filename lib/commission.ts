@@ -76,11 +76,14 @@ export type HelperFields = {
   helper_flat_amount?: number | string | null
   helper_commission_percent?: number | string | null
   helper_tip_percent?: number | string | null
+  helper_status?: string | null
 }
 
 /** What the helper earns on this appointment (taken from the owner's commission / tip share). */
 export function helperCut(a: HelperFields, ownerCommission: number, ownerTipShare: number): { comm: number; tip: number } {
   if (!a.helper_groomer) return { comm: 0, tip: 0 }
+  // The assistant hasn't confirmed yet — no money moves until they accept
+  if (a.helper_status === 'pending') return { comm: 0, tip: 0 }
   if (a.helper_pay_type === 'flat') return { comm: Number(a.helper_flat_amount || 0), tip: 0 }
   return {
     comm: ownerCommission * Number(a.helper_commission_percent || 0) / 100,

@@ -95,7 +95,8 @@ export async function GET(req: NextRequest) {
         helper_pay_type,
         helper_flat_amount,
         helper_commission_percent,
-        helper_tip_percent,`)
+        helper_tip_percent,
+        helper_status,`)
     const runQuery = (sel: string) => supabase
       .from('appointments')
       .select(sel)
@@ -143,12 +144,18 @@ export async function GET(req: NextRequest) {
     // Appointments where this person was added as the HELPER (their pay comes out of the owner's share). Best-effort: empty if migration not run.
     let helperAppointments: unknown[] = []
     try {
-      const { data: hd, error: he } = await supabase
+      const helperCols = 'id, appointment_date, appointment_time, service, status, assigned_groomer, payment_amount, payment_status, tip_amount, discount_amount, discount_bearer, helper_groomer, helper_pay_type, helper_flat_amount, helper_commission_percent, helper_tip_percent, pets (name)'
+      const runHelper = (cols: string) => supabase
         .from('appointments')
-        .select('id, appointment_date, appointment_time, service, status, assigned_groomer, payment_amount, payment_status, tip_amount, discount_amount, discount_bearer, helper_groomer, helper_pay_type, helper_flat_amount, helper_commission_percent, helper_tip_percent, pets (name)')
+        .select(cols)
         .or(namePattern ? `helper_groomer.ilike.${namePattern}` : `helper_groomer.eq.${filterValue}`)
         .in('status', ['confirmed', 'in_progress', 'completed'])
         .order('appointment_date', { ascending: true })
+      let hr = await runHelper(helperCols + ', helper_status')
+      if (hr.error) hr = await runHelper(helperCols) // helper_status column not migrated yet
+      const he = hr.error
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const hd = hr.data as any[] | null
       if (!he && hd && hd.length) {
         // Work out what the helper earns on each one, using the OWNER's commission / tip-share rates on that date
         const owners = [...new Set((hd as { assigned_groomer: string | null }[]).map(x => x.assigned_groomer).filter(Boolean))] as string[]

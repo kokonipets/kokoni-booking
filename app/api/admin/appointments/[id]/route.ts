@@ -413,11 +413,12 @@ export async function PATCH(
     return NextResponse.json({ success: true })
   }
 
-  // Add / change / remove a helper (partner) groomer. The assigned groomer stays the owner; the helper is paid out of the owner's share.
+  // Add / change / remove an assist (helper groomer). The assigned groomer stays the owner; the assist's pay comes out of the owner's share.
+  // The assistant has to confirm first: status stays 'pending' (no pay counted) until they accept.
   if (action === 'set-helper') {
     const { helper_groomer, helper_pay_type, helper_flat_amount, helper_commission_percent, helper_tip_percent } = body
     const clean = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0 }
-    const updates = helper_groomer
+    const base = helper_groomer
       ? {
           helper_groomer: String(helper_groomer),
           helper_pay_type: helper_pay_type === 'flat' ? 'flat' : 'percent',
@@ -426,9 +427,61 @@ export async function PATCH(
           helper_tip_percent: helper_pay_type === 'flat' ? null : Math.min(100, clean(helper_tip_percent)),
         }
       : { helper_groomer: null, helper_pay_type: null, helper_flat_amount: null, helper_commission_percent: null, helper_tip_percent: null }
-    const { error } = await supabase.from('appointments').update(updates).eq('id', id)
+
+    // Same assistant + same terms keeps its status; a new assistant or changed terms needs a fresh confirmation
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cur: any = null
+    try {
+      const r = await supabase.from('appointments')
+        .select('assigned_groomer, appointment_date, appointment_time, helper_groomer, helper_pay_type, helper_flat_amount, helper_commission_percent, helper_tip_percent, helper_status, pets!pet_id(name)')
+        .eq('id', id).single()
+      cur = r.data
+    } catch { /* columns missing */ }
+    const same = !!cur && cur.helper_groomer === base.helper_groomer && cur.helper_pay_type === base.helper_pay_type
+      && Number(cur.helper_flat_amount || 0) === Number(base.helper_flat_amount || 0)
+      && Number(cur.helper_commission_percent || 0) === Number(base.helper_commission_percent || 0)
+      && Number(cur.helper_tip_percent || 0) === Number(base.helper_tip_percent || 0)
+    const helper_status = base.helper_groomer ? (same && cur?.helper_status ? cur.helper_status : 'pending') : null
+
+    let { error } = await supabase.from('appointments').update({ ...base, helper_status }).eq('id', id)
+    let savedStatus: string | null = helper_status
+    if (error) {
+      // helper_status column not migrated yet — save without it (assist counts immediately, like before)
+      const r2 = await supabase.from('appointments').update(base).eq('id', id)
+      error = r2.error
+      savedStatus = null
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ success: true, ...updates })
+
+    if (base.helper_groomer && savedStatus === 'pending') {
+      const petName: string = cur?.pets?.name ?? 'a pet'
+      const when = cur ? `${new Date(cur.appointment_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${cur.appointment_time}` : ''
+      pushToStaff(base.helper_groomer, 'Assist request 🤝', `${cur?.assigned_groomer ?? 'A groomer'} wants you to assist with ${petName}${when ? ' · ' + when : ''}`)
+    }
+    return NextResponse.json({ success: true, ...base, helper_status: savedStatus })
+  }
+
+  // The assistant accepts or declines an assist request. Declining removes the assist and tells the owner.
+  if (action === 'helper-respond') {
+    const accept = !!body.accept
+    const { data: cur } = await supabase.from('appointments')
+      .select('assigned_groomer, helper_groomer, pets!pet_id(name)').eq('id', id).single()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c: any = cur
+    if (!c?.helper_groomer) return NextResponse.json({ error: 'No assist on this appointment' }, { status: 404 })
+    const petName: string = c.pets?.name ?? 'a pet'
+    if (accept) {
+      const { error } = await supabase.from('appointments').update({ helper_status: 'accepted' }).eq('id', id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      if (c.assigned_groomer) pushToStaff(c.assigned_groomer, 'Assist confirmed ✓', `${c.helper_groomer} will assist with ${petName}`)
+      return NextResponse.json({ success: true, helper_status: 'accepted' })
+    }
+    const { error } = await supabase.from('appointments').update({
+      helper_groomer: null, helper_pay_type: null, helper_flat_amount: null, helper_commission_percent: null, helper_tip_percent: null, helper_status: null,
+    }).eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (c.assigned_groomer) pushToStaff(c.assigned_groomer, 'Assist declined', `${c.helper_groomer} can't assist with ${petName}`)
+    return NextResponse.json({ success: true, declined: true })
   }
 
   // Add a note to notes_list

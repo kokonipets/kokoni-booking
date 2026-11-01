@@ -25,6 +25,7 @@ type Appointment = {
   helper_flat_amount?: number | string | null
   helper_commission_percent?: number | string | null
   helper_tip_percent?: number | string | null
+  helper_status?: string | null
   clients: { name: string; phone: string; email: string | null } | null
   pets: { id?: string; name: string; breed: string | null; weight: string | null; photo_url: string | null } | null
   notes_list?: { id: string; text: string; author?: string; price?: string; is_addon?: boolean }[] | null
@@ -1016,6 +1017,24 @@ export default function GroomerDashboard() {
     finally { setSavingPopupNote(false) }
   }
 
+  // The assistant accepts / declines an assist request. Declining removes the assist (the owner is notified).
+  const [respondingHelperId, setRespondingHelperId] = useState<string | null>(null)
+  const respondHelper = async (id: string, accept: boolean) => {
+    setRespondingHelperId(id)
+    try {
+      const res = await fetch(`/api/admin/appointments/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'helper-respond', accept }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { showToast('Could not respond — please try again'); return }
+      setHelperAppts(prev => accept ? prev.map(a => a.id === id ? { ...a, helper_status: 'accepted' } : a) : prev.filter(a => a.id !== id))
+      showToast(accept ? '✓ Assist confirmed' : 'Assist declined')
+      if (user) loadAppointments(user.name || user.staff_id, true)
+    } catch { showToast('Could not respond — please try again') }
+    finally { setRespondingHelperId(null) }
+  }
+
   // Add / change / remove the helper (partner) groomer on the open appointment. Helper pay comes out of the owner's share.
   const saveHelper = async (remove = false) => {
     if (!selectedAppt) return
@@ -1033,7 +1052,7 @@ export default function GroomerDashboard() {
       const patch = {
         helper_groomer: data.helper_groomer ?? null, helper_pay_type: data.helper_pay_type ?? null,
         helper_flat_amount: data.helper_flat_amount ?? null, helper_commission_percent: data.helper_commission_percent ?? null,
-        helper_tip_percent: data.helper_tip_percent ?? null,
+        helper_tip_percent: data.helper_tip_percent ?? null, helper_status: data.helper_status ?? null,
       }
       const updated = { ...selectedAppt, ...patch }
       setSelectedAppt(updated)
@@ -1235,6 +1254,59 @@ export default function GroomerDashboard() {
     (a.status === 'pending') ||
     (a.status === 'confirmed' && !a.groomer_confirmed)
   ).length
+  // ── Assist requests / today's assist jobs (this person is the ASSIST on someone else's appointment) ──
+  const assistRequests = helperAppts.filter(a => a.helper_status === 'pending' && a.appointment_date >= today)
+  const todayAssistJobs = helperAppts.filter(a => a.appointment_date === today && a.helper_status !== 'pending')
+  const todayAssistEarn = todayAssistJobs.reduce((s, a) => {
+    const e = (a as unknown as { helper_earn?: { comm: number; tip: number } }).helper_earn
+    return s + Number(e?.comm || 0) + Number(e?.tip || 0)
+  }, 0)
+  const assistPanel = (assistRequests.length > 0 || todayAssistJobs.length > 0) ? (
+    <div className="space-y-3">
+      {assistRequests.map(a => (
+        <div key={a.id} className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-amber-600">🤝 Assist request</p>
+          <p className="text-sm font-semibold text-gray-800">
+            {a.assigned_groomer ?? 'A groomer'} wants you to assist with {a.pets?.name ?? 'a pet'}
+          </p>
+          <p className="text-xs text-gray-500">{formatDate(a.appointment_date)} · {a.appointment_time}</p>
+          <p className="text-xs text-amber-700">
+            {a.helper_pay_type === 'flat'
+              ? `You get a one-time $${Number(a.helper_flat_amount || 0).toFixed(2)}`
+              : `You get ${Number(a.helper_commission_percent || 0)}% of their commission + ${Number(a.helper_tip_percent || 0)}% of their tip share`}
+          </p>
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => respondHelper(a.id, true)} disabled={respondingHelperId === a.id}
+              className="flex-1 bg-emerald-500 text-white font-semibold text-sm py-2.5 rounded-xl disabled:opacity-50">Accept</button>
+            <button onClick={() => respondHelper(a.id, false)} disabled={respondingHelperId === a.id}
+              className="flex-1 bg-white text-red-500 border border-red-200 font-semibold text-sm py-2.5 rounded-xl disabled:opacity-50">Decline</button>
+          </div>
+        </div>
+      ))}
+      {todayAssistJobs.length > 0 && (
+        <div className="bg-white border border-amber-200 rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-amber-600">🤝 Assisting today</p>
+            <p className="text-sm font-bold text-emerald-600">+${todayAssistEarn.toFixed(2)}</p>
+          </div>
+          <div className="space-y-1">
+            {todayAssistJobs.map(a => {
+              const e = (a as unknown as { helper_earn?: { comm: number; tip: number } }).helper_earn
+              const amt = Number(e?.comm || 0) + Number(e?.tip || 0)
+              return (
+                <div key={a.id} className="flex justify-between gap-3 text-xs text-gray-600">
+                  <span className="min-w-0 truncate">{a.appointment_time} · {a.pets?.name ?? 'Pet'} · for {a.assigned_groomer ?? '—'}</span>
+                  <span className="font-semibold whitespace-nowrap">{a.payment_status === 'paid' ? `+$${amt.toFixed(2)}` : 'not paid yet'}</span>
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2">Your assist earnings count once the client has paid.</p>
+        </div>
+      )}
+    </div>
+  ) : null
+
   // How many of today's appointments are still waiting for acceptance
   const todayUnacceptedCount = appointments.filter(a =>
     a.appointment_date === today &&
@@ -1343,7 +1415,7 @@ export default function GroomerDashboard() {
     : earningsRange === 'month' ? d >= monthStart
     : earningsRange === 'year' ? d >= yearStart
     : true
-  const helperJobs = helperAppts.filter(a => a.payment_status === 'paid' && helperInRange(a.appointment_date))
+  const helperJobs = helperAppts.filter(a => a.payment_status === 'paid' && a.helper_status !== 'pending' && helperInRange(a.appointment_date))
   const helperEarnComm = helperJobs.reduce((s, a) => s + Number((a as unknown as { helper_earn?: { comm: number } }).helper_earn?.comm || 0), 0)
   const helperEarnTip = helperJobs.reduce((s, a) => s + Number((a as unknown as { helper_earn?: { tip: number } }).helper_earn?.tip || 0), 0)
   const commission = ownCommission - helperPaidComm + helperEarnComm
@@ -1373,7 +1445,7 @@ export default function GroomerDashboard() {
     {
       key: 'pending',
       label: 'Pending',
-      badge: pendingBadge || undefined,
+      badge: (pendingBadge + assistRequests.length) || undefined,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
           <circle cx="12" cy="12" r="9" />
@@ -1440,6 +1512,7 @@ export default function GroomerDashboard() {
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'today' && (
         <div className="px-4 pt-5 pb-4 space-y-5">
+          {assistPanel}
           <div>
             <h2 className="text-xl font-bold text-gray-800">Today</h2>
             <p className="text-sm text-gray-400">
@@ -1575,6 +1648,7 @@ export default function GroomerDashboard() {
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'pending' && (
         <div className="px-4 pt-5 pb-4 space-y-5">
+          {assistPanel}
           <div>
             <h2 className="text-xl font-bold text-gray-800">Pending</h2>
             <p className="text-sm text-gray-400">
@@ -2899,7 +2973,11 @@ export default function GroomerDashboard() {
                   {selectedAppt.helper_groomer && !helperEditing && (
                     <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-gray-800">{selectedAppt.helper_groomer}</p>
+                        <p className="text-sm font-semibold text-gray-800">{selectedAppt.helper_groomer}{' '}
+                          {selectedAppt.helper_status === 'pending'
+                            ? <span className="text-[11px] font-semibold text-amber-600 bg-amber-100 rounded-full px-2 py-0.5">⏳ Waiting for confirmation</span>
+                            : <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-100 rounded-full px-2 py-0.5">✓ Confirmed</span>}
+                        </p>
                         <p className="text-xs text-amber-700">
                           {selectedAppt.helper_pay_type === 'flat'
                             ? `One-time $${Number(selectedAppt.helper_flat_amount || 0).toFixed(2)}`
