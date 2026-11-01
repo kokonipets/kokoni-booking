@@ -1279,8 +1279,11 @@ export default function GroomerDashboard() {
   const showAssist = todayFilter !== 'mine'
   const secCount = (mine: TodayAppt[], assist: TodayAppt[]) => (showMine ? mine.length : 0) + (showAssist ? assist.length : 0)
   const assistRow = (a: TodayAppt) => (
-    <div key={a.id} className="border-l-4 border-amber-400 rounded-xl">
-      <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700 px-2 pt-1">🤝 Assist for {a.assigned_groomer ? a.assigned_groomer.trim().split(/\s+/)[0] : '—'}</p>
+    <div key={a.id} className="bg-amber-200 border-2 border-amber-400 rounded-2xl p-1.5">
+      <div className="flex items-center gap-2 px-1.5 pb-1.5">
+        <span className="bg-amber-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">🤝 ASSIST</span>
+        <span className="text-sm font-bold text-amber-900">for {a.assigned_groomer ? a.assigned_groomer.trim().split(/\s+/)[0] : '—'}</span>
+      </div>
       <ApptCard
         appt={a}
         onAction={handleAction}
@@ -1451,6 +1454,7 @@ export default function GroomerDashboard() {
     : earningsRange === 'year' ? d >= yearStart
     : true
   const helperJobs = helperAppts.filter(a => a.payment_status === 'paid' && a.helper_status !== 'pending' && helperInRange(a.appointment_date))
+  const helperUnpaidJobs = helperAppts.filter(a => a.payment_status !== 'paid' && a.helper_status !== 'pending' && helperInRange(a.appointment_date))
   const helperEarnComm = helperJobs.reduce((s, a) => s + Number((a as unknown as { helper_earn?: { comm: number } }).helper_earn?.comm || 0), 0)
   const helperEarnTip = helperJobs.reduce((s, a) => s + Number((a as unknown as { helper_earn?: { tip: number } }).helper_earn?.tip || 0), 0)
   const commission = ownCommission - helperPaidComm + helperEarnComm
@@ -1691,7 +1695,7 @@ export default function GroomerDashboard() {
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'pending' && (
         <div className="px-4 pt-5 pb-4 space-y-5">
-          {renderAssistPanel(true)}
+          {renderAssistPanel(false)}
           <div>
             <h2 className="text-xl font-bold text-gray-800">Pending</h2>
             <p className="text-sm text-gray-400">
@@ -2218,7 +2222,7 @@ export default function GroomerDashboard() {
             </div>
             {earningsRange === 'today' && showEarnDetail && (
               <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                {paidAppts.length === 0 && helperJobs.length === 0 && <p className="text-xs text-gray-400">No appointments.</p>}
+                {paidAppts.length === 0 && helperJobs.length === 0 && helperUnpaidJobs.length === 0 && <p className="text-xs text-gray-400">No appointments.</p>}
                 {[...paidAppts].sort((x, y) => (x.appointment_date + (x.appointment_time || '')).localeCompare(y.appointment_date + (y.appointment_time || ''))).map(a => {
                   const pay = parseFloat(a.payment_amount || '0')
                   const disc = parseFloat((a as { discount_amount?: string | null }).discount_amount || '0')
@@ -2249,11 +2253,20 @@ export default function GroomerDashboard() {
                     </div>
                   )
                 })}
+                {helperUnpaidJobs.map(a => (
+                  <div key={a.id} className="flex items-start justify-between gap-3 text-xs">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'}</p>
+                      <p className="text-gray-400">Assist for {a.assigned_groomer ?? '—'}</p>
+                    </div>
+                    <span className="text-gray-400 whitespace-nowrap">not paid yet</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
-          {paidAppts.length === 0 && (
+          {paidAppts.length === 0 && helperUnpaidJobs.length === 0 && (
             <p className="text-center text-sm text-gray-400 py-2">No completed appointments in this period.</p>
           )}
         </div>
