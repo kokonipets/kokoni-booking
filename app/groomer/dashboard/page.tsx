@@ -1608,7 +1608,8 @@ export default function GroomerDashboard() {
                         loadingId={updateLoading}
                         showStart
                         showReschedule
-                        showNoShow={isVeryLate(a)}
+                        showNoShow
+                        hideCancel={!isVeryLate(a)}
                         serviceLabels={serviceMap}
                       />
                     ))}
@@ -3830,6 +3831,7 @@ function ApptCard({
   showAccept,
   showDateBadge,
   showNoShow,
+  hideCancel,
   showReschedule,
   serviceLabels,
   assistFor,
@@ -3847,6 +3849,7 @@ function ApptCard({
   showAccept?: boolean
   showDateBadge?: boolean
   showNoShow?: boolean
+  hideCancel?: boolean
   showReschedule?: boolean
   serviceLabels?: Record<string, string>
   assistFor?: string
@@ -4030,7 +4033,7 @@ function ApptCard({
                   🔄 Reschedule
                 </button>
               )}
-              {showNoShow && (
+              {showNoShow && !hideCancel && (
                 <button onClick={() => onAction(appt.id, 'cancel-today')} disabled={isLoading}
                   className="flex-1 py-2 text-xs font-semibold rounded-xl bg-gray-100 text-gray-600 border border-gray-200 disabled:opacity-50 active:bg-gray-200 transition-colors">
                   {isLoading ? '…' : '✕ Cancel'}
