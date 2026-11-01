@@ -5814,22 +5814,26 @@ export default function DeskAdmin() {
                     const lateCount    = appointments.filter(isOverdue).length
                     // "Not here yet" includes the late ones (shown as a red sub-line) so nothing is counted twice
                     const notHereCount = appointments.filter(a => !a.grooming_status && a.status !== 'completed').length
-                    const inSalonCount = appointments.filter(a => a.grooming_status === 'waiting' || a.grooming_status === 'incare').length
+                    const waitingCount = appointments.filter(a => a.grooming_status === 'waiting').length
+    const workingCount = appointments.filter(a => a.grooming_status === 'incare').length
+    const inSalonCount = waitingCount + workingCount
                     const readyAppts   = appointments.filter(a => a.grooming_status === 'ready')
                     const waitingLong  = readyAppts.filter(a => (pickupWaitMins(a, pickupNow) ?? 0) >= 60).length
                     const doneCount    = appointments.filter(a => a.grooming_status === 'done' || a.status === 'completed').length
                     const tiles: { label: string; value: number; color: string; sub?: string; subColor?: string }[] = [
-                      { label: 'Not here yet 未到店', value: notHereCount, color: 'bg-sky-50 text-sky-700 border-sky-100',
-                        sub: lateCount > 0 ? `${lateCount} late 遲到` : undefined, subColor: 'text-red-600' },
-                      { label: 'In salon 美容中', value: inSalonCount, color: 'bg-amber-50 text-amber-700 border-amber-100' },
-                      { label: 'Ready for pickup 待接回', value: readyAppts.length,
-                        color: waitingLong > 0 ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-green-50 text-green-700 border-green-100',
-                        sub: waitingLong > 0 ? `⏰ ${waitingLong} waiting 1h+ · 請聯絡主人` : undefined, subColor: 'text-orange-700' },
-                      { label: 'Done 已完成', value: doneCount, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-                    ]
+      { label: 'Total 今日總數', value: notHereCount + inSalonCount + readyAppts.length + doneCount, color: 'bg-gray-50 text-gray-800 border-gray-200' },
+      { label: 'Not here yet 未到店', value: notHereCount, color: 'bg-sky-50 text-sky-700 border-sky-100',
+        sub: lateCount > 0 ? `${lateCount} late 遲到` : undefined, subColor: 'text-red-600' },
+      { label: 'In salon 店內', value: inSalonCount, color: 'bg-amber-50 text-amber-700 border-amber-100',
+        sub: inSalonCount > 0 ? `${waitingCount} waiting 候位 · ${workingCount} grooming 美容中` : undefined, subColor: 'text-amber-700' },
+      { label: 'Ready for pickup 待接回', value: readyAppts.length,
+        color: waitingLong > 0 ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-green-50 text-green-700 border-green-100',
+        sub: waitingLong > 0 ? `⏰ ${waitingLong} over 1h · 請聯絡主人` : undefined, subColor: 'text-orange-700' },
+      { label: 'Done 已完成', value: doneCount, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+    ]
                     return (
                       <>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
                           {tiles.map(s => (
                             <div key={s.label} className={`rounded-2xl border p-4 ${s.color}`}>
                               <p className="text-3xl font-bold">{s.value}</p>
