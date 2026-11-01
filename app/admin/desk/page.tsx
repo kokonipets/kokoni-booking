@@ -783,7 +783,7 @@ export default function DeskAdmin() {
     return (
       <span className={`inline-flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded-md border ${i.pending ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}`}
         title={`${i.terms}${i.pending ? ' · waiting for confirmation' : ''}`}>
-        🤝 {firstName(i.name)}{i.pending ? ' ⏳' : ''}{i.estimate != null ? ` $${i.estimate.toFixed(2)}` : ''}
+        🤝 {firstName(i.name)}{i.pending ? ' ⏳' : ''}
       </span>
     )
   }
@@ -5955,8 +5955,8 @@ export default function DeskAdmin() {
                                 {/* Staff */}
                                 <div className={`text-xs space-y-0.5 ${isDone ? 'text-gray-400' : 'text-gray-500'}`}>
                                   {appt.assigned_groomer && <p>✂️ {firstName(appt.assigned_groomer)}</p>}
-                                  {assistTag(appt)}
                                   {appt.assigned_bather  && <p>🛁 {firstName(appt.assigned_bather)}</p>}
+                                  {assistTag(appt)}
                                   {!appt.assigned_groomer && !appt.assigned_bather && (
                                     appt.status === 'confirmed'
                                       ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full w-fit">⚠️ Assign groomer</span>
