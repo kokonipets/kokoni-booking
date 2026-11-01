@@ -3974,7 +3974,6 @@ export default function DeskAdmin() {
                       return (
                         <div className="space-y-3">
                           <StaffPicker icon="✂️" label="Groomer" value={detailGroomer} onChange={setDetailGroomer} />
-                          <StaffPicker icon="🛁" label="Bather"  value={detailBather}  onChange={setDetailBather} />
                           {offWarnings.length > 0 && (
                             <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 space-y-0.5">
                               {offWarnings.map(w => <p key={w} className="text-xs font-semibold text-red-600">⚠️ {w}</p>)}

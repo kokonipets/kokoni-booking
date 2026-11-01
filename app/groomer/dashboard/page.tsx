@@ -255,6 +255,7 @@ export default function GroomerDashboard() {
   const [toast, setToast] = useState<string | null>(null)
   const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'next_payroll' | 'last_payroll' | 'month' | 'year'>('this_payroll')
   const [showEarnDetail, setShowEarnDetail] = useState(false)
+  const [todayFilter, setTodayFilter] = useState<'all' | 'mine' | 'assist'>('all')
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [calendarSelected, setCalendarSelected] = useState<string | null>(null)
   // Store days off (weekly closed days + specific closed dates) so the calendar can mark them "Closed"
@@ -1269,7 +1270,31 @@ export default function GroomerDashboard() {
     const e = (a as unknown as { helper_earn?: { comm: number; tip: number } }).helper_earn
     return s + Number(e?.comm || 0) + Number(e?.tip || 0)
   }, 0)
-  const assistPanel = (assistRequests.length > 0 || todayAssistJobs.length > 0) ? (
+  type TodayAppt = (typeof todayAppts)[number]
+  const isDoneStatus = (a: TodayAppt) => a.grooming_status === 'ready' || a.grooming_status === 'done' || a.status === 'completed'
+  const assistProg = todayAssistJobs.filter(a => a.grooming_status === 'incare') as TodayAppt[]
+  const assistDone = todayAssistJobs.filter(a => a.grooming_status !== 'incare' && isDoneStatus(a as TodayAppt)) as TodayAppt[]
+  const assistUp = todayAssistJobs.filter(a => a.grooming_status !== 'incare' && !isDoneStatus(a as TodayAppt)) as TodayAppt[]
+  const showMine = todayFilter !== 'assist'
+  const showAssist = todayFilter !== 'mine'
+  const secCount = (mine: TodayAppt[], assist: TodayAppt[]) => (showMine ? mine.length : 0) + (showAssist ? assist.length : 0)
+  const assistRow = (a: TodayAppt) => (
+    <div key={a.id} className="bg-amber-50 border border-amber-200 border-l-4 border-l-amber-400 rounded-xl px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-amber-700">{a.appointment_time}</span>
+        <span className="text-[11px] font-bold uppercase tracking-wide text-amber-700">🤝 Assist for {a.assigned_groomer ? a.assigned_groomer.trim().split(/\s+/)[0] : '—'}</span>
+      </div>
+      <p className="text-sm font-semibold text-gray-800 mt-0.5">{a.pets?.name ?? 'Pet'}</p>
+      <p className="text-xs text-gray-500">{serviceMap[a.service] ?? a.service}</p>
+    </div>
+  )
+  const mixed = (mine: TodayAppt[], assist: TodayAppt[], renderMine: (a: TodayAppt) => React.ReactNode) =>
+    [...(showMine ? mine.map(a => ({ a, mine: true })) : []), ...(showAssist ? assist.map(a => ({ a, mine: false })) : [])]
+      .sort((x, y) => parseApptMins(x.a.appointment_time) - parseApptMins(y.a.appointment_time))
+      .map(({ a, mine: isMine }) => isMine
+        ? <div key={a.id} className={todayAssistJobs.length > 0 ? 'border-l-4 border-sky-400 rounded-xl' : ''}>{renderMine(a)}</div>
+        : assistRow(a))
+  const renderAssistPanel = (includeToday: boolean) => (assistRequests.length > 0 || (includeToday && todayAssistJobs.length > 0)) ? (
     <div className="space-y-3">
       {assistRequests.map(a => (
         <div key={a.id} className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 space-y-2">
@@ -1291,7 +1316,7 @@ export default function GroomerDashboard() {
           </div>
         </div>
       ))}
-      {todayAssistJobs.length > 0 && (
+      {includeToday && todayAssistJobs.length > 0 && (
         <div className="bg-white border border-amber-200 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-bold uppercase tracking-widest text-amber-600">🤝 Assisting today</p>
@@ -1520,7 +1545,7 @@ export default function GroomerDashboard() {
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'today' && (
         <div className="px-4 pt-5 pb-4 space-y-5">
-          {assistPanel}
+          {renderAssistPanel(false)}
           <div>
             <h2 className="text-xl font-bold text-gray-800">Today</h2>
             <p className="text-sm text-gray-400">
@@ -1533,17 +1558,25 @@ export default function GroomerDashboard() {
             </p>
             <p className="text-xs font-medium mt-1">
               {todayLate.length > 0 && <><span className="text-rose-600 font-bold">Late: {todayLate.length}</span> · </>}
-              <span className="text-blue-700 font-bold">In Progress: {todayInProgress.length}</span>
+              <span className="text-blue-700 font-bold">In Progress: {secCount(todayInProgress, assistProg)}</span>
               {' · '}
-              <span className="text-orange-700 font-bold">Upcoming: {todayComingUp.length}</span>
+              <span className="text-orange-700 font-bold">Upcoming: {secCount(todayComingUp, assistUp)}</span>
               {' · '}
-              <span className="text-green-700 font-bold">Done: {todayDone.length}</span>
+              <span className="text-green-700 font-bold">Done: {secCount(todayDone, assistDone)}</span>
             </p>
+            {todayAssistJobs.length > 0 && (
+              <div className="flex gap-1.5 mt-3">
+                {([['all', `All ${todayAppts.length + todayAssistJobs.length}`], ['mine', `Mine ${todayAppts.length}`], ['assist', `Assist ${todayAssistJobs.length}`]] as const).map(([k, label]) => (
+                  <button key={k} onClick={() => setTodayFilter(k)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${todayFilter === k ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200'}`}>{label}</button>
+                ))}
+              </div>
+            )}
           </div>
 
           {loading ? (
             <div className="text-center py-16 text-gray-400 text-sm">Loading…</div>
-          ) : todayAppts.length === 0 ? (
+          ) : todayAppts.length === 0 && todayAssistJobs.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <div className="text-4xl mb-3">🌿</div>
               <p className="text-sm font-medium">No accepted appointments today</p>
@@ -1556,7 +1589,7 @@ export default function GroomerDashboard() {
           ) : (
             <>
               {/* Late — overdue, not started yet */}
-              {todayLate.length > 0 && (
+              {todayLate.length > 0 && showMine && (
                 <section className="bg-rose-50 border border-rose-200 rounded-2xl p-3">
                   <p className="text-xs font-bold uppercase tracking-widest text-rose-600 mb-2.5 flex items-center gap-1.5">
                     <span className="inline-block w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
@@ -1582,14 +1615,14 @@ export default function GroomerDashboard() {
               )}
 
               {/* In Progress */}
-              {todayInProgress.length > 0 && (
+              {secCount(todayInProgress, assistProg) > 0 && (
                 <section className="bg-blue-100 border-2 border-blue-300 rounded-2xl p-3">
                   <p className="text-xs font-bold uppercase tracking-widest text-blue-700 mb-2.5 flex items-center gap-1.5">
                     <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                    In Progress · {todayInProgress.length}
+                    In Progress · {secCount(todayInProgress, assistProg)}
                   </p>
                   <div className="space-y-2">
-                    {todayInProgress.map(a => (
+                    {mixed(todayInProgress, assistProg, a => (
                       <ApptCard
                         key={a.id}
                         appt={a}
@@ -1605,13 +1638,13 @@ export default function GroomerDashboard() {
               )}
 
               {/* Coming Up — sorted earliest first */}
-              {todayComingUp.length > 0 && (
+              {secCount(todayComingUp, assistUp) > 0 && (
                 <section className="bg-orange-100 border-2 border-orange-300 rounded-2xl p-3">
                   <p className="text-xs font-bold uppercase tracking-widest text-orange-700 mb-2.5">
-                    Coming Up · {todayComingUp.length}
+                    Coming Up · {secCount(todayComingUp, assistUp)}
                   </p>
                   <div className="space-y-2">
-                    {todayComingUp.map(a => (
+                    {mixed(todayComingUp, assistUp, a => (
                       <ApptCard
                         key={a.id}
                         appt={a}
@@ -1627,13 +1660,13 @@ export default function GroomerDashboard() {
               )}
 
               {/* Done */}
-              {todayDone.length > 0 && (
+              {secCount(todayDone, assistDone) > 0 && (
                 <section className="bg-green-100 border-2 border-green-300 rounded-2xl p-3">
                   <p className="text-xs font-bold uppercase tracking-widest text-green-700 mb-2.5">
-                    Done · {todayDone.length}
+                    Done · {secCount(todayDone, assistDone)}
                   </p>
                   <div className="space-y-2">
-                    {todayDone.map(a => (
+                    {mixed(todayDone, assistDone, a => (
                       <ApptCard
                         key={a.id}
                         appt={a}
@@ -1656,7 +1689,7 @@ export default function GroomerDashboard() {
       {/* ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'pending' && (
         <div className="px-4 pt-5 pb-4 space-y-5">
-          {assistPanel}
+          {renderAssistPanel(true)}
           <div>
             <h2 className="text-xl font-bold text-gray-800">Pending</h2>
             <p className="text-sm text-gray-400">
