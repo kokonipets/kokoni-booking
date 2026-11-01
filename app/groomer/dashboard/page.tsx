@@ -2098,7 +2098,7 @@ export default function GroomerDashboard() {
               <span className="font-semibold text-gray-700">${netCollected.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm border-t border-gray-100 pt-1.5">
-              <span className="text-violet-600 font-semibold">Your commission ({commissionPct}% × ${commissionableTotal.toFixed(2)})</span>
+              <span className="text-violet-600 font-semibold">Your commission</span>
               <span className="font-bold text-violet-700">${commission.toFixed(2)}</span>
             </div>
             {totalDiscount > 0 && <p className="text-[11px] text-gray-400 pt-1">Your commission base reflects each coupon&apos;s discount settings — store-covered discounts don&apos;t reduce your commission, groomer-covered ones do.</p>}
