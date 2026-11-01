@@ -254,6 +254,7 @@ export default function GroomerDashboard() {
   const [updateLoading, setUpdateLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [earningsRange, setEarningsRange] = useState<'today' | 'week' | 'this_payroll' | 'next_payroll' | 'last_payroll' | 'month' | 'year'>('this_payroll')
+  const [showEarnDetail, setShowEarnDetail] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [calendarSelected, setCalendarSelected] = useState<string | null>(null)
   // Store days off (weekly closed days + specific closed dates) so the calendar can mark them "Closed"
@@ -2111,8 +2112,7 @@ export default function GroomerDashboard() {
             </div>
             <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
               <div>
-                <p className="text-xs font-semibold text-gray-700">Your Share ({tipPct}%)</p>
-                <p className="text-xs text-gray-400">Added to your paycheck</p>
+                <p className="text-xs font-semibold text-gray-700">Average tip{netCollected > 0 ? ` (${(totalTips / netCollected * 100).toFixed(1)}%)` : ''}</p>
               </div>
               <p className="text-base font-bold text-emerald-700">${tipInPaycheck.toFixed(2)}</p>
             </div>
@@ -2166,9 +2166,9 @@ export default function GroomerDashboard() {
 
           {/* Take-home total */}
           <div className="bg-white rounded-2xl border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
+            <div className={`flex items-center justify-between ${earningsRange === 'today' ? 'cursor-pointer' : ''}`} onClick={() => { if (earningsRange === 'today') setShowEarnDetail(v => !v) }}>
               <div>
-                <p className="text-sm font-semibold text-gray-700">Take-Home Total</p>
+                <p className="text-sm font-semibold text-gray-700">Take-Home Total{earningsRange === 'today' && <span className="text-gray-400 text-xs"> {showEarnDetail ? '▲' : '▼'}</span>}</p>
                 <p className="text-xs text-gray-400">
                   {earningsRange === 'this_payroll'
                     ? `${thisPayrollStartStr} – ${thisPayrollEndStr}`
@@ -2181,6 +2181,41 @@ export default function GroomerDashboard() {
               </div>
               <p className="text-2xl font-bold text-gray-800">${(commission + tipInPaycheck).toFixed(2)}</p>
             </div>
+            {earningsRange === 'today' && showEarnDetail && (
+              <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                {paidAppts.length === 0 && helperJobs.length === 0 && <p className="text-xs text-gray-400">No appointments.</p>}
+                {[...paidAppts].sort((x, y) => (x.appointment_date + (x.appointment_time || '')).localeCompare(y.appointment_date + (y.appointment_time || ''))).map(a => {
+                  const pay = parseFloat(a.payment_amount || '0')
+                  const disc = parseFloat((a as { discount_amount?: string | null }).discount_amount || '0')
+                  const c = commissionableAmount(pay, disc, (a as { discount_bearer?: string | null }).discount_bearer)
+                  const comm = c * commissionPct / 100
+                  const tipShare = parseFloat(a.tip_amount || '0') * tipPct / 100
+                  const cut = a.helper_groomer ? helperCut(a, c, tipShare) : { comm: 0, tip: 0 }
+                  const net = comm + tipShare - cut.comm - cut.tip
+                  return (
+                    <div key={a.id} className="flex items-start justify-between gap-3 text-xs">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'}</p>
+                        <p className="text-gray-400">Service ${(pay + disc).toFixed(2)}{disc > 0 ? ` − disc $${disc.toFixed(2)}` : ''} · Comm ${comm.toFixed(2)} · Tip ${tipShare.toFixed(2)}{a.helper_groomer ? ` · Assist −$${(cut.comm + cut.tip).toFixed(2)}` : ''}</p>
+                      </div>
+                      <span className="font-bold text-gray-800 whitespace-nowrap">${net.toFixed(2)}</span>
+                    </div>
+                  )
+                })}
+                {helperJobs.map(a => {
+                  const e = (a as unknown as { helper_earn?: { comm: number; tip: number } }).helper_earn
+                  return (
+                    <div key={a.id} className="flex items-start justify-between gap-3 text-xs">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-700 truncate">{a.pets?.name ?? 'Pet'}</p>
+                        <p className="text-gray-400">Assist for {a.assigned_groomer ?? '—'}</p>
+                      </div>
+                      <span className="font-bold text-emerald-600 whitespace-nowrap">+${((e?.comm || 0) + (e?.tip || 0)).toFixed(2)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {paidAppts.length === 0 && (
