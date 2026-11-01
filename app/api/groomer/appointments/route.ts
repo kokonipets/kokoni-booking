@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
     // Appointments where this person was added as the HELPER (their pay comes out of the owner's share). Best-effort: empty if migration not run.
     let helperAppointments: unknown[] = []
     try {
-      const helperCols = 'id, appointment_date, appointment_time, service, status, assigned_groomer, payment_amount, payment_status, tip_amount, discount_amount, discount_bearer, helper_groomer, helper_pay_type, helper_flat_amount, helper_commission_percent, helper_tip_percent, pets (name)'
+      const helperCols = 'id, client_phone, appointment_date, appointment_time, service, status, created_at, grooming_status, groomer_confirmed, assigned_groomer, assigned_bather, notes, notes_list, payment_amount, payment_method, payment_status, tip_amount, discount_amount, discount_label, discount_percent, discount_bearer, size_tier, grooming_quality, checked_in_at, grooming_started_at, grooming_finished_at, checked_out_at, helper_groomer, helper_pay_type, helper_flat_amount, helper_commission_percent, helper_tip_percent, clients (name, phone, email), pets (id, name, breed, weight, photo_url)'
       const runHelper = (cols: string) => supabase
         .from('appointments')
         .select(cols)
