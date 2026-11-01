@@ -90,3 +90,38 @@ export function helperCut(a: HelperFields, ownerCommission: number, ownerTipShar
     tip: ownerTipShare * Number(a.helper_tip_percent || 0) / 100,
   }
 }
+
+
+// ── Stacked coupons ─────────────────────────────────────────────────────────
+// Up to two coupons can be applied to one appointment (e.g. $25 + $50, or $50 + $50). Each is calculated on the
+// pre-discount subtotal and the total discount can never exceed the subtotal. Only coupons with the same
+// "who pays" (store / groomer / split) can be combined, so the commission rules in this file stay exact.
+export type CouponLike = { id: string; name: string; discount_type: string; discount_value: number; discount_bearer?: string | null }
+
+export function stackedCoupons(selected: (CouponLike | null | undefined)[], subtotal: number) {
+  const list = selected.filter(Boolean) as CouponLike[]
+  let total = 0
+  for (const c of list) {
+    total += c.discount_type === 'percent' ? Math.round(subtotal * c.discount_value / 100 * 100) / 100 : c.discount_value
+  }
+  total = Math.round(Math.min(total, subtotal) * 100) / 100
+  return {
+    amount: total,
+    label: list.length ? list.map(c => c.name).join(' + ') : null,
+    // a single percent coupon keeps its percent (so old reports keep working); stacked ones don't have one
+    percent: list.length === 1 && list[0].discount_type === 'percent' ? String(list[0].discount_value) : null,
+    bearer: list[0]?.discount_bearer || 'store',
+  }
+}
+
+/** Rebuild the selected coupons from a saved label like "Coupon 25 + Coupon 50" (falls back to a matching percent). */
+export function restoreCoupons<T extends CouponLike>(label: string | null | undefined, percent: number, coupons: T[]): T[] {
+  const parts = (label ?? '').split(' + ').map(x => x.trim()).filter(Boolean)
+  const found = parts.map(n => coupons.find(c => c.name === n)).filter(Boolean) as T[]
+  if (found.length > 0) return found.slice(0, 2)
+  if (!isNaN(percent)) {
+    const m = coupons.find(c => c.discount_type === 'percent' && c.discount_value === percent)
+    if (m) return [m]
+  }
+  return []
+}

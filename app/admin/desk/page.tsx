@@ -8,7 +8,7 @@ import ChatSidebarLink from '@/components/ChatSidebarLink'
 import ChatIconButton from '@/components/ChatIconButton'
 import RetailSell from '@/components/RetailSell'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
-import { commissionableAmount, ratesOn, helperCut, type RateHistoryRow } from '@/lib/commission'
+import { commissionableAmount, ratesOn, helperCut, stackedCoupons, restoreCoupons, type RateHistoryRow } from '@/lib/commission'
 import { sameStaff } from '@/lib/staff-name'
 
 
@@ -63,6 +63,12 @@ type NoteEntry = {
 }
 
 type Appointment = {
+  helper_groomer?: string | null
+  helper_pay_type?: string | null
+  helper_flat_amount?: number | string | null
+  helper_commission_percent?: number | string | null
+  helper_tip_percent?: number | string | null
+  helper_status?: string | null
   id: string
   client_phone: string
   pet_id?: string | null
@@ -681,6 +687,7 @@ export default function DeskAdmin() {
   type DeskCoupon = { id: string; name: string; code: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; active: boolean; first_visit_only?: boolean; discount_bearer?: 'store' | 'groomer' | 'split' }
   const [availableCoupons, setAvailableCoupons] = useState<DeskCoupon[]>([])
   const [detailCouponId, setDetailCouponId] = useState<string | null>(null)
+  const [detailCouponId2, setDetailCouponId2] = useState<string | null>(null) // optional second (stacked) coupon
   // null = unknown (detection not yet run / failed), true = has a prior PAID visit
   // (returning), false = no prior paid visit (first-time). First-visit-only coupons
   // are only blocked when we POSITIVELY know the customer is returning.
@@ -746,6 +753,40 @@ export default function DeskAdmin() {
 
   // Staff
   const [staff, setStaff] = useState<StaffMember[]>([])
+
+  // Assist (helper groomer) info for an appointment: who, whether they confirmed, the terms, and what they get paid
+  // (taken from the assigned groomer's commission / tip share). `amount` only counts once the assist has confirmed.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const assistInfo = (a: any): { name: string; pending: boolean; terms: string; amount: number | null; estimate: number | null } | null => {
+    if (!a?.helper_groomer) return null
+    const owner = a.assigned_groomer ? staff.find(st => sameStaff(st.name, a.assigned_groomer)) : null
+    const d = a.appointment_date
+    const comm = owner ? commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat(a.discount_amount || '0'), a.discount_bearer) * ratesOn(owner, d).commission / 100 : 0
+    const tip = owner ? parseFloat(a.tip_amount || '0') * ratesOn(owner, d).tip / 100 : 0
+    const cut = helperCut({ ...a, helper_status: null }, comm, tip)
+    const pending = a.helper_status === 'pending'
+    const flat = a.helper_pay_type === 'flat'
+    const known = flat || a.payment_status === 'paid'
+    const est = known ? cut.comm + cut.tip : null
+    return {
+      name: a.helper_groomer,
+      pending,
+      terms: flat ? `One-time $${Number(a.helper_flat_amount || 0).toFixed(2)}` : `${Number(a.helper_commission_percent || 0)}% of commission · ${Number(a.helper_tip_percent || 0)}% of tip share`,
+      amount: pending ? 0 : est,
+      estimate: est,
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const assistTag = (a: any): ReactNode => {
+    const i = assistInfo(a)
+    if (!i) return null
+    return (
+      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded-md border ${i.pending ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}`}
+        title={`${i.terms}${i.pending ? ' · waiting for confirmation' : ''}`}>
+        🤝 {firstName(i.name)}{i.pending ? ' ⏳' : ''}{i.estimate != null ? ` $${i.estimate.toFixed(2)}` : ''}
+      </span>
+    )
+  }
   const [newStaffName, setNewStaffName] = useState('')
   const [newStaffRole, setNewStaffRole] = useState('groomer')
 
@@ -1160,11 +1201,12 @@ export default function DeskAdmin() {
     if (savedDiscountAmt > 0) {
       const dLabel = (appt as { discount_label?: string | null }).discount_label || ''
       const dPct = parseFloat((appt as { discount_percent?: string | null }).discount_percent || '')
-      const matched = availableCoupons.find(c => c.name === dLabel)
-        ?? availableCoupons.find(c => !isNaN(dPct) && c.discount_type === 'percent' && c.discount_value === dPct)
-      setDetailCouponId(matched?.id ?? null)
+      const restored = restoreCoupons(dLabel, dPct, availableCoupons)
+      setDetailCouponId(restored[0]?.id ?? null)
+      setDetailCouponId2(restored[1]?.id ?? null)
     } else {
       setDetailCouponId(null)
+      setDetailCouponId2(null)
     }
     // Detect whether this customer has a previous PAID appointment (returning).
     setDetailHasPriorPaid(null) // unknown until the lookup resolves
@@ -3941,6 +3983,24 @@ export default function DeskAdmin() {
                         </div>
                       )
                     })()}
+                    {assistInfo(detailAppt) && (() => {
+                      const i = assistInfo(detailAppt)!
+                      return (
+                        <div className={`mt-3 rounded-xl border px-3 py-2 ${i.pending ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                          <p className="text-xs font-bold uppercase tracking-widest text-amber-600">🤝 Assist</p>
+                          <p className="text-sm font-semibold text-gray-800 mt-0.5">
+                            {i.name}{' '}
+                            <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${i.pending ? 'text-amber-700 bg-amber-100' : 'text-emerald-700 bg-emerald-100'}`}>
+                              {i.pending ? '⏳ Waiting for confirmation' : '✓ Confirmed'}
+                            </span>
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">{i.terms}</p>
+                          <p className="text-xs text-gray-700 mt-0.5">
+                            {i.estimate != null ? <>Assist pay: <span className="font-bold">${i.estimate.toFixed(2)}</span> (taken from {firstName(detailAppt.assigned_groomer)}&apos;s earnings){i.pending ? ' — not counted until confirmed' : ''}</> : 'Assist pay: calculated once the client has paid'}
+                          </p>
+                        </div>
+                      )
+                    })()}
                     {(detailAppt.assigned_groomer || detailAppt.assigned_bather) && (
                       <p className="text-xs text-gray-400 mt-2">
                         Saved: {detailAppt.assigned_groomer ? `✂️ ${firstName(detailAppt.assigned_groomer)}` : ''}{detailAppt.assigned_groomer && detailAppt.assigned_bather ? '  ' : ''}{detailAppt.assigned_bather ? `🛁 ${firstName(detailAppt.assigned_bather)}` : ''}
@@ -4246,11 +4306,9 @@ export default function DeskAdmin() {
                     const baseAmt = parseFloat(detailBasePrice) || 0
                     const subtotalAmt = baseAmt + addOnTotal
                     const selectedCoupon = availableCoupons.find(c => c.id === detailCouponId) ?? null
-                    const discountAmt = selectedCoupon
-                      ? (selectedCoupon.discount_type === 'percent'
-                          ? Math.round(subtotalAmt * selectedCoupon.discount_value / 100 * 100) / 100
-                          : Math.min(selectedCoupon.discount_value, subtotalAmt))
-                      : 0
+                    const selectedCoupon2 = selectedCoupon ? (availableCoupons.find(c => c.id === detailCouponId2) ?? null) : null
+                    const couponStack = stackedCoupons([selectedCoupon, selectedCoupon2], subtotalAmt)
+                    const discountAmt = selectedCoupon ? couponStack.amount : 0
                     const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
                     const addOnPriority = ['flea shampoo', 'hand stripping']
                     const otherServices = services.filter(s => s.id !== detailAppt.service && inferServiceCategory(s) === 'addon').slice().sort((a, b) => {
@@ -4541,7 +4599,7 @@ export default function DeskAdmin() {
                               <span className="text-sm">🎟️</span>
                               <select
                                 value={detailCouponId ?? ''}
-                                onChange={e => { setDetailCouponId(e.target.value || null); setTotalSaved(false) }}
+                                onChange={e => { setDetailCouponId(e.target.value || null); setDetailCouponId2(null); setTotalSaved(false) }}
                                 className={`flex-1 text-sm font-semibold bg-transparent focus:outline-none ${detailCouponId ? 'text-pink-700' : 'text-gray-400'}`}
                               >
                                 <option value="">Apply discount…</option>
@@ -4555,9 +4613,33 @@ export default function DeskAdmin() {
                                 })}
                               </select>
                               {detailCouponId && (
-                                <button onClick={() => { setDetailCouponId(null); setTotalSaved(false) }} className="text-pink-400 hover:text-pink-600 text-lg leading-none">✕</button>
+                                <button onClick={() => { setDetailCouponId(null); setDetailCouponId2(null); setTotalSaved(false) }} className="text-pink-400 hover:text-pink-600 text-lg leading-none">✕</button>
                               )}
                             </div>
+                            {detailCouponId && (
+                              <div className="flex items-center px-4 py-2.5 gap-3 border-t border-pink-200">
+                                <span className="text-sm">➕</span>
+                                <select
+                                  value={detailCouponId2 ?? ''}
+                                  onChange={e => { setDetailCouponId2(e.target.value || null); setTotalSaved(false) }}
+                                  className={`flex-1 text-sm font-semibold bg-transparent focus:outline-none ${detailCouponId2 ? 'text-pink-700' : 'text-gray-400'}`}
+                                >
+                                  <option value="">Add a second coupon (optional)…</option>
+                                  {availableCoupons.map(c => {
+                                    const diffBearer = (c.discount_bearer || 'store') !== (selectedCoupon?.discount_bearer || 'store')
+                                    const blocked = (!!c.first_visit_only && detailHasPriorPaid === true) || diffBearer
+                                    return (
+                                      <option key={c.id} value={c.id} disabled={blocked}>
+                                        {c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}{c.first_visit_only && detailHasPriorPaid === true ? ' · first visit only' : diffBearer ? ' · different "who pays"' : ''}
+                                      </option>
+                                    )
+                                  })}
+                                </select>
+                                {detailCouponId2 && (
+                                  <button onClick={() => { setDetailCouponId2(null); setTotalSaved(false) }} className="text-pink-400 hover:text-pink-600 text-lg leading-none">✕</button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -4578,7 +4660,7 @@ export default function DeskAdmin() {
                             ))}
                             {discountAmt > 0 && (
                               <div className="flex justify-between items-center text-sm">
-                                <span className="text-pink-500 font-semibold">🎟️ {selectedCoupon?.name ?? 'Discount'}</span>
+                                <span className="text-pink-500 font-semibold">🎟️ {couponStack.label ?? 'Discount'}</span>
                                 <span className="font-bold text-pink-500">−${discountAmt.toFixed(2)}</span>
                               </div>
                             )}
@@ -4611,11 +4693,11 @@ export default function DeskAdmin() {
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                   action: 'record-payment', payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, addons: detailAddOns,
-                                  discount_label: selectedCoupon ? selectedCoupon.name : null,
-                                  discount_percent: selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : null,
+                                  discount_label: selectedCoupon ? couponStack.label : null,
+                                  discount_percent: selectedCoupon ? couponStack.percent : null,
                                   discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
                                   // Who absorbs this discount for commission purposes (lib/commission.ts).
-                                  discount_bearer: discountAmt > 0 ? (selectedCoupon?.discount_bearer || 'store') : null,
+                                  discount_bearer: discountAmt > 0 ? (selectedCoupon ? couponStack.bearer : 'store') : null,
                                   size_tier: detailBaseTier || null,
                                 }),
                               })
@@ -4623,10 +4705,10 @@ export default function DeskAdmin() {
                               if (data.success) {
                                 const addonNotes = detailAddOns.map((a: { id: string; name: string; price: string }) => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
                                 const nonAddonNotes = (detailAppt.notes_list ?? []).filter((n: { is_addon?: boolean }) => !n.is_addon)
-                                const dLabel = selectedCoupon ? selectedCoupon.name : null
-                                const dPct = selectedCoupon?.discount_type === 'percent' ? String(selectedCoupon.discount_value) : null
+                                const dLabel = selectedCoupon ? couponStack.label : null
+                                const dPct = selectedCoupon ? couponStack.percent : null
                                 const dAmt = discountAmt > 0 ? discountAmt.toFixed(2) : null
-                                const dBearer = discountAmt > 0 ? (selectedCoupon?.discount_bearer || 'store') : null
+                                const dBearer = discountAmt > 0 ? (selectedCoupon ? couponStack.bearer : 'store') : null
                                 setDetailAppt(prev => prev ? { ...prev, payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, status: effectiveStatus === 'paid' ? 'completed' : prev.status, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, discount_bearer: dBearer, notes_list: [...nonAddonNotes, ...addonNotes] } as typeof prev : prev)
                                 setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, payment_amount: amount, payment_method: detailPayMethod, payment_status: effectiveStatus, size_tier: detailBaseTier || null, discount_label: dLabel, discount_percent: dPct, discount_amount: dAmt, discount_bearer: dBearer } as typeof a : a))
                                 setTotalSaved(true)
@@ -5873,6 +5955,7 @@ export default function DeskAdmin() {
                                 {/* Staff */}
                                 <div className={`text-xs space-y-0.5 ${isDone ? 'text-gray-400' : 'text-gray-500'}`}>
                                   {appt.assigned_groomer && <p>✂️ {firstName(appt.assigned_groomer)}</p>}
+                                  {assistTag(appt)}
                                   {appt.assigned_bather  && <p>🛁 {firstName(appt.assigned_bather)}</p>}
                                   {!appt.assigned_groomer && !appt.assigned_bather && (
                                     appt.status === 'confirmed'
@@ -8325,6 +8408,7 @@ export default function DeskAdmin() {
                       <span className="text-sm font-semibold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}</span>
                       <span className="text-xs text-gray-400 ml-2">{appt.clients?.name} · {serviceMap[appt.service] ?? appt.service}</span>
                       {appt.assigned_groomer && <span className="text-xs text-gray-300 ml-2">✂️ {firstName(appt.assigned_groomer)}</span>}
+                      {assistTag(appt) && <span className="ml-2">{assistTag(appt)}</span>}
                     </div>
                     <div className="flex items-center gap-1.5">
                       {isPaid ? (
@@ -9094,6 +9178,8 @@ export default function DeskAdmin() {
                     'Pet Name': a.pets?.name ?? '',
                     Service: serviceMap[a.service] ?? a.service ?? '',
                     Groomer: a.assigned_groomer ?? '',
+                    Assist: assistInfo(a) ? `${assistInfo(a)!.name}${assistInfo(a)!.pending ? ' (pending)' : ''}` : '',
+                    'Assist Pay ($)': assistInfo(a)?.amount ?? 0,
                     'Payment Method': a.payment_status === 'paid' ? (methodLabelsLocal[a.payment_method || ''] || a.payment_method || '') : 'Unpaid',
                     'Amount ($)': a.payment_status === 'paid' ? parseFloat(a.payment_amount || '0') : 0,
                     'Tip ($)': parseFloat(a.tip_amount || '0'),
@@ -9116,20 +9202,38 @@ export default function DeskAdmin() {
               }).filter(r => r.Appointments > 0)
 
               // Sheet 3: Per-groomer summary
-              const groomerSummaryRows = rows.map(r => ({
-                Groomer: r.name,
-                Appointments: r.count,
-                'Revenue ($)': r.revenue,
-                [`Commission (${r.commissionPct}%) ($)`]: r.commission,
-                'Tips Collected ($)': r.tips,
-                [`Tip Share (${r.tipPct}%) ($)`]: r.tipEarned,
-                'Total Pay ($)': r.commission + r.tipEarned,
+              const assistJobsInRange = allRangeAppts.filter(a => a.payment_status === 'paid' && assistInfo(a))
+              const groomerSummaryRows = rows.map(r => {
+                const paidOut = assistJobsInRange.filter(a => sameStaff(a.assigned_groomer, r.name)).reduce((t, a) => t + (assistInfo(a)?.amount ?? 0), 0)
+                const earned = assistJobsInRange.filter(a => sameStaff((a as { helper_groomer?: string | null }).helper_groomer, r.name) && !sameStaff(a.assigned_groomer, r.name)).reduce((t, a) => t + (assistInfo(a)?.amount ?? 0), 0)
+                return {
+                  Groomer: r.name,
+                  Appointments: r.count,
+                  'Revenue ($)': r.revenue,
+                  [`Commission (${r.commissionPct}%) ($)`]: r.commission,
+                  'Tips Collected ($)': r.tips,
+                  [`Tip Share (${r.tipPct}%) ($)`]: r.tipEarned,
+                  'Assist Paid Out ($)': paidOut,
+                  'Assist Earned ($)': earned,
+                  'Total Pay ($)': r.commission + r.tipEarned - paidOut + earned,
+                }
+              })
+              // Sheet 4: every assist job — who assisted whom, terms, and pay
+              const assistRows = assistJobsInRange.map(a => ({
+                Date: a.appointment_date,
+                'Pet Name': a.pets?.name ?? '',
+                Groomer: a.assigned_groomer ?? '',
+                Assist: assistInfo(a)!.name,
+                Status: assistInfo(a)!.pending ? 'Pending' : 'Confirmed',
+                Terms: assistInfo(a)!.terms,
+                'Assist Pay ($)': assistInfo(a)!.amount ?? 0,
               }))
 
               const wb = XLSX.utils.book_new()
               XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), 'Transactions')
               XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(methodSummary), 'Payment Methods')
               XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(groomerSummaryRows), 'Groomer Pay')
+              if (assistRows.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assistRows), 'Assist')
 
               const label = reportsRange === 'custom'
                 ? `${reportsCustomStart}-to-${reportsCustomEnd}`

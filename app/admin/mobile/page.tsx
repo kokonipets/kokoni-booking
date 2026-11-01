@@ -8,6 +8,7 @@ import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 import { sameStaff } from '@/lib/staff-name'
+import { stackedCoupons, restoreCoupons } from '@/lib/commission'
 
 // Dashboard-tab permissions are managed once, on the desktop admin's tab set
 // (see DASHBOARD_TABS in app/admin/settings/page.tsx). Mobile has a smaller,
@@ -406,6 +407,7 @@ export default function AdminPage() {
   const [popupAddonDraft, setPopupAddonDraft] = useState({ text: '', price: '' })
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
+  const [popupCouponId2, setPopupCouponId2] = useState<string | null>(null)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
   const [editDraftBasePrice, setEditDraftBasePrice] = useState('')
   const [editDraftBaseTier, setEditDraftBaseTier] = useState('')  // tier label to avoid same-price collision
@@ -413,6 +415,7 @@ export default function AdminPage() {
   const [editDraftAddonDraft, setEditDraftAddonDraft] = useState({ text: '', price: '' })
   const [editDraftTotalSaved, setEditDraftTotalSaved] = useState(false)
   const [editDraftCouponId, setEditDraftCouponId] = useState<string | null>(null)
+  const [editDraftCouponId2, setEditDraftCouponId2] = useState<string | null>(null)
   const [savingEditDraftPayment, setSavingEditDraftPayment] = useState(false)
   // Calendar detail sheet — Service & Price / Add-ons
   const [calendarBasePrice, setCalendarBasePrice] = useState('')
@@ -1761,8 +1764,8 @@ export default function AdminPage() {
                 {
                   const dl = (appt as { discount_label?: string | null }).discount_label || ''
                   const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || '')
-                  const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp)
-                  setEditDraftCouponId(savedDiscount > 0 ? (m?.id ?? null) : null)
+                  const rc = restoreCoupons(dl, dp, availableCoupons); const m = rc[0]
+                  setEditDraftCouponId(savedDiscount > 0 ? (m?.id ?? null) : null); setEditDraftCouponId2(savedDiscount > 0 ? (rc[1]?.id ?? null) : null)
                 }
                 setMobileIsFirstTime(false)
                 if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {})
@@ -1902,9 +1905,9 @@ export default function AdminPage() {
                     const baseAmt = parseFloat(editDraftBasePrice) || 0
                     const subtotalAmt = baseAmt + addOnTotal
                     const editDraftCoupon = availableCoupons.find(c => c.id === editDraftCouponId) ?? null
-                    const discountAmt = editDraftCoupon
-                      ? (editDraftCoupon.discount_type === 'percent' ? Math.round(subtotalAmt * editDraftCoupon.discount_value / 100 * 100) / 100 : Math.min(editDraftCoupon.discount_value, subtotalAmt))
-                      : 0
+                    const editDraftCoupon2 = availableCoupons.find(c => c.id === editDraftCouponId2) ?? null
+                    const couponStack = stackedCoupons([editDraftCoupon, editDraftCoupon2], subtotalAmt)
+                    const discountAmt = couponStack.amount
                     const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
 
                     const saveTotal = async (method: string) => {
@@ -1915,11 +1918,11 @@ export default function AdminPage() {
                         const res = await fetch(`/api/admin/appointments/${appt.id}`, {
                           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'record-payment', payment_amount: amount, payment_method: method, payment_status: 'paid', addons: editDraftAddOns, size_tier: editDraftBaseTier || null,
-                            discount_label: editDraftCoupon ? editDraftCoupon.name : null,
-                            discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
+                            discount_label: couponStack.label,
+                            discount_percent: couponStack.percent,
                             discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
                             // Who absorbs this discount for commission purposes (lib/commission.ts).
-                            discount_bearer: discountAmt > 0 ? (editDraftCoupon?.discount_bearer || 'store') : null }),
+                            discount_bearer: discountAmt > 0 ? couponStack.bearer : null }),
                         })
                         if ((await res.json()).success) {
                           setEditDraftTotalSaved(true)
@@ -1928,10 +1931,10 @@ export default function AdminPage() {
                             if (a.id !== appt.id) return a
                             const nonAddonNotes = (a.notes_list ?? []).filter(n => !n.is_addon)
                             return { ...a, payment_amount: amount, payment_method: method, payment_status: 'paid', size_tier: editDraftBaseTier || null,
-                              discount_label: editDraftCoupon ? editDraftCoupon.name : null,
-                              discount_percent: editDraftCoupon?.discount_type === 'percent' ? String(editDraftCoupon.discount_value) : null,
+                              discount_label: couponStack.label,
+                              discount_percent: couponStack.percent,
                               discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
-                              discount_bearer: discountAmt > 0 ? (editDraftCoupon?.discount_bearer || 'store') : null,
+                              discount_bearer: discountAmt > 0 ? couponStack.bearer : null,
                               notes_list: [...nonAddonNotes, ...addonNotes] }
                           }))
                           showToast('✓ Payment recorded!')
@@ -2063,9 +2066,10 @@ export default function AdminPage() {
 
                           {/* Discount code selector (shared; first-visit-only gated) */}
                           {subtotalAmt > 0 && (
+                            <>
                             <div className={`flex items-center gap-2 rounded-xl px-3 py-2 border-2 ${editDraftCouponId ? 'bg-pink-50 border-pink-300' : 'bg-gray-50 border-gray-200'}`}>
                               <span className="text-xs">🎟️</span>
-                              <select value={editDraftCouponId ?? ''} onChange={e => { setEditDraftCouponId(e.target.value || null); setEditDraftTotalSaved(false) }}
+                              <select value={editDraftCouponId ?? ''} onChange={e => { setEditDraftCouponId(e.target.value || null); if (!e.target.value) setEditDraftCouponId2(null); setEditDraftTotalSaved(false) }}
                                 className={`flex-1 text-xs font-semibold bg-transparent focus:outline-none ${editDraftCouponId ? 'text-pink-700' : 'text-gray-400'}`}>
                                 <option value="">Apply discount…</option>
                                 {availableCoupons.map(c => {
@@ -2073,8 +2077,26 @@ export default function AdminPage() {
                                   return <option key={c.id} value={c.id} disabled={blocked}>{c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}{blocked ? ' · first visit only' : ''}</option>
                                 })}
                               </select>
-                              {editDraftCouponId && <button onClick={() => { setEditDraftCouponId(null); setEditDraftTotalSaved(false) }} className="text-pink-400 text-base leading-none">✕</button>}
+                              {editDraftCouponId && <button onClick={() => { setEditDraftCouponId(null); setEditDraftCouponId2(null); setEditDraftTotalSaved(false) }} className="text-pink-400 text-base leading-none">✕</button>}
                             </div>
+                            {editDraftCouponId && (() => {
+                              const c1 = availableCoupons.find(c => c.id === editDraftCouponId)
+                              return (
+                                <div className={`flex items-center gap-2 rounded-xl px-3 py-2 border-2 ${editDraftCouponId2 ? 'bg-pink-50 border-pink-300' : 'bg-gray-50 border-gray-200'}`}>
+                                  <span className="text-xs">➕</span>
+                                  <select value={editDraftCouponId2 ?? ''} onChange={e => { setEditDraftCouponId2(e.target.value || null); setEditDraftTotalSaved(false) }}
+                                    className={`flex-1 text-xs font-semibold bg-transparent focus:outline-none ${editDraftCouponId2 ? 'text-pink-700' : 'text-gray-400'}`}>
+                                    <option value="">Add a second coupon (optional)…</option>
+                                    {availableCoupons.map(c => {
+                                      const blocked = (c.first_visit_only && !mobileIsFirstTime) || (c1 ? (c.discount_bearer || 'store') !== (c1.discount_bearer || 'store') : false)
+                                      return <option key={c.id} value={c.id} disabled={blocked}>{c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}</option>
+                                    })}
+                                  </select>
+                                  {editDraftCouponId2 && <button onClick={() => { setEditDraftCouponId2(null); setEditDraftTotalSaved(false) }} className="text-pink-400 text-base leading-none">✕</button>}
+                                </div>
+                              )
+                            })()}
+                            </>
                           )}
 
                           {/* Total breakdown */}
@@ -2939,9 +2961,9 @@ export default function AdminPage() {
               const baseAmt = parseFloat(popupBasePrice) || 0
               const subtotalAmt = baseAmt + addOnTotal
               const popupCoupon = availableCoupons.find(c => c.id === popupCouponId) ?? null
-              const discountAmt = popupCoupon
-                ? (popupCoupon.discount_type === 'percent' ? Math.round(subtotalAmt * popupCoupon.discount_value / 100 * 100) / 100 : Math.min(popupCoupon.discount_value, subtotalAmt))
-                : 0
+              const popupCoupon2 = availableCoupons.find(c => c.id === popupCouponId2) ?? null
+              const couponStack = stackedCoupons([popupCoupon, popupCoupon2], subtotalAmt)
+              const discountAmt = couponStack.amount
               const grandTotal = Math.round((subtotalAmt - discountAmt) * 100) / 100
 
               const saveTotal = async (method: string) => {
@@ -2953,20 +2975,20 @@ export default function AdminPage() {
                     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'record-payment', payment_amount: amount, payment_method: method, payment_status: 'paid', size_tier: popupBaseTier || null,
                       addons: popupAddOns,
-                      discount_label: popupCoupon ? popupCoupon.name : null,
-                      discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
+                      discount_label: couponStack.label,
+                      discount_percent: couponStack.percent,
                       discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
-                      discount_bearer: discountAmt > 0 ? (popupCoupon?.discount_bearer || 'store') : null }),
+                      discount_bearer: discountAmt > 0 ? couponStack.bearer : null }),
                   })
                   if ((await res.json()).success) {
                     setPopupTotalSaved(true)
                     const addonNotes = popupAddOns.map(a => ({ id: a.id, text: a.name, price: a.price, is_addon: true as const, author: 'system', created_at: new Date().toISOString() }))
                     const nonAddonNotes = (appt.notes_list ?? []).filter(n => !n.is_addon)
                     setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, payment_amount: amount, payment_method: method, payment_status: 'paid', size_tier: popupBaseTier || null,
-                      discount_label: popupCoupon ? popupCoupon.name : null,
-                      discount_percent: popupCoupon?.discount_type === 'percent' ? String(popupCoupon.discount_value) : null,
+                      discount_label: couponStack.label,
+                      discount_percent: couponStack.percent,
                       discount_amount: discountAmt > 0 ? discountAmt.toFixed(2) : null,
-                      discount_bearer: discountAmt > 0 ? (popupCoupon?.discount_bearer || 'store') : null,
+                      discount_bearer: discountAmt > 0 ? couponStack.bearer : null,
                       notes_list: [...nonAddonNotes, ...addonNotes] } : a))
                     showToast('✓ Payment recorded!')
                   }
@@ -3104,9 +3126,10 @@ export default function AdminPage() {
 
                   {/* Discount code selector (shared; first-visit-only gated) */}
                   {subtotalAmt > 0 && (
+                    <>
                     <div className={`flex items-center gap-2 rounded-xl px-3 py-2 border-2 mb-2 ${popupCouponId ? 'bg-pink-50 border-pink-300' : 'bg-gray-50 border-gray-200'}`}>
                       <span className="text-xs">🎟️</span>
-                      <select value={popupCouponId ?? ''} onChange={e => { setPopupCouponId(e.target.value || null); setPopupTotalSaved(false) }}
+                      <select value={popupCouponId ?? ''} onChange={e => { setPopupCouponId(e.target.value || null); if (!e.target.value) setPopupCouponId2(null); setPopupTotalSaved(false) }}
                         className={`flex-1 text-xs font-semibold bg-transparent focus:outline-none ${popupCouponId ? 'text-pink-700' : 'text-gray-400'}`}>
                         <option value="">Apply discount…</option>
                         {availableCoupons.map(c => {
@@ -3114,8 +3137,26 @@ export default function AdminPage() {
                           return <option key={c.id} value={c.id} disabled={blocked}>{c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}{blocked ? ' · first visit only' : ''}</option>
                         })}
                       </select>
-                      {popupCouponId && <button onClick={() => { setPopupCouponId(null); setPopupTotalSaved(false) }} className="text-pink-400 text-base leading-none">✕</button>}
+                      {popupCouponId && <button onClick={() => { setPopupCouponId(null); setPopupCouponId2(null); setPopupTotalSaved(false) }} className="text-pink-400 text-base leading-none">✕</button>}
                     </div>
+                    {popupCouponId && (() => {
+                      const c1 = availableCoupons.find(c => c.id === popupCouponId)
+                      return (
+                        <div className={`flex items-center gap-2 rounded-xl px-3 py-2 border-2 mb-2 ${popupCouponId2 ? 'bg-pink-50 border-pink-300' : 'bg-gray-50 border-gray-200'}`}>
+                          <span className="text-xs">➕</span>
+                          <select value={popupCouponId2 ?? ''} onChange={e => { setPopupCouponId2(e.target.value || null); setPopupTotalSaved(false) }}
+                            className={`flex-1 text-xs font-semibold bg-transparent focus:outline-none ${popupCouponId2 ? 'text-pink-700' : 'text-gray-400'}`}>
+                            <option value="">Add a second coupon (optional)…</option>
+                            {availableCoupons.map(c => {
+                              const blocked = (c.first_visit_only && !mobileIsFirstTime) || (c1 ? (c.discount_bearer || 'store') !== (c1.discount_bearer || 'store') : false)
+                              return <option key={c.id} value={c.id} disabled={blocked}>{c.name} — {c.discount_type === 'percent' ? `${c.discount_value}% off` : `$${c.discount_value} off`}</option>
+                            })}
+                          </select>
+                          {popupCouponId2 && <button onClick={() => { setPopupCouponId2(null); setPopupTotalSaved(false) }} className="text-pink-400 text-base leading-none">✕</button>}
+                        </div>
+                      )
+                    })()}
+                    </>
                   )}
 
                   {/* Total breakdown */}
@@ -3171,7 +3212,7 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <button
-                      onClick={() => { setEditingPriceId(null); setPopupBasePrice(''); setPopupBaseTier(''); setPopupAddOns([]); setPopupCouponId(null); setPopupTotalSaved(false) }}
+                      onClick={() => { setEditingPriceId(null); setPopupBasePrice(''); setPopupBaseTier(''); setPopupAddOns([]); setPopupCouponId(null); setPopupCouponId2(null); setPopupTotalSaved(false) }}
                       className="px-3 py-2.5 bg-white text-gray-500 text-sm rounded-xl border border-gray-200 hover:bg-gray-50">✕</button>
                   </div>
                 </div>
@@ -3184,7 +3225,7 @@ export default function AdminPage() {
                     {appt.payment_amount ? `$${appt.payment_amount}` : '—'}
                   </span>
                   <button
-                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const m = availableCoupons.find(c => c.name === dl) ?? availableCoupons.find(c => !isNaN(dp) && c.discount_type === 'percent' && c.discount_value === dp); const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupAddonDraft({ text: '', price: '' }); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
+                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const rc = restoreCoupons(dl, dp, availableCoupons); const m = rc[0]; const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupAddonDraft({ text: '', price: '' }); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setPopupCouponId2(sd > 0 ? (rc[1]?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
                     className="text-gray-400 hover:text-sky-500 text-xs leading-none"
                     title="Set price"
                   >✏️</button>
