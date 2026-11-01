@@ -218,6 +218,12 @@ function salonNow(): Date {
   return new Date(+g('year'), +g('month') - 1, +g('day'), +h, +g('minute'), +g('second'))
 }
 
+// "Wylie" and "Wylie Shen" are the same person (staff are matched on first name here)
+function sameStaffName(a?: string | null, b?: string | null) {
+  const f = (x?: string | null) => (x ?? '').trim().split(/\s+/)[0].toLowerCase()
+  return !!f(a) && f(a) === f(b)
+}
+
 function formatDate(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
@@ -2967,7 +2973,7 @@ export default function GroomerDashboard() {
               )}
 
               {/* ─── HELPER (partner) GROOMER — owner keeps the appointment; helper is paid out of the owner's share ─── */}
-              {(user?.name === selectedAppt.assigned_groomer || selectedAppt.helper_groomer) && (
+              {(sameStaffName(user?.name, selectedAppt.assigned_groomer) || selectedAppt.helper_groomer) && (
                 <div className="space-y-2 px-1">
                   <p className="text-xs font-bold uppercase tracking-widest text-amber-500">🤝 Assist</p>
                   {selectedAppt.helper_groomer && !helperEditing && (
@@ -2984,7 +2990,7 @@ export default function GroomerDashboard() {
                             : `${Number(selectedAppt.helper_commission_percent || 0)}% of commission · ${Number(selectedAppt.helper_tip_percent || 0)}% of tip share`}
                         </p>
                       </div>
-                      {user?.name === selectedAppt.assigned_groomer && (
+                      {sameStaffName(user?.name, selectedAppt.assigned_groomer) && (
                         <button
                           onClick={() => {
                             setHelperName(selectedAppt.helper_groomer || '')
@@ -2998,7 +3004,7 @@ export default function GroomerDashboard() {
                       )}
                     </div>
                   )}
-                  {!selectedAppt.helper_groomer && !helperEditing && user?.name === selectedAppt.assigned_groomer && (
+                  {!selectedAppt.helper_groomer && !helperEditing && sameStaffName(user?.name, selectedAppt.assigned_groomer) && (
                     <button
                       onClick={() => { setHelperName(''); setHelperPayType('percent'); setHelperFlat(''); setHelperCommPct(''); setHelperTipPct(''); setHelperEditing(true) }}
                       className="w-full text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-2.5 hover:bg-amber-100">
