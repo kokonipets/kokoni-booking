@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer } from '@/lib/supabase'
+import { checkBookableDate } from '@/lib/bookable-date'
 import { notifyAdminNewRequest } from '@/lib/sms'
 import { sendPushToAdmin } from '@/lib/push-notify'
 
@@ -101,49 +102,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Defense-in-depth: never accept a booking on a closed day or blocked date,
-  // even if the customer's page somehow offered it (e.g. settings didn't load).
-  if (date) {
-    const { data: settingRows } = await supabase
-      .from('salon_settings')
-      .select('key, value')
-      .in('key', ['open_days', 'blocked_dates_list', 'special_open_dates'])
-    const settings: Record<string, string> = {}
-    for (const r of (settingRows ?? []) as { key: string; value: string }[]) settings[r.key] = r.value
-    let openDays: number[] | null = null
-    try { if (settings.open_days) openDays = JSON.parse(settings.open_days) } catch { openDays = null }
-    let blockedDates: string[] = []
-    try {
-      const list = settings.blocked_dates_list ? JSON.parse(settings.blocked_dates_list) : []
-      blockedDates = list.map((b: { date: string }) => b.date)
-    } catch { blockedDates = [] }
-    // One-off dates the salon opened even though that weekday is normally closed.
-    let specialOpenDates: string[] = []
-    try { specialOpenDates = settings.special_open_dates ? JSON.parse(settings.special_open_dates) : [] } catch { specialOpenDates = [] }
-
-    // The booking pages send the date as "M/D/YYYY" (e.g. "6/28/2026"); other
-    // callers may send ISO "YYYY-MM-DD". Parse both into a local-noon Date (no
-    // timezone shift) and a normalized ISO string for the blocked-list check.
-    let dt: Date | null = null
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {
-      const [mm, dd, yy] = date.split('/').map(Number)
-      dt = new Date(yy, mm - 1, dd, 12)
-    } else if (/^\d{4}-\d{2}-\d{2}/.test(date)) {
-      const [yy, mm, dd] = date.slice(0, 10).split('-').map(Number)
-      dt = new Date(yy, mm - 1, dd, 12)
-    }
-    // Only enforce when we could actually parse the date (never reject on an
-    // unrecognized format — that would block legitimate bookings).
-    if (dt && !isNaN(dt.getTime())) {
-      const dow = dt.getDay() // 0=Sun … 6=Sat
-      const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-      const isSpecialOpen = specialOpenDates.includes(iso)
-      if ((openDays && !openDays.includes(dow) && !isSpecialOpen) || blockedDates.includes(iso)) {
-        return NextResponse.json(
-          { error: 'Sorry, that date is not available for booking. Please pick another day.' },
-          { status: 400 }
-        )
-      }
-    }
+  // even if the customer's page somehow offered it. Fails closed (see lib/bookable-date).
+  {
+    const check = await checkBookableDate(supabase, date)
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })
   }
 
   let resolvedPetId = existingPetId

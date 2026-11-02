@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { checkBookableDate } from '@/lib/bookable-date'
 import { matchTier } from '@/lib/serviceTier'
 
 export const dynamic = 'force-dynamic'
@@ -150,6 +151,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ slots: allSlots, groomer_count: null, booked: {} }, {
       headers: { 'Cache-Control': 'no-store' }
     })
+  }
+
+  // Closed day / blocked date / settings unreadable → no times at all.
+  {
+    const check = await checkBookableDate(supabase, dateStr)
+    if (!check.ok) {
+      return NextResponse.json({ slots: [], closed: true, groomer_count: 0, booked: {} }, {
+        headers: { 'Cache-Control': 'no-store' }
+      })
+    }
   }
 
   // 2. Figure out day name for the requested date

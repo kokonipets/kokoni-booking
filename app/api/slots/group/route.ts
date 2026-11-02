@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { checkBookableDate } from '@/lib/bookable-date'
 import { matchTier } from '@/lib/serviceTier'
 
 export const dynamic = 'force-dynamic'
@@ -88,6 +89,16 @@ export async function POST(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+
+  // Closed day / blocked date / settings unreadable → no times at all.
+  {
+    const check = await checkBookableDate(supabase, dateStr)
+    if (!check.ok) {
+      return NextResponse.json({ slots: [], assignments: {}, closed: true }, {
+        headers: { 'Cache-Control': 'no-store' }
+      })
+    }
+  }
 
   // 1. Salon settings (same as /api/slots)
   const { data: settingsRows } = await supabase.from('salon_settings').select('*')

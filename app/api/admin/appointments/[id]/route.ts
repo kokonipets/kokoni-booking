@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { notifyClientConfirmed, notifyClientRescheduled, notifyClientGroomingReady } from '@/lib/sms'
 import { sendPushToStaff } from '@/lib/push-notify'
+import { checkBookableDate } from '@/lib/bookable-date'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -272,6 +273,8 @@ export async function PATCH(
     if (!appointment_date || !appointment_time) {
       return NextResponse.json({ error: 'Date and time required' }, { status: 400 })
     }
+    const check = await checkBookableDate(supabase, appointment_date)
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })
     const { error } = await supabase
       .from('appointments')
       .update({ appointment_date, appointment_time, status: 'pending', groomer_confirmed: false })
