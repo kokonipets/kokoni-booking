@@ -1552,11 +1552,11 @@ export default function DeskAdmin() {
       const res = await fetch(`/api/admin/appointments/${apptId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'assign-staff', assigned_groomer: staffName, assigned_bather: staffName }),
+        body: JSON.stringify({ action: 'assign-staff', assigned_groomer: staffName, assigned_bather: null }),
       })
       const data = await res.json()
       if (data.success) {
-        setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, assigned_groomer: staffName, assigned_bather: staffName } : a))
+        setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, assigned_groomer: staffName, assigned_bather: null } : a))
         refreshCalDayAppts()
         showToast(`✓ Assigned to ${staffName}`)
       } else {
@@ -3378,7 +3378,7 @@ export default function DeskAdmin() {
                           {groomers.map(s => {
                             const w = workFor(s)
                             const colHeight = (CAL_END - CAL_START) * CAL_PX
-                            const colAppts = dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name) || sameStaff(a.assigned_bather, s.name))
+                            const colAppts = dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name))
                             const pickable = staffCalSelectingId !== null && !!w
                             return (
                               <div key={s.id}
@@ -10013,7 +10013,7 @@ export default function DeskAdmin() {
                   icon: s.name.slice(0,1).toUpperCase(),
                   colorClass: i % 2 === 0 ? 'bg-sky-500' : 'bg-teal-500',
                   off: !isStaffWorking(s, selectedDay, dayDowD), // marked off / not scheduled this day
-                  appts: dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name) || sameStaff(a.assigned_bather, s.name)),
+                  appts: dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name)),
                 })),
                 ...(unassignedAppts.length > 0 ? [{
                   key: '__unassigned',
@@ -10026,7 +10026,7 @@ export default function DeskAdmin() {
                 // — previously these silently vanished from the day view.
                 ...(() => {
                   const shownIds = new Set<string>()
-                  activeGroomers.forEach(s => dayAppts.forEach(a => { if (sameStaff(a.assigned_groomer, s.name) || sameStaff(a.assigned_bather, s.name)) shownIds.add(a.id) }))
+                  activeGroomers.forEach(s => dayAppts.forEach(a => { if (sameStaff(a.assigned_groomer, s.name)) shownIds.add(a.id) }))
                   unassignedAppts.forEach(a => shownIds.add(a.id))
                   const other = dayAppts.filter(a => !shownIds.has(a.id))
                   return other.length > 0 ? [{

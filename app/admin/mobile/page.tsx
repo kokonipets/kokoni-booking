@@ -3712,7 +3712,7 @@ export default function AdminPage() {
                 label: displayName(s.name),
                 icon: s.role === 'groomer' ? '✂️' : '🛁',
                 dot: s.role === 'groomer' ? 'bg-sky-500' : 'bg-teal-500',
-                count: dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name) || sameStaff(a.assigned_bather, s.name)).length,
+                count: dayAppts.filter(a => sameStaff(a.assigned_groomer, s.name)).length,
               })).filter(t => t.count > 0)
               const unassignedCount = dayAppts.filter(a => !a.assigned_groomer && !a.assigned_bather).length
               const personTabs = unassignedCount > 0
@@ -3743,7 +3743,7 @@ export default function AdminPage() {
                 activeTabKey === 'all' ? true :
                 activeTabKey === '__unassigned'
                   ? (!a.assigned_groomer && !a.assigned_bather)
-                  : (sameStaff(a.assigned_groomer, activeTabKey) || sameStaff(a.assigned_bather, activeTabKey))
+                  : (sameStaff(a.assigned_groomer, activeTabKey))
               ).reduce((acc: Appointment[][], a) => {
                 // Dogs booked together (same group_id) at the same time with the same
                 // groomer collapse into ONE card; each stays its own appointment underneath.
