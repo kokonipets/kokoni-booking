@@ -5589,7 +5589,7 @@ export default function DeskAdmin() {
         <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {!isBookMode && <div className={`w-64 bg-sky-50 border-r border-sky-100 flex flex-col min-h-screen fixed left-0 top-0 bottom-0 z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+      {!isBookMode && <div className={`w-72 bg-sky-50 border-r border-sky-100 flex flex-col min-h-screen fixed left-0 top-0 bottom-0 z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         {/* Facility header */}
         <div className="px-4 py-4 border-b border-sky-100">
           <div className="flex items-center gap-3">
@@ -5612,7 +5612,7 @@ export default function DeskAdmin() {
               finance: { solid: 'bg-emerald-500', bar: 'border-emerald-500',title: 'text-emerald-700', item: 'text-emerald-700 hover:bg-emerald-100', active: 'bg-emerald-200 text-emerald-900', bg: 'bg-emerald-100/50' },
               tools:   { solid: 'bg-amber-500', bar: 'border-amber-500',  title: 'text-amber-700',   item: 'text-amber-800 hover:bg-amber-100',     active: 'bg-amber-200 text-amber-900',     bg: 'bg-amber-100/50' },
             }
-            const base = 'w-full flex items-center px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors text-left relative'
+            const base = 'w-full flex items-center px-3 py-2 rounded-lg text-sm font-semibold leading-tight transition-colors text-left relative'
             const badge = (n: number) => n > 0 ? (
               <span className="bg-rose-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">{n}</span>
             ) : null
@@ -5700,7 +5700,7 @@ export default function DeskAdmin() {
       </div>}
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
-      <div className={`${isBookMode ? '' : 'md:ml-64'} flex-1 flex flex-col min-h-screen`}>
+      <div className={`${isBookMode ? '' : 'md:ml-72'} flex-1 flex flex-col min-h-screen`}>
         {/* Top bar */}
         <div className="bg-white border-b border-gray-200 px-4 md:px-6 flex items-center justify-between sticky top-0 z-30" style={{paddingTop: 'calc(env(safe-area-inset-top) + 12px)', paddingBottom: '12px'}}>
           <div className="flex items-center gap-3">
