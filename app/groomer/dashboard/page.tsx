@@ -1215,7 +1215,8 @@ export default function GroomerDashboard() {
   // Unaccepted appointments stay in Pending until the groomer confirms them
   const todayAppts = appointments.filter(a =>
     a.appointment_date === today &&
-    a.groomer_confirmed === true &&
+    // paid appointments always show (e.g. a walk-in that was reassigned after checkout) even if the groomer hasn't tapped Accept
+    (a.groomer_confirmed === true || a.payment_status === 'paid') &&
     a.status !== 'cancelled'
   )
   const parseApptMins = (t: string) => {
@@ -1229,6 +1230,7 @@ export default function GroomerDashboard() {
   }
   const nowMins = _now.getHours() * 60 + _now.getMinutes()
   const isLate = (a: Appointment) =>
+    a.payment_status !== 'paid' &&
     !(a as { is_walk_in?: boolean | null }).is_walk_in &&
     !a.grooming_status &&
     !a.checked_in_at &&
@@ -1240,8 +1242,8 @@ export default function GroomerDashboard() {
   const todayLate = todayAppts
     .filter(isLate)
     .sort((a, b) => parseApptMins(a.appointment_time) - parseApptMins(b.appointment_time))
-  const isWaiting = (a: { checked_in_at?: string | null; grooming_status?: string | null; status?: string }) =>
-    !!a.checked_in_at && !a.grooming_status && a.status !== 'completed' && a.status !== 'cancelled'
+  const isWaiting = (a: { checked_in_at?: string | null; grooming_status?: string | null; status?: string; payment_status?: string | null }) =>
+    a.payment_status !== 'paid' && !!a.checked_in_at && !a.grooming_status && a.status !== 'completed' && a.status !== 'cancelled'
   const todayWaiting = todayAppts
     .filter(isWaiting)
     .sort((a, b) => parseApptMins(a.appointment_time) - parseApptMins(b.appointment_time))
@@ -1249,6 +1251,7 @@ export default function GroomerDashboard() {
     .filter(a =>
       !isLate(a) &&
       !isWaiting(a) &&
+      a.payment_status !== 'paid' &&
       a.grooming_status !== 'incare' &&
       a.grooming_status !== 'ready' &&
       a.grooming_status !== 'done' &&
@@ -1260,7 +1263,7 @@ export default function GroomerDashboard() {
     .filter(a => a.grooming_status === 'incare')
     .sort((a, b) => parseApptMins(a.appointment_time) - parseApptMins(b.appointment_time))
   const todayDone = todayAppts
-    .filter(a => a.grooming_status === 'ready' || a.grooming_status === 'done' || a.status === 'completed')
+    .filter(a => a.grooming_status === 'ready' || a.grooming_status === 'done' || a.status === 'completed' || a.payment_status === 'paid')
     .sort((a, b) => parseApptMins(a.appointment_time) - parseApptMins(b.appointment_time))
 
   // Pending (today + future appointments that need acceptance)
