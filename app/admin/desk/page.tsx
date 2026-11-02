@@ -9,7 +9,7 @@ import ChatIconButton from '@/components/ChatIconButton'
 import RetailSell from '@/components/RetailSell'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 import { commissionableAmount, ratesOn, helperCut, stackedCoupons, restoreCoupons, type RateHistoryRow } from '@/lib/commission'
-import { sameStaff } from '@/lib/staff-name'
+import { sameStaff, canonicalStaffName } from '@/lib/staff-name'
 
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -6125,7 +6125,7 @@ export default function DeskAdmin() {
                             parseApptTime(b.appointment_date, b.appointment_time).getTime()
                           const staffMap: Record<string, Appointment[]> = {}
                           appointments.forEach(a => {
-                            const key = a.assigned_groomer || a.assigned_bather || '— Unassigned'
+                            const key = canonicalStaffName(a.assigned_groomer, staff.map(s => s.name)) || '— Unassigned'
                             if (!staffMap[key]) staffMap[key] = []
                             staffMap[key].push(a)
                           })
@@ -9024,7 +9024,7 @@ export default function DeskAdmin() {
             reportsAppts.forEach(a => {
               if (a.status === 'cancelled' || a.payment_status !== 'paid') return
               if (!chartInRange(a.appointment_date)) return
-              const k = a.assigned_groomer || '(Unassigned)'
+              const k = canonicalStaffName(a.assigned_groomer, staff.map(s => s.name)) || '(Unassigned)'
               if (!chartByGroomer[k]) chartByGroomer[k] = { revenue: 0, tips: 0 }
               chartByGroomer[k].revenue += parseFloat(a.payment_amount || '0')
               chartByGroomer[k].tips += parseFloat(a.tip_amount || '0')
@@ -9126,7 +9126,7 @@ export default function DeskAdmin() {
             // Group by assigned_groomer name
             const groomerMap: Record<string, { name: string; appts: Appointment[] }> = {}
             rangeAppts.forEach(a => {
-              const key = a.assigned_groomer || '(Unassigned)'
+              const key = canonicalStaffName(a.assigned_groomer, staff.map(s => s.name)) || '(Unassigned)'
               if (!groomerMap[key]) groomerMap[key] = { name: key, appts: [] }
               groomerMap[key].appts.push(a)
             })
@@ -9560,7 +9560,7 @@ export default function DeskAdmin() {
                             {chartRows.map(r => (
                               <div key={r.name} className="mb-3 last:mb-0">
                                 <div className="flex items-center justify-between text-sm mb-1">
-                                  <span className="font-semibold text-gray-700">✂️ {r.name}</span>
+                                  <span className="font-semibold text-gray-700">✂️ {firstName(r.name)}</span>
                                   <span className="text-gray-500">
                                     ${r.total.toFixed(2)}
                                     <span className="text-gray-300 mx-1">·</span>
