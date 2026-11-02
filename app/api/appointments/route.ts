@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     try {
       const ANON_PHONE = '0000000000'
       await supabase.from('clients').upsert(
-        { phone: ANON_PHONE, name: 'Nail Trim Customer', sms_consent: false },
+        { phone: ANON_PHONE, name: 'Walk-In Customer', sms_consent: false },
         { onConflict: 'phone', ignoreDuplicates: true }
       )
       let anonPetId: string | undefined
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       } else {
         const { data: newPet, error: petErr } = await supabase
           .from('pets')
-          .insert({ client_phone: ANON_PHONE, name: 'Nail Trim Walk-In', vaccine_status: 'verified' })
+          .insert({ client_phone: ANON_PHONE, name: 'Walk-In', vaccine_status: 'verified' })
           .select('id').single()
         if (petErr) throw new Error(`Pet error: ${petErr.message}`)
         anonPetId = newPet.id
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       if (apptErr) throw new Error(`Appointment error: ${apptErr.message}`)
       sendPushToAdmin(
         '🚶 Walk-In Checked In',
-        `Nail Trim Customer${dogName ? ` — ${dogName}` : ''} · ${String(service).replace(/_/g, ' ')} — here now`
+        `Walk-In Customer${dogName ? ` — ${dogName}` : ''} · ${String(service).replace(/_/g, ' ')} — here now`
       ).catch(() => {})
       return NextResponse.json({ success: true, id: appt.id, petId: anonPetId })
     } catch (e) {
