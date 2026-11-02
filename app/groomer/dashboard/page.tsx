@@ -2539,6 +2539,20 @@ export default function GroomerDashboard() {
                   finally { setSavingPopupPayment(false) }
                 }
 
+                // Assist view: the assistant only sees the service and THEIR OWN share — never the owner's price, tip or total
+                if (selectedAppt.helper_groomer && !sameStaffName(user?.name, selectedAppt.assigned_groomer)) {
+                  const he = (selectedAppt as unknown as { helper_earn?: { comm: number; tip: number } }).helper_earn
+                  const share = Number(he?.comm || 0) + Number(he?.tip || 0)
+                  return (
+                    <div className="rounded-2xl p-4 border border-amber-200 bg-amber-50">
+                      <p className="font-bold text-gray-800">{svcName}</p>
+                      <p className="text-sm font-semibold text-amber-800 mt-1">
+                        {selectedAppt.payment_status === 'paid' ? `Your assist share: $${share.toFixed(2)}` : 'Your assist share: not paid yet'}
+                      </p>
+                    </div>
+                  )
+                }
+
                 return (
                   <div className="rounded-2xl p-4 border border-gray-200 bg-white">
                     {/* Header: service name + payment badge + change button */}
@@ -4020,8 +4034,10 @@ function ApptCard({
             <div className="mt-1.5">
               {appt.payment_status === 'paid' ? (
                 <span className="text-xs text-emerald-600 font-semibold">
-                  ✓ Paid{appt.payment_amount ? ` $${appt.payment_amount}` : ''}
-                  {appt.tip_amount && parseFloat(appt.tip_amount) > 0 ? ` + $${appt.tip_amount} tip` : ''}
+                  {assistFor
+                    ? `✓ Paid · Your share $${(((appt as unknown as { helper_earn?: { comm: number; tip: number } }).helper_earn?.comm || 0) + ((appt as unknown as { helper_earn?: { comm: number; tip: number } }).helper_earn?.tip || 0)).toFixed(2)}`
+                    : <>✓ Paid{appt.payment_amount ? ` $${appt.payment_amount}` : ''}
+                  {appt.tip_amount && parseFloat(appt.tip_amount) > 0 ? ` + $${appt.tip_amount} tip` : ''}</>}
                 </span>
               ) : appt.payment_status === 'cash_pending' ? (
                 <span className="text-xs text-sky-500 font-medium">💵 Cash — pending collection</span>
