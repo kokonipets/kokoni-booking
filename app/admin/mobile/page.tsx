@@ -1713,7 +1713,7 @@ export default function AdminPage() {
               return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: SALON_TZ })
             }
             const nowMs = Date.now()
-            const isOverdue = (a: Appointment) => !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs - 5 * 60000
+            const isOverdue = (a: Appointment) => !(a as { is_walk_in?: boolean | null }).is_walk_in && !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs - 5 * 60000
 
             const coming = appointments.filter(a => !a.grooming_status && a.status !== 'completed')
             const working = appointments.filter(a =>

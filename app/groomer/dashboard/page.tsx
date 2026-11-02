@@ -1229,6 +1229,7 @@ export default function GroomerDashboard() {
   }
   const nowMins = _now.getHours() * 60 + _now.getMinutes()
   const isLate = (a: Appointment) =>
+    !(a as { is_walk_in?: boolean | null }).is_walk_in &&
     !a.grooming_status &&
     !a.checked_in_at &&
     a.status !== 'cancelled' &&

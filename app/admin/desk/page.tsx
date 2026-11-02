@@ -5810,7 +5810,7 @@ export default function DeskAdmin() {
                   {/* Stats row */}
                   {(() => {
                     const nowMs = Date.now()
-                    const isOverdue = (a: Appointment) => !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs - 5 * 60000
+                    const isOverdue = (a: Appointment) => !(a as { is_walk_in?: boolean | null }).is_walk_in && !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs - 5 * 60000
                     const lateCount    = appointments.filter(isOverdue).length
                     // "Not here yet" includes the late ones (shown as a red sub-line) so nothing is counted twice
                     const notHereCount = appointments.filter(a => !a.grooming_status && a.status !== 'completed').length
@@ -6047,9 +6047,9 @@ export default function DeskAdmin() {
                             // Section dividers
                             const nowMs2 = Date.now()
                             const isOverdue2 = (a: Appointment) =>
-                              !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs2 - 5 * 60000
+                              !(a as { is_walk_in?: boolean | null }).is_walk_in && !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs2 - 5 * 60000
                             const isVeryOverdue2 = (a: Appointment) =>
-                              !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs2 - 15 * 60000
+                              !(a as { is_walk_in?: boolean | null }).is_walk_in && !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs2 - 15 * 60000
                             const byTime = (a: Appointment, b: Appointment) =>
                               parseApptTime(a.appointment_date, a.appointment_time).getTime() -
                               parseApptTime(b.appointment_date, b.appointment_time).getTime()
