@@ -11,13 +11,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Vercel cron runs on UTC and is scheduled twice (summer + winter). Only run at 20:00 Los Angeles time,
-  // so the send time stays the same across daylight-saving changes. Add ?force=1 to run manually.
-  const _laHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23' }).format(new Date()))
-  if (_laHour !== 20 && !new URL(request.url).searchParams.get('force')) {
-    return NextResponse.json({ skipped: true, laHour: _laHour })
-  }
-
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -30,6 +23,15 @@ export async function GET(request: NextRequest) {
       .select('*')
       .limit(1)
       .single()
+
+    // vercel.json fires this job once a day at several hours (3 PM–10 PM Los Angeles, both daylight-saving
+    // offsets). It only actually sends in the hour chosen in Review Settings (default 8 PM), so the send
+    // time stays adjustable and stays the same across DST. Add ?force=1 to run manually.
+    const _laHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23' }).format(new Date()))
+    const _wantHour = Number.isFinite(Number(settings?.review_request_hour)) && settings?.review_request_hour != null ? Number(settings.review_request_hour) : 20
+    if (_laHour !== _wantHour && !new URL(request.url).searchParams.get('force')) {
+      return NextResponse.json({ skipped: true, laHour: _laHour, wantHour: _wantHour })
+    }
 
     if (!settings?.review_request_enabled) {
       return NextResponse.json({ message: 'Review requests disabled' })
@@ -72,6 +74,36 @@ export async function GET(request: NextRequest) {
 
     const alreadySent = new Set((existingReviews || []).map(r => r.appointment_id))
 
+    // New clients only: skip anyone who has a completed visit before today
+    const phones = Array.from(new Set(appointments.map(a => a.client_phone).filter(Boolean)))
+    const returning = new Set<string>()
+    if (settings.new_clients_only === true && phones.length > 0) {
+      const { data: prior } = await supabase
+        .from('appointments')
+        .select('client_phone')
+        .in('client_phone', phones)
+        .lt('appointment_date', todayStr)
+        .in('status', ['checked_out', 'completed', 'paid'])
+      for (const p of prior || []) returning.add(p.client_phone)
+    }
+
+    // Clients staff flagged as "already reviewed / don't ask again" (best effort — column may not exist yet)
+    const optedOut = new Set<string>()
+    if (phones.length > 0) {
+      const { data: oc, error: ocErr } = await supabase.from('clients').select('phone').in('phone', phones).eq('review_opt_out', true)
+      if (!ocErr) for (const c of (oc || []) as { phone: string }[]) optedOut.add(c.phone)
+    }
+
+    // "All clients" mode: don't ask the same customer again within N days
+    const recentlyAsked = new Set<string>()
+    const minDays = parseInt(String(settings.min_days_between_requests ?? ''), 10)
+    if (settings.new_clients_only !== true && minDays > 0 && phones.length > 0) {
+      const since = new Date(Date.now() - minDays * 86400000).toISOString()
+      const { data: rr } = await supabase.from('reviews').select('client_phone').in('client_phone', phones).gte('review_request_sent_at', since)
+      for (const r of (rr || []) as { client_phone: string }[]) recentlyAsked.add(r.client_phone)
+    }
+    const sentPhones = new Set<string>() // one message per owner per night (several dogs = one text)
+
     // Send review requests to eligible clients
     let sent = 0
     let skipped = 0
@@ -79,6 +111,7 @@ export async function GET(request: NextRequest) {
 
     for (const appt of appointments) {
       if (alreadySent.has(appt.id)) { skipped++; continue }
+      if (returning.has(appt.client_phone) || optedOut.has(appt.client_phone) || recentlyAsked.has(appt.client_phone) || sentPhones.has(appt.client_phone)) { skipped++; continue }
 
       const clientData = appt.clients as { name: string; sms_consent: boolean } | null
       if (!clientData?.sms_consent) { skipped++; continue }
@@ -116,6 +149,7 @@ export async function GET(request: NextRequest) {
           }
 
           // (sendSMS mirrors the message into sms_messages — no duplicate insert)
+          sentPhones.add(appt.client_phone)
           sent++
         } else {
           errors.push(`${appt.client_phone}: ${result.error}`)

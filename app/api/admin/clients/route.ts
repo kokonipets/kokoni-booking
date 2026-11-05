@@ -63,17 +63,20 @@ export async function GET(req: NextRequest) {
   //    Client rows are matched EXACTLY: the admin lookup tries every phone format
   //    in turn, so exact matching is enough and — unlike normalized matching —
   //    won't surface a duplicate/orphan client row that happens to share a number.
-  type ClientRow = { name: string; phone: string; email: string | null; address: string | null; created_at: string | null; sms_consent: boolean; sms_consent_at: string | null }
-  const { data: clientRows, error: clientsError } = await fetchAllRows<ClientRow>((from, to) => {
+  type ClientRow = { name: string; phone: string; email: string | null; address: string | null; created_at: string | null; sms_consent: boolean; sms_consent_at: string | null; review_opt_out?: boolean }
+  const loadClients = (cols: string) => fetchAllRows<ClientRow>((from, to) => {
     let q = supabase
       .from('clients')
-      .select('name, phone, email, address, created_at, sms_consent, sms_consent_at')
+      .select(cols)
       .order('created_at', { ascending: false })
       .order('phone', { ascending: true })
       .range(from, to)
     if (phoneFilter) q = q.eq('phone', phoneFilter)
-    return q
+    return q as unknown as PromiseLike<{ data: ClientRow[] | null; error: { message: string } | null }>
   })
+  const BASE_COLS = 'name, phone, email, address, created_at, sms_consent, sms_consent_at'
+  let { data: clientRows, error: clientsError } = await loadClients(BASE_COLS + ', review_opt_out')
+  if (clientsError) ({ data: clientRows, error: clientsError } = await loadClients(BASE_COLS)) // review_opt_out not migrated yet
   if (clientsError) return NextResponse.json({ error: clientsError.message }, { status: 500 })
 
   // Also pull any phones from appointments that may not have a clients row.
@@ -228,7 +231,7 @@ export async function DELETE(req: NextRequest) {
 // PATCH /api/admin/clients — update client info (name, email, address, phone)
 export async function PATCH(req: NextRequest) {
   const supabase = getAdminClient()
-  const { phone, newPhone, name, email, address, sms_consent } = await req.json()
+  const { phone, newPhone, name, email, address, sms_consent, review_opt_out } = await req.json()
   if (!phone) return NextResponse.json({ error: 'Phone required' }, { status: 400 })
 
   const updates: Record<string, string | null | boolean> = {}
@@ -248,6 +251,9 @@ export async function PATCH(req: NextRequest) {
     updates.sms_consent = false
     updates.sms_consent_at = null
   }
+
+  // Staff flag: "already reviewed / don't send review requests" (can be switched on AND off).
+  if (typeof review_opt_out === 'boolean') updates.review_opt_out = review_opt_out
 
   // `name` is NOT NULL on the clients table. Postgres validates NOT NULL on the
   // candidate row BEFORE it ever evaluates the upsert's ON CONFLICT clause, so an

@@ -122,6 +122,7 @@ type ClientRecord = {
   created_at: string
   sms_consent?: boolean | null
   sms_consent_at?: string | null
+  review_opt_out?: boolean | null
   pets: { id: string; name: string; breed: string | null; weight: string | null; vaccine_status: string; vaccine_expiry: string | null; photo_url: string | null; tags?: { id: string; name: string; color: string }[] }[]
   appointments: { id: string; appointment_date: string; appointment_time: string; service: string; status: string; pet_id: string | null; assigned_groomer: string | null; assigned_bather: string | null; payment_amount: string | null; payment_method: string | null; tip_amount?: string | null; created_at?: string | null; confirmed_at?: string | null; checked_in_at?: string | null; grooming_started_at?: string | null; grooming_finished_at?: string | null; checked_out_at?: string | null; notes?: string | null; notes_english?: string | null; notes_chinese?: string | null; notes_list?: { id: string; text: string; author: string; created_at: string; notes_english?: string | null; notes_chinese?: string | null; is_addon?: boolean }[] | null; health_check?: any | null; grooming_quality?: any | null; health_check_completed_at?: string | null; grooming_quality_completed_at?: string | null }[]
   authorized_pickups: { id: string; name: string; relationship: string | null }[]
@@ -615,6 +616,26 @@ export default function DeskAdmin() {
 
   // Staff-recorded SMS opt-in (e.g. customer agreed verbally at checkout but
   // never checked the box during booking). Only ever turns consent ON.
+  // Staff flag: client already left a review / shouldn't get review requests.
+  const [reviewOptSaving, setReviewOptSaving] = useState(false)
+  const setReviewOptOut = async (phone: string, value: boolean) => {
+    setReviewOptSaving(true)
+    try {
+      const res = await fetch('/api/admin/clients', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, review_opt_out: value }),
+      })
+      if (res.ok) {
+        setDetailClient(prev => prev ? { ...prev, review_opt_out: value } : prev)
+        setClients(prev => prev.map(c => c.phone === phone ? { ...c, review_opt_out: value } : c))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        showToast(`Could not save: ${d.error || 'run the review-controls SQL first'}`)
+      }
+    } catch {/**/}
+    finally { setReviewOptSaving(false) }
+  }
   const grantSmsConsent = async (phone: string) => {
     setSmsConsentSaving(true)
     try {
@@ -7230,6 +7251,16 @@ export default function DeskAdmin() {
                                             )}
                                           </div>
                                         </div>
+                                        <label className="flex items-start gap-2 pt-2 border-t border-gray-100 cursor-pointer">
+                                          <span className="text-gray-400 mt-0.5">⭐</span>
+                                          <input type="checkbox" className="w-4 h-4 mt-1" disabled={reviewOptSaving}
+                                            checked={!!client.review_opt_out}
+                                            onChange={e => setReviewOptOut(client.phone, e.target.checked)} />
+                                          <span className="flex-1">
+                                            <span className="block text-sm font-semibold text-gray-700">已留評價 / 不再寄評價邀請</span>
+                                            <span className="block text-xs text-gray-400">Already reviewed — skip this client in the nightly review text</span>
+                                          </span>
+                                        </label>
                                       </div>
                                     )}
                                   </div>
@@ -8768,11 +8799,54 @@ export default function DeskAdmin() {
                       <div className="bg-white rounded-lg border border-gray-200 p-4">
                         <h3 className="font-bold text-gray-800 mb-3">⏰ Review Request Time</h3>
                         <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3">
-                          {String(reviewSettings.review_request_hour).padStart(2, '0')}:{String(reviewSettings.review_request_minute).padStart(2, '0')} daily
+                          {(() => { const h = Number(reviewSettings.review_request_hour ?? 20); return `${((h + 11) % 12) + 1}:00 ${h >= 12 ? 'PM' : 'AM'}` })()} daily (Los Angeles time)
                         </div>
-                        <p className="text-xs text-gray-500">When SMS is sent to customers</p>
+                        <p className="text-xs text-gray-500">When the text is sent. Changeable between 3 PM and 10 PM in Edit Settings.</p>
                       </div>
 
+                      {/* New clients only */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <h3 className="font-bold text-gray-800 mb-3">🆕 Send To 發送對象</h3>
+                        <div className="flex gap-2 mb-3">
+                          {[
+                            { v: true, label: 'New clients only 只寄新客' },
+                            { v: false, label: 'All clients 所有客人' },
+                          ].map(o => {
+                            const active = (reviewSettings.new_clients_only === true) === o.v
+                            return (
+                              <button key={String(o.v)}
+                                onClick={async () => {
+                                  if (active) return
+                                  try {
+                                    const res = await fetch('/api/admin/reviews/settings', {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ new_clients_only: o.v })
+                                    })
+                                    if (!res.ok) throw new Error((await res.json()).details || 'Failed')
+                                    const updated = await res.json()
+                                    setReviewSettings(updated)
+                                    setReviewSettingsEdit(updated)
+                                    showToast('Saved')
+                                  } catch (e) {
+                                    showToast(`Failed to save: ${e instanceof Error ? e.message : 'Unknown error'}`)
+                                  }
+                                }}
+                                className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border-2 transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}>
+                                {o.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <p className="text-xs text-gray-500">Tap to switch. One text per owner per night, even with several dogs.</p>
+                        {reviewSettings.new_clients_only !== true && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {parseInt(String(reviewSettings.min_days_between_requests ?? ''), 10) > 0
+                              ? `Same customer is asked at most once every ${reviewSettings.min_days_between_requests} days.`
+                              : 'Same customer is asked after every visit (set a minimum number of days in Edit Settings).'}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </>
@@ -8843,31 +8917,43 @@ export default function DeskAdmin() {
 
                       {/* Review Request Time */}
                       <div className="bg-white rounded-lg border border-gray-200 p-6">
-                        <label className="block font-bold text-gray-800 mb-2">⏰ Review Request Time (Daily)</label>
-                        <div className="flex gap-3">
-                          <div className="flex-1">
-                            <label className="text-xs text-gray-600">Hour</label>
-                            <input
-                              type="number"
-                              min="0"
-                              max="23"
-                              value={reviewSettingsEdit.review_request_hour || 18}
-                              onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, review_request_hour: parseInt(e.target.value) })}
-                              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            <label className="text-xs text-gray-600">Minute</label>
-                            <input
-                              type="number"
-                              min="0"
-                              max="59"
-                              value={reviewSettingsEdit.review_request_minute || 0}
-                              onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, review_request_minute: parseInt(e.target.value) })}
-                              className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </div>
-                        </div>
+                        <label className="block font-bold text-gray-800 mb-2">⏰ Review Request Time (Daily, Los Angeles time)</label>
+                        <select
+                          value={Number(reviewSettingsEdit.review_request_hour ?? 20)}
+                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, review_request_hour: parseInt(e.target.value, 10), review_request_minute: 0 })}
+                          className="w-40 p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {[15, 16, 17, 18, 19, 20, 21, 22].map(h => (
+                            <option key={h} value={h}>{((h + 11) % 12) + 1}:00 PM</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-gray-500 mt-2">Sent on the hour, once a day. Only 3 PM – 10 PM is available.</p>
+                      </div>
+
+                      {/* New clients only */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <label className="flex items-center gap-3 font-bold text-gray-800 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="w-5 h-5"
+                            checked={reviewSettingsEdit.new_clients_only === true}
+                            onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, new_clients_only: e.target.checked })}
+                          />
+                          🆕 Only send to new clients 只寄給新客
+                        </label>
+                        <p className="text-xs text-gray-500 mt-2">Skips anyone who had a completed visit before today</p>
+                      </div>
+
+                      {/* Minimum days between requests (All clients mode) */}
+                      <div className="bg-white rounded-lg border border-gray-200 p-6">
+                        <label className="block font-bold text-gray-800 mb-2">⏳ 同一位客人至少隔幾天再寄 Minimum days between requests</label>
+                        <input
+                          type="number" min="0" step="1" placeholder="0 = every visit"
+                          value={reviewSettingsEdit.min_days_between_requests ?? ''}
+                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, min_days_between_requests: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
+                          className="w-40 p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">Only used when &quot;Only send to new clients&quot; is OFF. e.g. 90 = a regular is asked at most once every 90 days. Blank / 0 = after every visit. You can also tick “已留評價” on a client to never ask them again.</p>
                       </div>
 
                       {/* Save/Cancel Buttons */}

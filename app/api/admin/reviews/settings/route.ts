@@ -46,6 +46,8 @@ export async function PUT(request: NextRequest) {
       'review_request_hour',
       'review_request_minute',
       'review_request_enabled',
+      'new_clients_only',
+      'min_days_between_requests',
       'google_place_id',
       'google_review_url',
       'yelp_business_url',
