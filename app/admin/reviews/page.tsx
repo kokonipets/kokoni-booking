@@ -158,7 +158,7 @@ export default function ReviewsPage() {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Name for {client_name} <span className="text-gray-400 font-normal">(optional)</span></label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Name for {'{client_name}'} <span className="text-gray-400 font-normal">(optional)</span></label>
                 <input
                   type="text"
                   value={sendName}
