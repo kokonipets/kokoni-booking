@@ -1482,13 +1482,13 @@ export default function DeskAdmin() {
       const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'assign-staff', assigned_groomer: detailGroomer, assigned_bather: detailBather }),
+        body: JSON.stringify({ action: 'assign-staff', assigned_groomer: detailGroomer, assigned_bather: null }),
       })
       const data = await res.json()
       if (data.success) {
-        setDetailAppt(prev => prev ? { ...prev, assigned_groomer: detailGroomer || null, assigned_bather: detailBather || null } : prev)
-        setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, assigned_groomer: detailGroomer || null, assigned_bather: detailBather || null } : a))
-        setCalendarAppts(prev => prev.map(a => a.id === detailAppt.id ? { ...a, assigned_groomer: detailGroomer || null, assigned_bather: detailBather || null } : a))
+        setDetailAppt(prev => prev ? { ...prev, assigned_groomer: detailGroomer || null, assigned_bather: null } : prev)
+        setAppointments(prev => prev.map(a => a.id === detailAppt.id ? { ...a, assigned_groomer: detailGroomer || null, assigned_bather: null } : a))
+        setCalendarAppts(prev => prev.map(a => a.id === detailAppt.id ? { ...a, assigned_groomer: detailGroomer || null, assigned_bather: null } : a))
         showToast('Staff assigned!')
         if (tab === 'requests') setDetailAppt(null)
       }
@@ -8744,23 +8744,7 @@ export default function DeskAdmin() {
                         <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3 max-h-24 overflow-y-auto">
                           {reviewSettings.review_request_template}
                         </div>
-                        <p className="text-xs text-gray-500">Sent to customers asking for rating</p>
-                      </div>
-
-                      <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <h3 className="font-bold text-gray-800 mb-3">⭐ Positive Review Message</h3>
-                        <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3 max-h-24 overflow-y-auto">
-                          {reviewSettings.positive_response_template}
-                        </div>
-                        <p className="text-xs text-gray-500">Sent when customer rates 4-5 stars</p>
-                      </div>
-
-                      <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <h3 className="font-bold text-gray-800 mb-3">😔 Negative Feedback Message</h3>
-                        <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3 max-h-24 overflow-y-auto">
-                          {reviewSettings.feedback_request_template || <span className="text-gray-400 italic">Not set</span>}
-                        </div>
-                        <p className="text-xs text-gray-500">Sent to customer when they rate 1-3 stars</p>
+                        <p className="text-xs text-gray-500">Sent to customers after their visit (no rating reply needed)</p>
                       </div>
 
                       {/* Review Links */}
@@ -8769,7 +8753,7 @@ export default function DeskAdmin() {
                         <div className="bg-gray-50 p-3 rounded text-sm text-blue-600 mb-3 truncate">
                           {reviewSettings.google_review_url || 'Not set'}
                         </div>
-                        <p className="text-xs text-gray-500">Sent in positive review message</p>
+                        <p className="text-xs text-gray-500">Used by {"{google_url}"} in the message</p>
                       </div>
 
                       <div className="bg-white rounded-lg border border-gray-200 p-4">
@@ -8777,7 +8761,7 @@ export default function DeskAdmin() {
                         <div className="bg-gray-50 p-3 rounded text-sm text-blue-600 mb-3 truncate">
                           {reviewSettings.yelp_business_url || 'Not set'}
                         </div>
-                        <p className="text-xs text-gray-500">Sent in positive review message</p>
+                        <p className="text-xs text-gray-500">Used by {"{yelp_url}"} in the message</p>
                       </div>
 
                       {/* Schedule */}
@@ -8789,14 +8773,6 @@ export default function DeskAdmin() {
                         <p className="text-xs text-gray-500">When SMS is sent to customers</p>
                       </div>
 
-                      {/* Alert Phone */}
-                      <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <h3 className="font-bold text-gray-800 mb-3">📞 Admin Alert Phone</h3>
-                        <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3">
-                          {reviewSettings.admin_alert_phone || 'Not set'}
-                        </div>
-                        <p className="text-xs text-gray-500">Alerts for negative reviews</p>
-                      </div>
                     </div>
                   )}
                 </>
@@ -8836,33 +8812,9 @@ export default function DeskAdmin() {
                           value={reviewSettingsEdit.review_request_template || ''}
                           onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, review_request_template: e.target.value })}
                           className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          rows={3}
+                          rows={12}
                         />
-                        <p className="text-xs text-gray-500 mt-2">Message sent to customers asking for rating (1-5)</p>
-                      </div>
-
-                      {/* Positive Response Template */}
-                      <div className="bg-white rounded-lg border border-gray-200 p-6">
-                        <label className="block font-bold text-gray-800 mb-2">⭐ Positive Review Message</label>
-                        <textarea
-                          value={reviewSettingsEdit.positive_response_template || ''}
-                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, positive_response_template: e.target.value })}
-                          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          rows={4}
-                        />
-                        <p className="text-xs text-gray-500 mt-2">Use {'{google_url}'} and {'{yelp_url}'} as placeholders for review links</p>
-                      </div>
-
-                      {/* Negative Feedback Template */}
-                      <div className="bg-white rounded-lg border border-gray-200 p-6">
-                        <label className="block font-bold text-gray-800 mb-2">😔 Negative Feedback Message</label>
-                        <textarea
-                          value={reviewSettingsEdit.feedback_request_template || ''}
-                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, feedback_request_template: e.target.value })}
-                          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          rows={4}
-                        />
-                        <p className="text-xs text-gray-500 mt-2">Sent to customer when they rate 1-3 stars. Use {'{client_name}'} as placeholder.</p>
+                        <p className="text-xs text-gray-500 mt-2">Sent once after the visit. Placeholders: {'{client_name}'}, {'{google_url}'}, {'{yelp_url}'}</p>
                       </div>
 
                       {/* Google Review URL */}
@@ -8887,19 +8839,6 @@ export default function DeskAdmin() {
                           className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           placeholder="https://www.yelp.com/biz/..."
                         />
-                      </div>
-
-                      {/* Admin Alert Phone */}
-                      <div className="bg-white rounded-lg border border-gray-200 p-6">
-                        <label className="block font-bold text-gray-800 mb-2">📞 Admin Alert Phone</label>
-                        <input
-                          type="text"
-                          value={reviewSettingsEdit.admin_alert_phone || ''}
-                          onChange={(e) => setReviewSettingsEdit({ ...reviewSettingsEdit, admin_alert_phone: e.target.value })}
-                          className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="+1949..."
-                        />
-                        <p className="text-xs text-gray-500 mt-2">Where negative review alerts are sent</p>
                       </div>
 
                       {/* Review Request Time */}
@@ -9088,18 +9027,21 @@ export default function DeskAdmin() {
               return date >= lastMonthStart && date < lastMonthEnd
             }
             const perfAppts = reportsAppts
-              .filter(a => a.status !== 'cancelled' && sameStaff(a.assigned_groomer, activePerfGroomer) && perfInRange(a.appointment_date))
+              .filter(a => (a.payment_status === 'paid' || !['cancelled', 'no_show', 'declined'].includes(a.status)) && sameStaff(a.assigned_groomer, activePerfGroomer) && perfInRange(a.appointment_date))
               .sort((a, b) => parseApptTime(a.appointment_date, a.appointment_time).getTime() - parseApptTime(b.appointment_date, b.appointment_time).getTime())
             const perfPaid = perfAppts.filter(a => a.payment_status === 'paid')
             const perfRevenue = perfPaid.reduce((s, a) => s + parseFloat(a.payment_amount || '0'), 0)
-            const perfCommissionBase = perfPaid.reduce((s, a) => s + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer), 0)
             const perfTips = perfPaid.reduce((s, a) => s + parseFloat(a.tip_amount || '0'), 0)
             const perfStaff = staff.find(s => {
               const fullName = s.first_name ? `${s.first_name} ${s.last_name || ''}`.trim() : s.name
               return fullName === activePerfGroomer || s.name === activePerfGroomer
             })
-            const perfCommPct = perfStaff?.commission_percent ?? 0
-            const perfCommission = perfCommissionBase * perfCommPct / 100
+            // Commission uses the rate in force on each appointment's date
+            const perfRateFor = (d: string) => perfStaff ? ratesOn(perfStaff, d).commission : 0
+            const perfCommission = perfPaid.reduce((s, a) => s + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * perfRateFor(a.appointment_date) / 100, 0)
+            const perfRatesUsed = Array.from(new Set(perfPaid.map(a => perfRateFor(a.appointment_date)))).sort((x, y) => x - y)
+            const perfCommPct = perfRatesUsed.length === 0 ? (perfStaff ? ratesOn(perfStaff, todayStr).commission : 0)
+              : perfRatesUsed.length === 1 ? String(perfRatesUsed[0]) : `${perfRatesUsed[0]}–${perfRatesUsed[perfRatesUsed.length - 1]}`
             const perfRangeLabel: Record<string, string> = { today: 'Today', week: 'This Week', this_payroll: 'This Pay', last_payroll: 'Last Pay', month: 'This Month', last_month: 'Last Month' }
 
             const inRange = (date: string) => {
@@ -9140,11 +9082,14 @@ export default function DeskAdmin() {
                 const fullName = s.first_name ? `${s.first_name} ${s.last_name || ''}`.trim() : s.name
                 return fullName === g.name || s.name === g.name
               })
-              const commissionPct = staffMatch?.commission_percent ?? 0
-              const tipPct = staffMatch?.tip_percent ?? 0
-              const commissionBase = g.appts.reduce((sum, a) => sum + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer), 0)
-              const commission = commissionBase * commissionPct / 100
-              const tipEarned = tips * tipPct / 100
+              // Rates in force on each appointment's date
+              const cRateOf = (d: string) => staffMatch ? ratesOn(staffMatch, d).commission : 0
+              const tRateOf = (d: string) => staffMatch ? ratesOn(staffMatch, d).tip : 0
+              const commission = g.appts.reduce((sum, a) => sum + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * cRateOf(a.appointment_date) / 100, 0)
+              const tipEarned = g.appts.reduce((sum, a) => sum + parseFloat(a.tip_amount || '0') * tRateOf(a.appointment_date) / 100, 0)
+              const rng = (arr: number[]) => { const u = Array.from(new Set(arr)).sort((x, y) => x - y); return u.length === 0 ? '0' : u.length === 1 ? String(u[0]) : `${u[0]}–${u[u.length - 1]}` }
+              const commissionPct = rng(g.appts.map(a => cRateOf(a.appointment_date)))
+              const tipPct = rng(g.appts.map(a => tRateOf(a.appointment_date)))
               return { name: g.name, count: g.appts.length, revenue, tips, commissionPct, tipPct, commission, tipEarned }
             }).sort((a, b) => b.revenue - a.revenue)
 
@@ -9246,7 +9191,7 @@ export default function DeskAdmin() {
 
             // ── Range payment breakdown ──────────────────────────────────────
             // All appointments in range (paid + unpaid/completed) for full picture
-            const allRangeAppts = reportsAppts.filter(a => inRange(a.appointment_date))
+            const allRangeAppts = reportsAppts.filter(a => inRange(a.appointment_date) && (a.payment_status === 'paid' || !['cancelled', 'no_show', 'declined'].includes(a.status)))
             const rangeMethodTotals: Record<string, { count: number; amount: number; tips: number }> = {
               cash: { count: 0, amount: 0, tips: 0 }, card: { count: 0, amount: 0, tips: 0 },
               zelle: { count: 0, amount: 0, tips: 0 }, venmo: { count: 0, amount: 0, tips: 0 },

@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
       if (!clientData?.sms_consent) { skipped++; continue }
 
       const firstName = (clientData.name ?? 'there').split(' ')[0]
-      const message = settings.review_request_template.replace('{client_name}', firstName)
+      const message = settings.review_request_template.replace('{client_name}', firstName).replace('{google_url}', settings.google_review_url ?? '').replace('{yelp_url}', settings.yelp_business_url ?? '')
 
       try {
         const result = await sendSMS(`+1${appt.client_phone}`, message, 'reviewRequest')

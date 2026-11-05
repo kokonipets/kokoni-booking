@@ -3470,26 +3470,20 @@ export default function GroomerDashboard() {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[9999]" onClick={() => setPetPhotoLightbox(null)}>
           <div className="bg-white rounded-2xl shadow-lg max-w-sm w-full overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-              <p className="font-bold text-gray-800">{petPhotoLightbox.name || 'Pet Photo'}</p>
-              <button onClick={() => setPetPhotoLightbox(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+              <p className="font-bold text-gray-800 min-w-0 truncate">{petPhotoLightbox.name || 'Pet Photo'}</p>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <label title="Replace photo" className="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 text-base cursor-pointer">
+                  {uploadingPetId === petPhotoLightbox.petId ? '…' : '✏️'}
+                  <input type="file" accept="image/*" className="hidden" disabled={uploadingPetId === petPhotoLightbox.petId}
+                    onChange={e => {
+                      const f = e.target.files?.[0]
+                      if (f) { uploadPetPhotoPopup(petPhotoLightbox.petId, f); setPetPhotoLightbox(null) }
+                    }} />
+                </label>
+                <button onClick={() => setPetPhotoLightbox(null)} aria-label="Close" className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 text-2xl leading-none">×</button>
+              </div>
             </div>
-            <img src={petPhotoLightbox.url} alt={petPhotoLightbox.name || ''} className="w-full max-h-[60vh] object-contain bg-gray-50" />
-            <div className="p-4 flex gap-2">
-              <label className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white text-center transition-colors cursor-pointer">
-                {uploadingPetId === petPhotoLightbox.petId ? 'Uploading…' : '🔄 Replace Photo'}
-                <input type="file" accept="image/*" className="hidden" disabled={uploadingPetId === petPhotoLightbox.petId}
-                  onChange={e => {
-                    const f = e.target.files?.[0]
-                    if (f) { uploadPetPhotoPopup(petPhotoLightbox.petId, f); setPetPhotoLightbox(null) }
-                  }} />
-              </label>
-              <button
-                onClick={() => setPetPhotoLightbox(null)}
-                className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors"
-              >
-                Close
-              </button>
-            </div>
+            <img src={petPhotoLightbox.url} alt={petPhotoLightbox.name || ''} className="w-full max-h-[70vh] object-contain bg-gray-50" />
           </div>
         </div>
       )}

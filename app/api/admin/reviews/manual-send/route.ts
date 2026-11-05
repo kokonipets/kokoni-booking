@@ -5,7 +5,7 @@ export async function POST(request: Request) {
   try {
     const supabase = createSupabaseServer()
     const body = await request.json()
-    const { clientPhone, clientName } = body
+    const { clientPhone, clientName, test } = body
 
     if (!clientPhone) {
       return Response.json({ error: 'Phone number is required' }, { status: 400 })
@@ -32,7 +32,14 @@ export async function POST(request: Request) {
 
     const name = clientName?.trim() || 'valued customer'
     const firstName = name.split(' ')[0]
-    const message = settings.review_request_template.replace('{client_name}', firstName)
+    const message = settings.review_request_template.replace('{client_name}', firstName).replace('{google_url}', settings.google_review_url ?? '').replace('{yelp_url}', settings.yelp_business_url ?? '')
+
+    // Test message: just send it — no review record, so it doesn't show up in the "sent to" history.
+    if (test) {
+      const testResult = await sendSMS(phone, message, 'reviewRequest')
+      if (!testResult.success) return Response.json({ error: testResult.error }, { status: 500 })
+      return Response.json({ success: true, sid: testResult.sid, test: true })
+    }
 
     // Create a review record
     const { data: review, error: insertError } = await supabase

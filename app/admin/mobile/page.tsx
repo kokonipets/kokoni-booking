@@ -407,6 +407,7 @@ export default function AdminPage() {
   const [popupAddonDraft, setPopupAddonDraft] = useState({ text: '', price: '' })
   const [popupTotalSaved, setPopupTotalSaved] = useState(false)
   const [popupCouponId, setPopupCouponId] = useState<string | null>(null)
+  const [zoomPhoto, setZoomPhoto] = useState<{ url: string; name: string } | null>(null)
   const [popupCouponId2, setPopupCouponId2] = useState<string | null>(null)
   const [savingPopupPayment, setSavingPopupPayment] = useState(false)
   const [editDraftBasePrice, setEditDraftBasePrice] = useState('')
@@ -1561,6 +1562,15 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Toast */}
+      {zoomPhoto && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-6" onClick={() => setZoomPhoto(null)}>
+          <div className="relative bg-white rounded-2xl p-2 shadow-2xl" style={{ width: 'min(320px, 82vw)' }} onClick={e => e.stopPropagation()}>
+            <img src={zoomPhoto.url} alt={zoomPhoto.name} className="w-full rounded-xl object-cover" style={{ maxHeight: '65vh' }} />
+            {zoomPhoto.name && <p className="text-center text-sm font-semibold text-gray-700 pt-2 pb-1">{zoomPhoto.name}</p>}
+            <button onClick={() => setZoomPhoto(null)} aria-label="Close" className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-gray-500 shadow text-lg leading-none">×</button>
+          </div>
+        </div>
+      )}
       {toast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white px-5 py-2.5 rounded-full text-sm shadow-lg">
           {toast}
@@ -2415,7 +2425,7 @@ export default function AdminPage() {
                     {/* Pet photo */}
                     <div className="shrink-0">
                       {appt.pets?.photo_url
-                        ? <img src={appt.pets.photo_url} className="w-11 h-11 rounded-xl object-cover border border-gray-100 shadow-sm" alt="" />
+                        ? <img src={appt.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: appt.pets.photo_url as string, name: appt.pets.name ?? '' }) }} className="cursor-zoom-in w-11 h-11 rounded-xl object-cover border border-gray-100 shadow-sm" alt="" />
                         : <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center text-xl">🐶</div>}
                     </div>
                     {/* Main info */}
@@ -2635,7 +2645,7 @@ export default function AdminPage() {
                               <div className="px-4 py-3">
                                 <div className="flex items-center gap-3 mb-3">
                                   {appt.pets?.photo_url
-                                    ? <img src={appt.pets.photo_url} className="w-11 h-11 rounded-full object-cover flex-shrink-0" alt="" />
+                                    ? <img src={appt.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: appt.pets.photo_url as string, name: appt.pets.name ?? '' }) }} className="cursor-zoom-in w-11 h-11 rounded-full object-cover flex-shrink-0" alt="" />
                                     : <div className="w-11 h-11 rounded-full bg-amber-100 flex items-center justify-center text-xl flex-shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -2685,7 +2695,7 @@ export default function AdminPage() {
                               <div className="px-4 py-3">
                                 <div className="flex items-center gap-3 mb-3">
                                   {appt.pets?.photo_url
-                                    ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
+                                    ? <img src={appt.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: appt.pets.photo_url as string, name: appt.pets.name ?? '' }) }} className="cursor-zoom-in w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
                                     : <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
                                     <p className="font-bold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}
@@ -2751,7 +2761,7 @@ export default function AdminPage() {
                               <div className="px-4 py-3">
                                 <div className="flex items-center gap-3 mb-3">
                                   {appt.pets?.photo_url
-                                    ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
+                                    ? <img src={appt.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: appt.pets.photo_url as string, name: appt.pets.name ?? '' }) }} className="cursor-zoom-in w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
                                     : <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
                                     <p className="font-bold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}
@@ -2800,7 +2810,7 @@ export default function AdminPage() {
                               <div className="px-4 py-3">
                                 <div className="flex items-center gap-3">
                                   {appt.pets?.photo_url
-                                    ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
+                                    ? <img src={appt.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: appt.pets.photo_url as string, name: appt.pets.name ?? '' }) }} className="cursor-zoom-in w-10 h-10 rounded-full object-cover flex-shrink-0" alt="" />
                                     : <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
                                     <p className="font-bold text-gray-800">{appt.pets?.name}{appt.is_new_client && ' ⭐'}
@@ -3899,7 +3909,7 @@ export default function AdminPage() {
                                         {(role === 'solo' || role === 'top') && (
                                           <>
                                             {t.a.pets?.photo_url
-                                              ? <img src={t.a.pets.photo_url} className="w-8 h-8 rounded-full object-cover flex-shrink-0" alt="" />
+                                              ? <img src={t.a.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: t.a.pets.photo_url as string, name: t.a.pets.name ?? '' }) }} className="cursor-zoom-in w-8 h-8 rounded-full object-cover flex-shrink-0" alt="" />
                                               : <div className="w-8 h-8 rounded-full bg-white/70 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
                                             <div className="flex-1 min-w-0">
                                               <p className="font-semibold text-gray-800 text-[12.5px] truncate">
@@ -4038,7 +4048,7 @@ export default function AdminPage() {
                     a.service==='simply_cute' ? 'bg-sky-50' : a.service==='bath_brush' ? 'bg-teal-50' : a.service==='asian_fusion' ? 'bg-pink-50' : 'bg-gray-50'
                   }`}>
                     {a.pets?.photo_url
-                      ? <img src={a.pets.photo_url} className="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow" alt="" />
+                      ? <img src={a.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: a.pets.photo_url as string, name: a.pets.name ?? '' }) }} className="cursor-zoom-in w-14 h-14 rounded-2xl object-cover border-2 border-white shadow" alt="" />
                       : <div className="w-14 h-14 rounded-2xl bg-sky-100 flex items-center justify-center text-3xl">🐶</div>}
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-gray-900 text-lg leading-tight">{a.pets?.name ?? '—'}{a.is_new_client && ' ⭐'}</p>
@@ -4404,7 +4414,7 @@ export default function AdminPage() {
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">🐾 Pet Details</p>
                         <div className="flex items-center gap-3">
                           {a.pets?.photo_url
-                            ? <img src={a.pets.photo_url} className="w-16 h-16 rounded-2xl object-cover border-2 border-gray-100 shadow-sm flex-shrink-0" alt="" />
+                            ? <img src={a.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: a.pets.photo_url as string, name: a.pets.name ?? '' }) }} className="cursor-zoom-in w-16 h-16 rounded-2xl object-cover border-2 border-gray-100 shadow-sm flex-shrink-0" alt="" />
                             : <div className="w-16 h-16 rounded-2xl bg-sky-100 flex items-center justify-center text-3xl flex-shrink-0">🐶</div>}
                           <div className="flex-1 min-w-0 space-y-1">
                             <p className="font-bold text-gray-900 text-base">{a.pets?.name ?? '—'}{a.is_new_client && ' ⭐'}</p>
@@ -4709,7 +4719,7 @@ export default function AdminPage() {
                           {futureAppts.map(f => (
                             <div key={f.id} className="bg-white border border-gray-100 rounded-2xl p-4 flex items-center gap-3">
                               {f.pets?.photo_url
-                                ? <img src={f.pets.photo_url} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" alt="" />
+                                ? <img src={f.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: f.pets.photo_url as string, name: f.pets.name ?? '' }) }} className="cursor-zoom-in w-10 h-10 rounded-xl object-cover flex-shrink-0" alt="" />
                                 : <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center text-lg flex-shrink-0">🐶</div>}
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold text-gray-800">{f.pets?.name}{f.is_new_client && ' ⭐'}</p>
@@ -5405,7 +5415,7 @@ export default function AdminPage() {
                                 <button className="w-full flex items-center gap-3 px-4 py-3 text-left"
                                   onClick={() => setExpandedCheckoutId(isExpanded ? null : appt.id)}>
                                   {appt.pets?.photo_url
-                                    ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-xl object-cover shrink-0" alt="" />
+                                    ? <img src={appt.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: appt.pets.photo_url as string, name: appt.pets.name ?? '' }) }} className="cursor-zoom-in w-10 h-10 rounded-xl object-cover shrink-0" alt="" />
                                     : <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-xl shrink-0">🐶</div>}
                                   <div className="flex-1 min-w-0">
                                     <p className="font-semibold text-gray-900 text-sm">{appt.pets?.name ?? '—'}{appt.is_new_client && ' ⭐'} <span className="font-normal text-gray-400">· {appt.clients?.name?.split(' ')[0] ?? '—'}</span></p>
@@ -5478,7 +5488,7 @@ export default function AdminPage() {
                             return (
                               <div key={appt.id} className="flex items-center gap-3 px-4 py-3">
                                 {appt.pets?.photo_url
-                                  ? <img src={appt.pets.photo_url} className="w-10 h-10 rounded-xl object-cover shrink-0" alt="" />
+                                  ? <img src={appt.pets.photo_url} onClick={e => { e.stopPropagation(); setZoomPhoto({ url: appt.pets.photo_url as string, name: appt.pets.name ?? '' }) }} className="cursor-zoom-in w-10 h-10 rounded-xl object-cover shrink-0" alt="" />
                                   : <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-lg shrink-0">🐾</div>}
                                 <div className="flex-1 min-w-0">
                                   <p className="font-semibold text-gray-800 text-sm">{appt.pets?.name ?? '—'}{appt.is_new_client && ' ⭐'} <span className="font-normal text-gray-400">· {appt.clients?.name?.split(' ')[0] ?? '—'}</span></p>

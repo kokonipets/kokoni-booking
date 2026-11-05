@@ -21,6 +21,8 @@ export async function POST(request: Request) {
     // Prepare message
     const message = settings.review_request_template
       .replace('{client_name}', clientName || 'valued customer')
+      .replace('{google_url}', settings.google_review_url ?? '')
+      .replace('{yelp_url}', settings.yelp_business_url ?? '')
 
     // Send SMS (sendSMS mirrors it into sms_messages for the chat thread)
     const result = await sendSMS(clientPhone, message, 'reviewRequest')
