@@ -882,7 +882,7 @@ export default function BookPage() {
     <div className="min-h-screen bg-sky-50 flex flex-col items-center justify-start py-8 px-4">
       {/* Header */}
       <div className="flex flex-col items-center mb-6">
-        <a href="https://kokonipets.com" aria-label="Kokoni Pet Grooming Salon — website">
+        <a href={isWalkIn ? undefined : 'https://kokonipets.com'} aria-label="Kokoni Pet Grooming Salon — website">
           <Image
             src="/logo.png"
             alt="Kokoni Pet Grooming Salon"

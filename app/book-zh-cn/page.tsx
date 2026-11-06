@@ -904,7 +904,7 @@ export default function BookPageZhCn() {
     <div className="min-h-screen bg-sky-50 flex flex-col items-center justify-start py-8 px-4">
       {/* Header */}
       <div className="flex flex-col items-center mb-6">
-        <a href="https://kokonipets.com" aria-label="Kokoni Pet Grooming Salon — website"><Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={160} height={120} className="object-contain mb-1" priority /></a>
+        <a href={isWalkIn ? undefined : 'https://kokonipets.com'} aria-label="Kokoni Pet Grooming Salon — website"><Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={160} height={120} className="object-contain mb-1" priority /></a>
         <p className="text-sm text-sky-600 font-medium">在线预约</p>
         <div className="flex items-center gap-2 mt-2">
           <span className="text-xs text-gray-400">语言：</span>
