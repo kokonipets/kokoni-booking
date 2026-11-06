@@ -655,7 +655,7 @@ export default function ProfilePage() {
         )}
         <div className="w-full max-w-sm">
           <div className="flex flex-col items-center mb-8">
-            <Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={100} height={100} className="mb-3" />
+            <a href="https://kokonipets.com" aria-label="Kokoni Pet Grooming Salon — website"><Image src="/logo.png" alt="Kokoni Pet Grooming Salon" width={100} height={100} className="mb-3" /></a>
             <h1 className="text-2xl font-bold text-sky-900">My Profile</h1>
             <p className="text-sm text-gray-500 mt-1">Enter your phone number to view your profile</p>
           </div>
