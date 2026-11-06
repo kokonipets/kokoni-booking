@@ -111,6 +111,7 @@ export async function GET(request: NextRequest) {
 
     for (const appt of appointments) {
       if (alreadySent.has(appt.id)) { skipped++; continue }
+      if (appt.client_phone === '0000000000') { skipped++; continue } // anonymous walk-in placeholder, no real number
       if (returning.has(appt.client_phone) || optedOut.has(appt.client_phone) || recentlyAsked.has(appt.client_phone) || sentPhones.has(appt.client_phone)) { skipped++; continue }
 
       const clientData = appt.clients as { name: string; sms_consent: boolean } | null
