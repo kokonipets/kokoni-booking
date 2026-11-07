@@ -213,6 +213,18 @@ export default function SettingsPage() {
   // One-off dates the salon opens even though that weekday is normally closed
   // (e.g. a single Saturday) — does NOT change the regular weekly schedule.
   const [specialOpenDates, setSpecialOpenDates] = useState<string[]>([])
+  // Closed dates (holidays / days off) — saved immediately via /api/admin/blocked-dates
+  const [closedDates, setClosedDates] = useState<{ date: string; reason: string | null }[]>([])
+  const [newClosedDate, setNewClosedDate] = useState('')
+  const [newClosedReason, setNewClosedReason] = useState('')
+  const loadClosedDates = async () => {
+    try {
+      const r = await fetch('/api/admin/blocked-dates', { cache: 'no-store' })
+      const d = await r.json()
+      setClosedDates(Array.isArray(d.blocked_dates) ? d.blocked_dates : [])
+    } catch { /* ignore */ }
+  }
+  useEffect(() => { loadClosedDates() }, [])
   const [newSpecialOpenDate, setNewSpecialOpenDate] = useState('')
   const [savingSpecialOpenDates, setSavingSpecialOpenDates] = useState(false)
   // Which groomers to schedule (and what hours) for the special open date being added —
@@ -1868,6 +1880,42 @@ export default function SettingsPage() {
                           </div>
                         )
                       })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Closed Dates — holidays / days off */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm font-semibold text-gray-700">⛔ Closed Dates</p>
+                  <p className="text-xs text-gray-400 mt-0.5 mb-2">Closed on a specific date (e.g. Christmas Day). Customers can't book it. Saved right away — no need to press Save Store Hours.</p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    <input type="date" value={newClosedDate} onChange={e => setNewClosedDate(e.target.value)}
+                      className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white" />
+                    <input type="text" value={newClosedReason} onChange={e => setNewClosedReason(e.target.value)} placeholder="Reason (e.g. Christmas Day)"
+                      className="flex-1 min-w-[140px] text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white" />
+                    <button disabled={!newClosedDate}
+                      onClick={async () => {
+                        await fetch('/api/admin/blocked-dates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: newClosedDate, reason: newClosedReason || null }) })
+                        setNewClosedDate(''); setNewClosedReason(''); loadClosedDates()
+                      }}
+                      className="bg-rose-500 hover:bg-rose-600 disabled:opacity-40 text-white text-sm font-semibold px-4 py-1.5 rounded-lg">Close Date</button>
+                  </div>
+                  {closedDates.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic py-1">No closed dates.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {closedDates.map(cd => (
+                        <div key={cd.date} className="flex items-center justify-between bg-rose-50 border border-rose-100 rounded-xl px-3 py-1.5">
+                          <p className="text-sm text-gray-800">
+                            {new Date(cd.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                            {cd.reason ? <span className="text-xs text-gray-500"> · {cd.reason}</span> : null}
+                          </p>
+                          <button onClick={async () => {
+                            await fetch('/api/admin/blocked-dates', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: cd.date }) })
+                            loadClosedDates()
+                          }} className="text-xs text-rose-500 hover:text-rose-700 font-medium">Remove</button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
