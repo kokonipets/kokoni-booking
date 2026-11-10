@@ -228,7 +228,22 @@ function CheckoutModal({
     if (!petId) { setIsFirstTime(false); return }
     fetch(`/api/groomer/last-payment?pet_id=${petId}&exclude_id=${appt.id}`)
       .then(r => r.json())
-      .then(d => setIsFirstTime(!d.amount))
+      .then(async d => {
+        setIsFirstTime(!d.amount)
+        // No price yet and the dog has been here before → pre-fill last visit's price (editable suggestion)
+        if (!appt.payment_amount && d.amount) {
+          let price: string | null = null
+          if (d.size_tier) {
+            try {
+              const sr = await fetch('/api/admin/settings').then(r => r.json())
+              const defs = JSON.parse((sr.settings ?? {})['services'] || '[]') as { id: string; tiers?: { label: string; price: string }[] }[]
+              price = defs.find(sv => sv.id === appt.service)?.tiers?.find(t => t.label === d.size_tier && t.price)?.price ?? null
+            } catch { /* ignore */ }
+          }
+          if (!price && d.service === appt.service) price = String(d.amount)
+          if (price) setAmount(prev => prev || price!)
+        }
+      })
       .catch(() => setIsFirstTime(false))
   }, [appt.id, appt.pets?.id])
   const [done, setDone] = useState(false)

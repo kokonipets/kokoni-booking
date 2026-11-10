@@ -940,8 +940,22 @@ export default function GroomerDashboard() {
         const res = await fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`)
         const data = await res.json()
         if (data.amount) {
-          setPopupBasePrice(data.amount)
-          setPopupBaseTier('')
+          // Prefer last visit's SIZE tile (priced from this service's price list); else last base price
+          let tierMatch: { label: string; price: string } | undefined
+          if (data.size_tier) {
+            let defs = serviceDefs
+            if (defs.length === 0) {
+              try { const sr = await fetch('/api/admin/settings').then(r => r.json()); defs = JSON.parse((sr.settings ?? {})['services'] || '[]') } catch { defs = [] }
+            }
+            tierMatch = defs.find(sv => sv.id === appt.service)?.tiers?.find(t => t.label === data.size_tier && t.price)
+          }
+          if (tierMatch) {
+            setPopupBasePrice(tierMatch.price)
+            setPopupBaseTier(tierMatch.label)
+          } else {
+            setPopupBasePrice(data.amount)
+            setPopupBaseTier('')
+          }
           setPopupTotalSaved(false) // show as a suggestion, not confirmed
           setPopupIsFirstTime(false)
         } else {

@@ -26,6 +26,15 @@ export async function GET(req: NextRequest) {
 
   if (!petId) return NextResponse.json({ visits: [] })
 
+  // Duplicate pet profiles split the history; include every pet of the SAME client with the SAME name.
+  let petIds: string[] = [petId]
+  const { data: thisPet } = await supabase.from('pets').select('name, client_phone').eq('id', petId).maybeSingle()
+  if (thisPet?.name && thisPet.client_phone) {
+    const { data: sameNamed } = await supabase
+      .from('pets').select('id').eq('client_phone', thisPet.client_phone).ilike('name', thisPet.name.trim())
+    if (sameNamed?.length) petIds = Array.from(new Set([petId, ...sameNamed.map(p => p.id as string)]))
+  }
+
   let query = supabase
     .from('appointments')
     .select(`
@@ -69,7 +78,7 @@ export async function GET(req: NextRequest) {
         photo_url
       )
     `)
-    .eq('pet_id', petId)
+    .in('pet_id', petIds)
     .eq('payment_status', 'paid')
     .not('payment_amount', 'is', null)
     .order('appointment_date', { ascending: false })

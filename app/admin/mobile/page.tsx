@@ -1778,7 +1778,22 @@ export default function AdminPage() {
                   setEditDraftCouponId(savedDiscount > 0 ? (m?.id ?? null) : null); setEditDraftCouponId2(savedDiscount > 0 ? (rc[1]?.id ?? null) : null)
                 }
                 setMobileIsFirstTime(false)
-                if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {})
+                if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => {
+                  setMobileIsFirstTime(!d?.amount)
+                  // Not priced yet and the dog has been here before → pre-select last visit's size/price (a suggestion until saved)
+                  if (!appt.payment_amount && d?.amount) {
+                    const tiers = (services.find(sv => sv.id === appt.service)?.tiers ?? []) as { label: string; price: string }[]
+                    const sameTier = d.size_tier ? tiers.find(t => t.label === d.size_tier && t.price) : undefined
+                    if (sameTier) {
+                      setEditDraftBasePrice(prev => prev || sameTier.price)
+                      setEditDraftBaseTier(prev => prev || sameTier.label)
+                      setEditDraftTotalSaved(false)
+                    } else if (d.service === appt.service) {
+                      setEditDraftBasePrice(prev => prev || String(d.amount))
+                      setEditDraftTotalSaved(false)
+                    }
+                  }
+                }).catch(() => {})
                 setEditDraftTotalSaved(!!appt.payment_amount)
                 setEpAddingNote(false)
                 setEpNoteText('')
@@ -3219,7 +3234,22 @@ export default function AdminPage() {
                     {appt.payment_amount ? `$${appt.payment_amount}` : '—'}
                   </span>
                   <button
-                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const rc = restoreCoupons(dl, dp, availableCoupons); const m = rc[0]; const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupAddonDraft({ text: '', price: '' }); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setPopupCouponId2(sd > 0 ? (rc[1]?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => setMobileIsFirstTime(!d?.amount)).catch(() => {}); setPopupTotalSaved(false) }}
+                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const rc = restoreCoupons(dl, dp, availableCoupons); const m = rc[0]; const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupAddonDraft({ text: '', price: '' }); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setPopupCouponId2(sd > 0 ? (rc[1]?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => {
+                  setMobileIsFirstTime(!d?.amount)
+                  // Not priced yet and the dog has been here before → pre-select last visit's size/price (a suggestion until saved)
+                  if (!appt.payment_amount && d?.amount) {
+                    const tiers = (services.find(sv => sv.id === appt.service)?.tiers ?? []) as { label: string; price: string }[]
+                    const sameTier = d.size_tier ? tiers.find(t => t.label === d.size_tier && t.price) : undefined
+                    if (sameTier) {
+                      setPopupBasePrice(prev => prev || sameTier.price)
+                      setPopupBaseTier(prev => prev || sameTier.label)
+                      setPopupTotalSaved(false)
+                    } else if (d.service === appt.service) {
+                      setPopupBasePrice(prev => prev || String(d.amount))
+                      setPopupTotalSaved(false)
+                    }
+                  }
+                }).catch(() => {}); setPopupTotalSaved(false) }}
                     className="text-gray-400 hover:text-sky-500 text-xs leading-none"
                     title="Set price"
                   >✏️</button>

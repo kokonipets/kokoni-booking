@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { notifyClientConfirmed, notifyClientRescheduled, notifyClientGroomingReady } from '@/lib/sms'
-import { sendPushToStaff } from '@/lib/push-notify'
+import { sendPushToStaff, sendPushToAdmin } from '@/lib/push-notify'
 import { checkBookableDate } from '@/lib/bookable-date'
 
 export const dynamic = 'force-dynamic'
@@ -332,7 +332,7 @@ export async function PATCH(
     // Fetch current assignment to know which field to clear
     const { data: current } = await supabase
       .from('appointments')
-      .select('assigned_groomer, assigned_bather')
+      .select('assigned_groomer, assigned_bather, appointment_date, appointment_time, pets!pet_id(name)')
       .eq('id', id)
       .single()
     const updates: Record<string, null | boolean> = { groomer_confirmed: false }
@@ -345,6 +345,14 @@ export async function PATCH(
       .update(updates)
       .eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    // Tell the admin(s): this appointment now has nobody assigned and needs reassigning
+    try {
+      const petName: string = c?.pets?.name ?? 'an appointment'
+      const when = c?.appointment_date
+        ? new Date(c.appointment_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + (c.appointment_time ? ` · ${c.appointment_time}` : '')
+        : ''
+      sendPushToAdmin('Groomer declined ⚠️', `${groomer_name ?? 'A groomer'} can't take ${petName}${when ? ' · ' + when : ''} — needs reassigning`).catch(() => {})
+    } catch { /* never block the decline */ }
     return NextResponse.json({ success: true })
   }
 

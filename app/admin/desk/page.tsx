@@ -228,6 +228,10 @@ function formatDate(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+function formatDateY(d: string) {
+  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 function firstName(name: string | null | undefined): string {
   if (!name) return ''
   return name.trim().split(/\s+/)[0]
@@ -1200,7 +1204,9 @@ export default function DeskAdmin() {
     } catch { showToast('⚠️ Error removing pickup') }
   }
 
+  const detailOpenIdRef = useRef<string | null>(null)
   const openApptDetail = async (appt: Appointment, opts?: { keepBackStack?: boolean }) => {
+    detailOpenIdRef.current = appt.id
     if (!opts?.keepBackStack) setDetailApptBackStack([])
     setExpandedHistoryId(null)
     setDetailAppt(appt)
@@ -1233,7 +1239,23 @@ export default function DeskAdmin() {
     setDetailHasPriorPaid(null) // unknown until the lookup resolves
     if (appt.pets?.id) {
       fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`)
-        .then(r => r.json()).then(d => setDetailHasPriorPaid(!!d?.amount)).catch(() => {})
+        .then(r => r.json()).then(d => {
+          setDetailHasPriorPaid(!!d?.amount)
+          // Not priced yet and the dog has been here before → pre-select last visit's size/price (a suggestion,
+          // not saved until staff saves it). Only if the staff hasn't already picked something in the meantime.
+          if (!appt.payment_amount && d?.amount && detailOpenIdRef.current === appt.id) {
+            const tiers = (services.find(sv => sv.id === appt.service)?.tiers ?? []) as { label: string; price: string }[]
+            const sameTier = d.size_tier ? tiers.find(t => t.label === d.size_tier && t.price) : undefined
+            if (sameTier) {
+              setDetailBasePrice(prev => prev || sameTier.price)
+              setDetailBaseTier(prev => prev || sameTier.label)
+              setTotalSaved(false)
+            } else if (d.service === appt.service) {
+              setDetailBasePrice(prev => prev || String(d.amount))
+              setTotalSaved(false)
+            }
+          }
+        }).catch(() => {})
     }
     // Load saved add-ons from notes_list (is_addon: true entries)
     const savedAddOns = (appt.notes_list ?? [])
@@ -3904,7 +3926,7 @@ export default function DeskAdmin() {
                 { key: 'customer', label: '👤 Customer' },
                 { key: 'payment',  label: '📖 History' },
                 { key: 'future',   label: '📅 Future' },
-                { key: 'notes',    label: '📝 Notes' },
+                { key: 'notes',    label: '📝 Customer Notes 客人備註' },
               ] as const).map(t => (
                 <button key={t.key} onClick={() => setDetailTab(t.key)}
                   className={`flex-1 text-xs py-2.5 font-medium border-b-2 transition-colors ${detailTab===t.key ? 'border-sky-500 text-sky-700' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
@@ -5051,7 +5073,7 @@ export default function DeskAdmin() {
                                     return petName ? <span className="font-normal text-gray-400"> · {petName}</span> : null
                                   })()}
                                 </p>
-                                <p className="text-xs text-gray-400">{formatDate(a.appointment_date)} · {a.appointment_time}</p>
+                                <p className="text-xs text-gray-400">{formatDateY(a.appointment_date)} · {a.appointment_time}</p>
                                 {(a.assigned_groomer || a.assigned_bather) && (
                                   <p className="text-xs text-gray-400 mt-0.5">
                                     {a.assigned_groomer && `✂️ ${firstName(a.assigned_groomer)}`}{false && a.assigned_bather && `🛁 ${firstName(a.assigned_bather)}`}
@@ -5349,7 +5371,7 @@ export default function DeskAdmin() {
                                 : <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-sm flex-shrink-0">🐶</div>}
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold text-gray-800">{a.pets?.name}{a.is_new_client && ' ⭐'}</p>
-                                <p className="text-xs text-gray-500">{serviceMap[a.service]??a.service} · {formatDate(a.appointment_date)} · {a.appointment_time}</p>
+                                <p className="text-xs text-gray-500">{serviceMap[a.service]??a.service} · {formatDateY(a.appointment_date)} · {a.appointment_time}</p>
                               </div>
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[a.status]??'bg-gray-100 text-gray-500'}`}>{a.status}</span>
                             </div>
@@ -5360,168 +5382,38 @@ export default function DeskAdmin() {
               )}
 
               {/* ── NOTES TAB ────────────────────────────── */}
-              {detailTab === 'notes' && (
-                <div className="space-y-3">
-
-                  {editingNotes ? (
-                    /* ── EDIT MODE ── */
-                    <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-bold text-gray-700">✏️ {detailAppt.notes ? 'Edit Note' : 'Add Note'}</p>
-                        <span className="text-xs text-gray-400 flex items-center gap-1">
-                          {translatingNotes && <span className="inline-block w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />}
-                          {translatingNotes ? 'Translating…' : noteTranslations ? '✨ Translated' : 'Type in any language'}
-                        </span>
-                      </div>
-
-                      {/* Staff selector */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs font-semibold text-gray-500 shrink-0">Staff:</label>
-                        <select
-                          value={noteAuthor}
-                          onChange={e => setNoteAuthor(e.target.value)}
-                          className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white"
-                        >
-                          <option value="">— Select staff —</option>
-                          {staff.filter(s => s.is_active).map(s => (
-                            <option key={s.id} value={s.name}>{s.first_name || s.name.split(' ')[0]}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <textarea
-                        ref={noteInputRef}
-                        onChange={e => {
-                          if (!noteIsComposingRef.current) triggerAutoTranslate(e.target.value)
-                        }}
-                        onCompositionStart={() => { noteIsComposingRef.current = true }}
-                        onCompositionEnd={e => {
-                          noteIsComposingRef.current = false
-                          const val = (e.target as HTMLTextAreaElement).value
-                          triggerAutoTranslate(val)
-                        }}
-                        placeholder="Type in English, 繁體中文, or 简体中文…"
-                        rows={4}
-                        autoFocus
-                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-sky-300 resize-none"
-                      />
-
-                      {noteTranslations && (
-                        <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 space-y-1.5">
-                          <p className="text-xs font-semibold text-violet-500">✨ Will save in all languages</p>
-                          {noteTranslations.detected !== 'english' && noteTranslations.english && (
-                            <div className="text-xs text-gray-600"><span className="font-semibold text-gray-400">🇺🇸 </span>{noteTranslations.english}</div>
-                          )}
-                          {noteTranslations.detected !== 'traditional' && noteTranslations.traditional && (
-                            <div className="text-xs text-gray-600"><span className="font-semibold text-gray-400">🇹🇼 </span>{noteTranslations.traditional}</div>
-                          )}
-                          {noteTranslations.detected !== 'simplified' && noteTranslations.simplified && (
-                            <div className="text-xs text-gray-600"><span className="font-semibold text-gray-400">🇨🇳 </span>{noteTranslations.simplified}</div>
-                          )}
+              {detailTab === 'notes' && (() => {
+                // Read-only log of every note the customer wrote when booking, newest first, with the visit date.
+                const petName = (pid: string | null | undefined) => (detailClient?.pets as { id: string; name: string }[] | undefined)?.find(p => p.id === pid)?.name
+                const custNotes = [...(detailClient?.appointments ?? [])]
+                  .filter(x => x.notes && x.notes.trim())
+                  .sort((x, y) => (y.appointment_date || '').localeCompare(x.appointment_date || ''))
+                if (detailClientLoading) return <div className="py-6 text-center text-sm text-gray-400">Loading…</div>
+                return custNotes.length > 0 ? (
+                  <div className="space-y-2">
+                    {custNotes.map(x => (
+                      <div key={x.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                        <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                          <span className="text-xs font-semibold text-gray-700">{formatDateY(x.appointment_date)}</span>
+                          {petName(x.pet_id) && (<><span className="text-gray-300">·</span><span className="text-xs text-gray-500">{petName(x.pet_id)}</span></>)}
+                          {x.id === detailAppt.id && <span className="ml-auto text-[10px] font-semibold bg-sky-100 text-sky-700 rounded px-1.5 py-0.5">This visit</span>}
                         </div>
-                      )}
-
-                      <div className="flex gap-2">
-                        <button onClick={saveDetailNotes} disabled={savingDetailNotes || !noteAuthor || translatingNotes}
-                          className="flex-1 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
-                          {savingDetailNotes ? 'Saving…' : translatingNotes ? '✨ Translating…' : '💾 Save Note'}
-                        </button>
-                        <button onClick={() => { setEditingNotes(false); setNoteTranslations(null) }}
-                          className="px-4 py-2 text-gray-500 text-sm font-medium rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
-                          Cancel
-                        </button>
+                        <div className="px-4 py-3 space-y-1.5">
+                          <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{x.notes}</p>
+                          {x.notes_english && x.notes_english !== x.notes && <p className="text-xs text-gray-500"><span className="opacity-60">🇺🇸</span> {x.notes_english}</p>}
+                          {x.notes_chinese && x.notes_chinese !== x.notes && <p className="text-xs text-gray-500"><span className="inline-flex items-center justify-center w-4 h-4 rounded bg-red-500 text-white text-[10px] font-bold leading-none align-middle mr-1">中</span>{x.notes_chinese}</p>}
+                        </div>
                       </div>
-                    </div>
-
-                  ) : (() => {
-                    // Build combined notes list: ALWAYS include both legacy notes + notes_list (don't hide old notes)
-                    const notesList: NoteEntry[] = [
-                      // Legacy note first (if exists)
-                      ...(detailAppt.notes ? [{ id: '__legacy__', text: detailAppt.notes, notes_english: detailAppt.notes_english, notes_chinese: detailAppt.notes_chinese, author: detailAppt.notes_author ?? 'Customer', created_at: detailAppt.notes_updated_at ?? detailAppt.appointment_date }] : []),
-                      // Then all new notes from notes_list (exclude add-on entries — those show in pricing section)
-                      ...(detailAppt.notes_list ?? []).filter(n => !n.is_addon),
-                    ]
-
-                    return notesList.length > 0 ? (
-                      /* ── NOTE CARDS LIST ── */
-                      <div className="space-y-2">
-                        {notesList.map(note => (
-                          <div key={note.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                            {/* Card header */}
-                            <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-6 h-6 rounded-full ${avatarColor(note.author)} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
-                                  {note.author[0].toUpperCase()}
-                                </div>
-                                <span className="text-sm font-semibold text-gray-700">{note.author}</span>
-                                <span className="text-gray-300">·</span>
-                                <span className="text-xs text-gray-400">
-                                  {new Date(note.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                  {' · '}
-                                  {new Date(note.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: SALON_TZ })}
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => { if (confirm('Delete this note?')) deleteNote(note.id) }}
-                                disabled={savingDetailNotes}
-                                className="text-xs font-semibold text-red-400 hover:text-red-600 px-2.5 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-                              >🗑️</button>
-                            </div>
-                            {/* Note body */}
-                            <div className="px-4 py-4 space-y-3">
-                              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap font-medium">{note.text}</p>
-                              {(note.notes_english || note.notes_chinese) && (
-                                <div className="border-t border-gray-100 pt-3 space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Translations</p>
-                                    <button
-                                      onClick={() => retranslateNote(note.id, note.text)}
-                                      disabled={savingDetailNotes}
-                                      className="text-xs text-sky-500 hover:text-sky-700 font-medium disabled:opacity-50"
-                                      title="Re-translate this note"
-                                    >🔄 Re-translate</button>
-                                  </div>
-                                  {note.notes_english && (
-                                    <div className="flex gap-2 items-start">
-                                      <span className="text-base leading-tight flex-shrink-0">🇺🇸</span>
-                                      <p className="text-xs text-gray-600 leading-relaxed">{note.notes_english}</p>
-                                    </div>
-                                  )}
-                                  {note.notes_chinese && (
-                                    <div className="flex gap-2 items-start">
-                                      <span className="text-base leading-tight flex-shrink-0">🇹🇼</span>
-                                      <p className="text-xs text-gray-600 leading-relaxed">{note.notes_chinese}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      /* ── EMPTY STATE ── */
-                      <div className="bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 p-8 text-center">
-                        <p className="text-3xl mb-2">📝</p>
-                        <p className="text-sm font-semibold text-gray-500 mb-1">No notes yet</p>
-                        <p className="text-xs text-gray-400 mb-4">Type in English or Chinese — AI will translate automatically</p>
-                        <button
-                          onClick={() => { if (noteTranslateTimerRef.current) clearTimeout(noteTranslateTimerRef.current); noteIsComposingRef.current = false; setEditingNotes(true); setDetailNotes(''); setNoteAuthor(staff.find(s => s.is_active)?.name ?? ''); setNoteTranslations(null) }}
-                          className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold rounded-xl transition-colors"
-                        >+ Add Note</button>
-                      </div>
-                    )
-                  })()}
-
-                  {/* ── ADD NOTE button (always visible when not editing) ── */}
-                  {!editingNotes && (
-                    <button
-                      onClick={() => { setEditingNotes(true); setDetailNotes(''); setNoteAuthor(staff.find(s => s.is_active)?.name ?? ''); setNoteTranslations(null) }}
-                      className="w-full py-2.5 rounded-xl text-sm font-semibold border-2 border-dashed border-gray-200 text-gray-400 hover:border-sky-300 hover:text-sky-600 hover:bg-sky-50 transition-colors"
-                    >+ Add Note</button>
-                  )}
-                </div>
-              )}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 p-8 text-center">
+                    <p className="text-3xl mb-2">📝</p>
+                    <p className="text-sm font-semibold text-gray-500">No customer notes yet 尚無客人備註</p>
+                    <p className="text-xs text-gray-400 mt-1">Notes the customer writes when booking will show here, with the date. 客人預約時填寫的備註會顯示在這裡。</p>
+                  </div>
+                )
+              })()}
 
             </div>
 
@@ -6772,7 +6664,7 @@ export default function DeskAdmin() {
                             <span className="text-xs text-gray-400">{new Date(appt.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:SALON_TZ})}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-gray-600">📅 {formatDate(appt.appointment_date)} · {appt.appointment_time}</span>
+                            <span className="text-xs font-semibold text-gray-600">📅 {formatDateY(appt.appointment_date)} · {appt.appointment_time}</span>
                             <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{serviceMap[appt.service] ?? appt.service}</span>
                           </div>
                         </div>
@@ -7529,7 +7421,7 @@ export default function DeskAdmin() {
                                                     <span className="text-xs font-semibold text-gray-500 group-hover:text-gray-700">📋 History · {petAppts.length} visit{petAppts.length !== 1 ? 's' : ''}</span>
                                                     {/* Last visit quick badges */}
                                                     {!histOpen && lastAppt && (
-                                                      <span className="text-xs text-gray-400">{formatDate(lastAppt.appointment_date)}</span>
+                                                      <span className="text-xs text-gray-400">{formatDateY(lastAppt.appointment_date)}</span>
                                                     )}
                                                     {!histOpen && lastHCIssues !== null && (
                                                       lastHCIssues === 0
@@ -7554,7 +7446,7 @@ export default function DeskAdmin() {
                                                           <div className="flex items-center justify-between gap-2 py-1.5 px-3">
                                                             <div className="min-w-0">
                                                               <p className="text-sm font-medium text-gray-700">{serviceMap[appt.service]??appt.service}</p>
-                                                              <p className="text-xs text-gray-400">{formatDate(appt.appointment_date)} · {appt.appointment_time}
+                                                              <p className="text-xs text-gray-400">{formatDateY(appt.appointment_date)} · {appt.appointment_time}
                                                                 {appt.assigned_groomer && <span className="ml-1">· ✂️ {firstName(appt.assigned_groomer)}</span>}
                                                                 {false && appt.assigned_bather && <span className="ml-1">· 🛁 {firstName(appt.assigned_bather)}</span>}
                                                               </p>

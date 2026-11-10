@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from('appointments')
-    .select('payment_amount, discount_amount, notes_list, appointment_date, service')
+    .select('payment_amount, discount_amount, notes_list, appointment_date, service, size_tier')
     .eq('pet_id', petId)
     .eq('payment_status', 'paid')
     .not('payment_amount', 'is', null)
@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     amount,
     service: last?.service ?? null,
+    size_tier: (last as { size_tier?: string | null } | null)?.size_tier ?? null,
     date: last?.appointment_date ?? null,
   }, { headers: { 'Cache-Control': 'no-store' } })
 }
