@@ -104,7 +104,10 @@ export async function GET(req: NextRequest) {
       .in('status', ['confirmed', 'in_progress', 'completed'])
       .order('appointment_date', { ascending: true })
     // Falls back to the old column list if the helper_* migration hasn't been run yet
-    let res = await runQuery(SELECT_WITH_HELPER)
+    // promo_code (promo-link bookings) is tried first and dropped if that
+    // migration hasn't been run yet, so the groomer app never breaks over it.
+    let res = await runQuery(SELECT_WITH_HELPER.replace('size_tier,', 'size_tier,\n        promo_code,'))
+    if (res.error) res = await runQuery(SELECT_WITH_HELPER)
     if (res.error) res = await runQuery(SELECT_BASE)
     const appointments = res.data as unknown as any[] | null
     const error = res.error
@@ -151,7 +154,8 @@ export async function GET(req: NextRequest) {
         .or(namePattern ? `helper_groomer.ilike.${namePattern}` : `helper_groomer.eq.${filterValue}`)
         .in('status', ['confirmed', 'in_progress', 'completed'])
         .order('appointment_date', { ascending: true })
-      let hr = await runHelper(helperCols + ', helper_status')
+      let hr = await runHelper(helperCols + ', helper_status, promo_code')
+      if (hr.error) hr = await runHelper(helperCols + ', helper_status') // promo_code not migrated yet
       if (hr.error) hr = await runHelper(helperCols) // helper_status column not migrated yet
       const he = hr.error
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -8,7 +8,7 @@ import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 import { sameStaff, displayName } from '@/lib/staff-name'
-import { stackedCoupons, restoreCoupons } from '@/lib/commission'
+import { stackedCoupons, restoreCoupons, promoCouponFor } from '@/lib/commission'
 
 // Dashboard-tab permissions are managed once, on the desktop admin's tab set
 // (see DASHBOARD_TABS in app/admin/settings/page.tsx). Mobile has a smaller,
@@ -1775,7 +1775,7 @@ export default function AdminPage() {
                   const dl = (appt as { discount_label?: string | null }).discount_label || ''
                   const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || '')
                   const rc = restoreCoupons(dl, dp, availableCoupons); const m = rc[0]
-                  setEditDraftCouponId(savedDiscount > 0 ? (m?.id ?? null) : null); setEditDraftCouponId2(savedDiscount > 0 ? (rc[1]?.id ?? null) : null)
+                  setEditDraftCouponId(savedDiscount > 0 ? (m?.id ?? null) : (promoCouponFor(appt as { promo_code?: string | null; payment_status?: string | null }, availableCoupons)?.id ?? null)); setEditDraftCouponId2(savedDiscount > 0 ? (rc[1]?.id ?? null) : null)
                 }
                 setMobileIsFirstTime(false)
                 if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => {
@@ -3234,7 +3234,7 @@ export default function AdminPage() {
                     {appt.payment_amount ? `$${appt.payment_amount}` : '—'}
                   </span>
                   <button
-                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const rc = restoreCoupons(dl, dp, availableCoupons); const m = rc[0]; const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupAddonDraft({ text: '', price: '' }); setPopupCouponId(sd > 0 ? (m?.id ?? null) : null); setPopupCouponId2(sd > 0 ? (rc[1]?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => {
+                    onClick={() => { const sd = parseFloat((appt as { discount_amount?: string | null }).discount_amount || '') || 0; const dl = (appt as { discount_label?: string | null }).discount_label || ''; const dp = parseFloat((appt as { discount_percent?: string | null }).discount_percent || ''); const rc = restoreCoupons(dl, dp, availableCoupons); const m = rc[0]; const savedAddOns = (appt.notes_list ?? []).filter(n => n.is_addon).map(n => ({ id: n.id, name: n.text, price: n.price ?? '' })); const addonTotal = savedAddOns.reduce((s, a) => s + (parseFloat(a.price) || 0), 0); setEditingPriceId(appt.id); setPopupBasePrice(appt.payment_amount != null ? String(Math.max(0, parseFloat(String(appt.payment_amount)) + sd - addonTotal)) : ''); setPopupBaseTier((appt as { size_tier?: string | null }).size_tier || ''); setPopupAddOns(savedAddOns); setPopupAddonDraft({ text: '', price: '' }); setPopupCouponId(sd > 0 ? (m?.id ?? null) : (promoCouponFor(appt as { promo_code?: string | null; payment_status?: string | null }, availableCoupons)?.id ?? null)); setPopupCouponId2(sd > 0 ? (rc[1]?.id ?? null) : null); setMobileIsFirstTime(false); if (appt.pets?.id) fetch(`/api/groomer/last-payment?pet_id=${appt.pets.id}&exclude_id=${appt.id}`).then(r => r.json()).then(d => {
                   setMobileIsFirstTime(!d?.amount)
                   // Not priced yet and the dog has been here before → pre-select last visit's size/price (a suggestion until saved)
                   if (!appt.payment_amount && d?.amount) {

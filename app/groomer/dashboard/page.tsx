@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, type Tag as PetTag } from '@/lib/tags'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
-import { commissionableAmount, helperCut, stackedCoupons, restoreCoupons, ratesOn } from '@/lib/commission'
+import { commissionableAmount, helperCut, stackedCoupons, restoreCoupons, promoCouponFor, ratesOn } from '@/lib/commission'
 import { displayName } from '@/lib/staff-name'
 
 type Appointment = {
@@ -838,7 +838,9 @@ export default function GroomerDashboard() {
     setPopupAddonDraft({ text: '', price: '' })
     setPopupTotalSaved(!!appt.payment_amount)
     setPopupDiscount(false)
-    setPopupCouponId(null)
+    // Booked from a promo link (e.g. ?promo=DOUBLE11) → pre-select that coupon.
+    // A discount already saved on the appointment (restored below) wins over this.
+    setPopupCouponId(promoCouponFor(appt as { promo_code?: string | null; payment_status?: string | null }, availableCoupons)?.id ?? null)
     setPopupCouponId2(null)
     setPopupIsFirstTime(false)
     setPopupPriceNote('')

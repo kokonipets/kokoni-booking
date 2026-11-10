@@ -9,7 +9,7 @@ import ChatSidebarLink from '@/components/ChatSidebarLink'
 import ChatIconButton from '@/components/ChatIconButton'
 import RetailSell from '@/components/RetailSell'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
-import { commissionableAmount, ratesOn, helperCut, stackedCoupons, restoreCoupons, type RateHistoryRow } from '@/lib/commission'
+import { commissionableAmount, ratesOn, helperCut, stackedCoupons, restoreCoupons, promoCouponFor, type RateHistoryRow } from '@/lib/commission'
 import { sameStaff, canonicalStaffName } from '@/lib/staff-name'
 
 
@@ -1236,9 +1236,7 @@ export default function DeskAdmin() {
     } else {
       // Booked from a promo link (e.g. ?promo=DOUBLE11) and not checked out
       // yet → pre-select that coupon so staff don't have to remember it.
-      const promo = ((appt as { promo_code?: string | null }).promo_code || '').toUpperCase()
-      const promoCoupon = promo && !appt.payment_amount ? availableCoupons.find(c => (c.code || '').toUpperCase() === promo) : undefined
-      setDetailCouponId(promoCoupon?.id ?? null)
+      setDetailCouponId(promoCouponFor(appt as { promo_code?: string | null; payment_status?: string | null }, availableCoupons)?.id ?? null)
       setDetailCouponId2(null)
     }
     // Detect whether this customer has a previous PAID appointment (returning).

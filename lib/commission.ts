@@ -115,6 +115,19 @@ export function stackedCoupons(selected: (CouponLike | null | undefined)[], subt
 }
 
 /** Rebuild the selected coupons from a saved label like "Coupon 25 + Coupon 50" (falls back to a matching percent). */
+// The coupon an appointment was booked with via a promo link (?promo=CODE →
+// appointments.promo_code), if it's still an active coupon in the list and the
+// appointment hasn't been paid yet. Checkout screens pre-select it so staff
+// don't have to remember the promo. Returns undefined when there's nothing to apply.
+export function promoCouponFor<T extends CouponLike & { code?: string | null }>(
+  appt: { promo_code?: string | null; payment_status?: string | null },
+  coupons: T[]
+): T | undefined {
+  const code = (appt.promo_code || '').trim().toUpperCase()
+  if (!code || (appt.payment_status || '').toLowerCase() === 'paid') return undefined
+  return coupons.find(c => (c.code || '').trim().toUpperCase() === code)
+}
+
 export function restoreCoupons<T extends CouponLike>(label: string | null | undefined, percent: number, coupons: T[]): T[] {
   const parts = (label ?? '').split(' + ').map(x => x.trim()).filter(Boolean)
   const found = parts.map(n => coupons.find(c => c.name === n)).filter(Boolean) as T[]
