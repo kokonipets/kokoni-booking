@@ -60,6 +60,10 @@ export async function POST(req: NextRequest) {
   if (STOP_WORDS.has(firstWord)) {
     // Twilio auto-blocks future outbound to this number. No TwiML reply needed
     // (Twilio sends its own STOP confirmation per carrier rules).
+    // Also record the opt-out on the client so they drop out of announcement
+    // lists and show under "Not Opted In" (best-effort; phone may be stored
+    // in a different format, so match on any of the common variants).
+    await setConsentByPhone(sb, tenDigit, false)
     return xmlResponse('')
   }
 
@@ -70,6 +74,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (START_WORDS.has(firstWord)) {
+    await setConsentByPhone(sb, tenDigit, true)
     return xmlResponse(
       'Kokoni Pet Grooming Salon: You are re-subscribed to appointment messages. Reply STOP to opt out.'
     )
@@ -80,6 +85,17 @@ export async function POST(req: NextRequest) {
   // No auto-reply for normal messages — they'll be seen in the Chat tab and
   // replied to manually by admin/front-desk staff.
   return xmlResponse('')
+}
+
+async function setConsentByPhone(sb: ReturnType<typeof createSupabaseServer>, tenDigit: string, consent: boolean) {
+  if (!tenDigit || tenDigit.length !== 10) return
+  const variants = [tenDigit, `+1${tenDigit}`, `1${tenDigit}`, `(${tenDigit.slice(0, 3)}) ${tenDigit.slice(3, 6)}-${tenDigit.slice(6)}`, `${tenDigit.slice(0, 3)}-${tenDigit.slice(3, 6)}-${tenDigit.slice(6)}`]
+  try {
+    const { error } = await sb.from('clients').update({ sms_consent: consent, sms_consent_at: new Date().toISOString() }).in('phone', variants)
+    if (error) console.error('Opt-out/in consent update failed:', error.message)
+  } catch (e) {
+    console.error('Opt-out/in consent update failed:', e)
+  }
 }
 
 function xmlResponse(message: string) {

@@ -162,9 +162,13 @@ async function getRecipients(supabase: ReturnType<typeof getAdminClient>, audien
 // usable name / pet on file, fall back to a friendly generic word so the
 // text never shows a blank or a raw placeholder.
 function personalize(message: string, r: Pick<Recipient, 'firstName' | 'pets'>) {
-  return message
+  const text = message
     .replace(/\{name\}/gi, r.firstName || 'there')
     .replace(/\{pet\}/gi, r.pets || 'your pup')
+    .trim()
+  // Promotional texts must tell people how to opt out — add it if the admin
+  // didn't already write it (same wording as every other client text).
+  return /\bSTOP\b/i.test(text) ? text : `${text}\nReply STOP to opt out.`
 }
 
 function parseAudience(src: { get(k: string): string | null } | Record<string, unknown>): Audience {

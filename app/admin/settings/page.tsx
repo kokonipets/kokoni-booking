@@ -2817,15 +2817,19 @@ export default function SettingsPage() {
               <p className="text-xs text-gray-400 mb-1">{broadcastMessage.length} characters{broadcastMessage.length > 320 ? ' — long messages may send as multiple SMS segments' : ''}</p>
               <p className="text-xs text-gray-400 mb-3">
                 Tip: type <code className="bg-gray-100 px-1 rounded">{'{name}'}</code> for the client's first name and{' '}
-                <code className="bg-gray-100 px-1 rounded">{'{pet}'}</code> for their dog's name. 可用 {'{name}'} 帶入主人名字、{'{pet}'} 帶入狗狗名字。
+                <code className="bg-gray-100 px-1 rounded">{'{pet}'}</code> for their dog's name. 可用 {'{name}'} 帶入主人名字、{'{pet}'} 帶入狗狗名字。 "Reply STOP to opt out." is added automatically. 系統會自動加上退訂說明。
               </p>
               {/\{(name|pet)\}/i.test(broadcastMessage) && broadcastRecipients[0] && (
                 <div className="bg-sky-50 border border-sky-100 rounded-lg p-3 mb-3">
                   <p className="text-xs font-semibold text-sky-700 mb-1">Preview for {broadcastRecipients[0].name || broadcastRecipients[0].phone} 預覽</p>
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                    {broadcastMessage
-                      .replace(/\{name\}/gi, broadcastRecipients[0].firstName || 'there')
-                      .replace(/\{pet\}/gi, broadcastRecipients[0].pets || 'your pup')}
+                    {(() => {
+                      const t = broadcastMessage
+                        .replace(/\{name\}/gi, broadcastRecipients[0].firstName || 'there')
+                        .replace(/\{pet\}/gi, broadcastRecipients[0].pets || 'your pup')
+                        .trim()
+                      return /\bSTOP\b/i.test(t) ? t : `${t}\nReply STOP to opt out.`
+                    })()}
                   </p>
                 </div>
               )}
