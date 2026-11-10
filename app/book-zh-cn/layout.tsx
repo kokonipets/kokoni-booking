@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import PromoBanner from '@/components/PromoBanner'
 
 export const metadata: Metadata = {
   title: 'Kokoni Pet Grooming Salon — 在线预约',
@@ -29,5 +30,5 @@ export const viewport: Viewport = {
 }
 
 export default function BookZhCnLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
+  return <><PromoBanner lang="zh-CN" />{children}</>
 }

@@ -191,6 +191,29 @@ export async function POST(req: NextRequest) {
 
     if (apptError) throw new Error(`Appointment error: ${apptError.message}`)
 
+    // 4a. Promo link (e.g. /book?promo=DOUBLE11 from an announcement): if the
+    // code matches an active coupon, remember it on the appointment so checkout
+    // pre-selects that coupon. Best-effort — an unknown code, or the promo_code
+    // column not migrated yet, never blocks the booking.
+    const promoRaw = (body.promoCode as string | undefined) || req.cookies.get('kokoni_promo')?.value
+    const promoCode = (promoRaw || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30)
+    if (promoCode && appointment?.id && !anonymousWalkIn) {
+      try {
+        const { data: coupon } = await supabase
+          .from('coupons')
+          .select('code')
+          .eq('active', true)
+          .ilike('code', promoCode)
+          .maybeSingle()
+        if (coupon?.code) {
+          const { error: promoErr } = await supabase.from('appointments').update({ promo_code: coupon.code }).eq('id', appointment.id)
+          if (promoErr) console.warn('promo_code not saved (run promo migration?):', promoErr.message)
+        }
+      } catch (e) {
+        console.error('Promo code lookup failed (non-blocking):', e)
+      }
+    }
+
     // 4b. Auto-translate customer notes (best-effort, don't block booking if it fails)
     if (notes && notes.trim() && appointment?.id) {
       try {

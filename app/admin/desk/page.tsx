@@ -1234,7 +1234,11 @@ export default function DeskAdmin() {
       setDetailCouponId(restored[0]?.id ?? null)
       setDetailCouponId2(restored[1]?.id ?? null)
     } else {
-      setDetailCouponId(null)
+      // Booked from a promo link (e.g. ?promo=DOUBLE11) and not checked out
+      // yet → pre-select that coupon so staff don't have to remember it.
+      const promo = ((appt as { promo_code?: string | null }).promo_code || '').toUpperCase()
+      const promoCoupon = promo && !appt.payment_amount ? availableCoupons.find(c => (c.code || '').toUpperCase() === promo) : undefined
+      setDetailCouponId(promoCoupon?.id ?? null)
       setDetailCouponId2(null)
     }
     // Detect whether this customer has a previous PAID appointment (returning).

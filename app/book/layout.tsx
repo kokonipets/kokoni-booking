@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import PromoBanner from '@/components/PromoBanner'
 
 export const metadata: Metadata = {
   title: 'Kokoni Pet Grooming Salon — Book Appointment',
@@ -29,5 +30,5 @@ export const viewport: Viewport = {
 }
 
 export default function BookLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
+  return <><PromoBanner lang="en" />{children}</>
 }
