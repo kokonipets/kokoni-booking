@@ -206,6 +206,11 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [announceTags, setAnnounceTags] = useState<{ id: string; name: string; color: string }[]>([])
   const [selectedTagId, setSelectedTagId] = useState('')
+  // Optional "hasn't been in for N+ days" audience filter (0 = any), plus the
+  // recipient list it resolves to, so the admin can see exactly who gets it.
+  const [minDaysSinceVisit, setMinDaysSinceVisit] = useState(0)
+  const [broadcastRecipients, setBroadcastRecipients] = useState<{ name: string; firstName: string; pets: string; phone: string; lastVisit: string | null; daysSinceVisit: number | null }[]>([])
+  const [showBroadcastRecipients, setShowBroadcastRecipients] = useState(false)
   const [broadcastHistory, setBroadcastHistory] = useState<{ id: string; message: string; tag_name: string | null; sent_count: number; failed_count: number; total_count: number; sent_at: string }[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [closedDays, setClosedDays] = useState<Set<string>>(new Set())
@@ -311,13 +316,18 @@ export default function SettingsPage() {
   useEffect(() => {
     if (activeTab !== 'announcements') return
     setBroadcastCountLoading(true)
-    const url = selectedTagId ? `/api/admin/broadcast?tagId=${selectedTagId}` : '/api/admin/broadcast'
-    fetch(url)
+    const params = new URLSearchParams({ preview: '1' })
+    if (selectedTagId) params.set('tagId', selectedTagId)
+    if (minDaysSinceVisit > 0) params.set('minDaysSinceVisit', String(minDaysSinceVisit))
+    fetch(`/api/admin/broadcast?${params}`)
       .then(r => r.json())
-      .then(data => { if (typeof data.count === 'number') setBroadcastRecipientCount(data.count) })
+      .then(data => {
+        if (typeof data.count === 'number') setBroadcastRecipientCount(data.count)
+        setBroadcastRecipients(Array.isArray(data.recipients) ? data.recipients : [])
+      })
       .catch(() => {})
       .finally(() => setBroadcastCountLoading(false))
-  }, [activeTab, selectedTagId])
+  }, [activeTab, selectedTagId, minDaysSinceVisit])
 
   // Load the available tags (for the audience picker) and the send history,
   // once, the first time the announcements tab is opened.
@@ -2739,7 +2749,7 @@ export default function SettingsPage() {
                       const res = await fetch('/api/admin/broadcast', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: broadcastMessage, testPhone }),
+                        body: JSON.stringify({ message: broadcastMessage, testPhone, tagId: selectedTagId || undefined, minDaysSinceVisit: minDaysSinceVisit || undefined }),
                       })
                       const data = await res.json()
                       if (!res.ok) throw new Error(data.error || 'Failed to send test')
@@ -2781,6 +2791,22 @@ export default function SettingsPage() {
                   <option key={t.id} value={t.id}>Clients tagged "{t.name}"</option>
                 ))}
               </select>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Last visit 上次來店</label>
+              <select
+                value={minDaysSinceVisit}
+                onChange={e => { setMinDaysSinceVisit(Number(e.target.value)); setBroadcastResult(null) }}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm mb-1 w-full max-w-xs"
+              >
+                <option value={0}>Any time 不限</option>
+                <option value={28}>4+ weeks ago 超過 4 週沒來</option>
+                <option value={42}>6+ weeks ago 超過 6 週沒來</option>
+                <option value={63}>9+ weeks ago 超過 9 週沒來</option>
+                <option value={90}>3+ months ago 超過 3 個月沒來</option>
+              </select>
+              {minDaysSinceVisit > 0 && (
+                <p className="text-xs text-gray-400 mb-3">Clients who already have an upcoming appointment, or have never completed a visit, are left out. 已有預約或從未完成過預約的客人不會收到。</p>
+              )}
+              {minDaysSinceVisit === 0 && <div className="mb-3" />}
               <textarea
                 value={broadcastMessage}
                 onChange={e => { setBroadcastMessage(e.target.value); setBroadcastResult(null); setTestResult(null) }}
@@ -2788,14 +2814,59 @@ export default function SettingsPage() {
                 rows={4}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-1"
               />
-              <p className="text-xs text-gray-400 mb-3">{broadcastMessage.length} characters{broadcastMessage.length > 320 ? ' — long messages may send as multiple SMS segments' : ''}</p>
+              <p className="text-xs text-gray-400 mb-1">{broadcastMessage.length} characters{broadcastMessage.length > 320 ? ' — long messages may send as multiple SMS segments' : ''}</p>
+              <p className="text-xs text-gray-400 mb-3">
+                Tip: type <code className="bg-gray-100 px-1 rounded">{'{name}'}</code> for the client's first name and{' '}
+                <code className="bg-gray-100 px-1 rounded">{'{pet}'}</code> for their dog's name. 可用 {'{name}'} 帶入主人名字、{'{pet}'} 帶入狗狗名字。
+              </p>
+              {/\{(name|pet)\}/i.test(broadcastMessage) && broadcastRecipients[0] && (
+                <div className="bg-sky-50 border border-sky-100 rounded-lg p-3 mb-3">
+                  <p className="text-xs font-semibold text-sky-700 mb-1">Preview for {broadcastRecipients[0].name || broadcastRecipients[0].phone} 預覽</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {broadcastMessage
+                      .replace(/\{name\}/gi, broadcastRecipients[0].firstName || 'there')
+                      .replace(/\{pet\}/gi, broadcastRecipients[0].pets || 'your pup')}
+                  </p>
+                </div>
+              )}
+              {broadcastRecipients.length > 0 && (
+                <div className="mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowBroadcastRecipients(v => !v)}
+                    className="text-xs font-semibold text-sky-600 hover:underline"
+                  >
+                    {showBroadcastRecipients ? '▾ Hide' : '▸ Show'} who will receive it ({broadcastRecipients.length}) 查看名單
+                  </button>
+                  {showBroadcastRecipients && (
+                    <div className="mt-2 max-h-64 overflow-y-auto border border-gray-100 rounded-lg">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 text-gray-500 sticky top-0">
+                          <tr><th className="text-left px-2 py-1">Client</th><th className="text-left px-2 py-1">Pet</th><th className="text-left px-2 py-1">Last visit</th></tr>
+                        </thead>
+                        <tbody>
+                          {broadcastRecipients.map(r => (
+                            <tr key={r.phone} className="border-t border-gray-100">
+                              <td className="px-2 py-1">{r.name || r.phone}</td>
+                              <td className="px-2 py-1">{r.pets || '—'}</td>
+                              <td className="px-2 py-1">{r.lastVisit ? `${r.lastVisit} (${r.daysSinceVisit}d)` : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-3">
                 <button
                   disabled={!broadcastMessage.trim() || broadcastSending || broadcastCountLoading || !broadcastRecipientCount}
                   onClick={async () => {
                     const count = broadcastRecipientCount ?? 0
-                    const audienceLabel = selectedTagId ? `clients tagged "${announceTags.find(t => t.id === selectedTagId)?.name ?? ''}"` : 'clients who have opted in to SMS'
-                    const ok = confirm(`This will send this text message to ${count} ${audienceLabel}. This cannot be undone. Send now?`)
+                    const tagLabel = selectedTagId ? `tagged "${announceTags.find(t => t.id === selectedTagId)?.name ?? ''}"` : ''
+                    const visitLabel = minDaysSinceVisit > 0 ? `last visit ${minDaysSinceVisit}+ days ago` : ''
+                    const audienceLabel = [tagLabel, visitLabel].filter(Boolean).join(', ') || 'all opted-in clients'
+                    const ok = confirm(`This will send this text message to ${count} clients (${audienceLabel}). This cannot be undone. Send now?`)
                     if (!ok) return
                     setBroadcastSending(true)
                     setBroadcastResult(null)
@@ -2807,6 +2878,8 @@ export default function SettingsPage() {
                           message: broadcastMessage,
                           tagId: selectedTagId || undefined,
                           tagName: selectedTagId ? announceTags.find(t => t.id === selectedTagId)?.name : undefined,
+                          minDaysSinceVisit: minDaysSinceVisit || undefined,
+                          audienceLabel: selectedTagId || minDaysSinceVisit > 0 ? audienceLabel : undefined,
                         }),
                       })
                       const data = await res.json()
@@ -2855,7 +2928,7 @@ export default function SettingsPage() {
                           {new Date(h.sent_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
                         </p>
                         <p className="text-xs text-gray-400 whitespace-nowrap">
-                          {h.tag_name ? `Tagged "${h.tag_name}"` : 'All Clients'} · ✅ {h.sent_count}/{h.total_count}
+                          {h.tag_name ? (/^(tagged |last visit)/i.test(h.tag_name) ? h.tag_name : `Tagged "${h.tag_name}"`) : 'All Clients'} · ✅ {h.sent_count}/{h.total_count}
                           {h.failed_count > 0 ? ` · ${h.failed_count} failed` : ''}
                         </p>
                       </div>
