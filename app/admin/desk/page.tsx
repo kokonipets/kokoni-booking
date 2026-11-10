@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
@@ -217,7 +218,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 const GROOMING_STAGES = [
-  { id: 'waiting', label: 'Waiting',          icon: '⏳', bg: 'bg-amber-50',  border: 'border-amber-300', text: 'text-amber-700',  btnBg: '#f59e0b', next: 'Start Grooming →' },
+  { id: 'waiting', label: 'Checked In',       icon: '⏳', bg: 'bg-amber-50',  border: 'border-amber-300', text: 'text-amber-700',  btnBg: '#f59e0b', next: 'Start Grooming →' },
   { id: 'incare',  label: 'In Good Hands 🐾', icon: '✂️', bg: 'bg-sky-50',    border: 'border-sky-300',   text: 'text-sky-700',    btnBg: '#0ea5e9', next: 'Mark Ready →' },
   { id: 'ready',   label: 'Ready to Pick Up', icon: '🔔', bg: 'bg-green-50',  border: 'border-green-300', text: 'text-green-700',  btnBg: '#22c55e', next: 'Check Out' },
   { id: 'done',    label: 'Checked Out',      icon: '🎉', bg: 'bg-pink-50',   border: 'border-pink-300',  text: 'text-pink-700',   btnBg: '#ec4899', next: '' },
@@ -529,6 +530,7 @@ export default function DeskAdmin() {
   // Appointment detail slide-over
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null)
   const [detailTab, setDetailTab] = useState<'appt' | 'customer' | 'payment' | 'future' | 'notes'>('appt')
+  const [photoZoom, setPhotoZoom] = useState<{ url: string; name?: string } | null>(null)
   // Stack of appointments we drilled in from (e.g. clicking "View" on a past
   // visit in the History tab) so we can jump back to where we started.
   const [detailApptBackStack, setDetailApptBackStack] = useState<Appointment[]>([])
@@ -828,9 +830,9 @@ export default function DeskAdmin() {
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
 
   // Reports
-  const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'next_payroll' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('month')
+  const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'next_payroll' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('today')
   const [reportsShowDetails, setReportsShowDetails] = useState(false)
-  const [incomeChartRange, setIncomeChartRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll'>('week')
+  const [incomeChartRange, setIncomeChartRange] = useState<'today' | 'week' | 'this_payroll' | 'last_payroll'>('today')
   const [revenueChartGroomer, setRevenueChartGroomer] = useState<string>('') // '' = whole store
   const [tipsChartGroomer, setTipsChartGroomer] = useState<string>('') // '' = whole store
   const [perfGroomer, setPerfGroomer] = useState<string>('')
@@ -3898,8 +3900,14 @@ export default function DeskAdmin() {
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-3">
                   {detailAppt.pets?.photo_url
-                    ? <img src={detailAppt.pets.photo_url} className="w-11 h-11 rounded-full object-cover border-2 border-white shadow" alt="" />
+                    ? <img onClick={() => setPhotoZoom({ url: detailAppt.pets!.photo_url!, name: detailAppt.pets?.name })} src={detailAppt.pets.photo_url} className="cursor-zoom-in w-11 h-11 rounded-full object-cover border-2 border-white shadow" alt="" />
                     : <div className="w-11 h-11 rounded-full bg-white flex items-center justify-center text-2xl shadow">🐶</div>}
+                  {photoZoom && typeof document !== 'undefined' && createPortal(
+                    <div className="fixed inset-0 z-[400] bg-black/80 flex flex-col items-center justify-center p-4 cursor-zoom-out" onClick={() => setPhotoZoom(null)}>
+                      <img src={photoZoom.url} alt="" className="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl" />
+                      {photoZoom.name && <p className="mt-3 text-white text-lg font-semibold">{photoZoom.name}</p>}
+                      <button className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white text-xl" onClick={() => setPhotoZoom(null)}>✕</button>
+                    </div>, document.body)}
                   <div>
                     <p className="font-bold text-gray-800 text-lg leading-tight">{detailAppt.pets?.name}{detailAppt.is_new_client && ' ⭐'}</p>
                     <p className="text-xs text-gray-500">{detailAppt.pets?.breed} · {detailAppt.clients?.name}</p>
@@ -4771,7 +4779,7 @@ export default function DeskAdmin() {
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Pet</p>
                     <div className="flex items-center gap-3">
                       {detailAppt.pets?.photo_url
-                        ? <img src={detailAppt.pets.photo_url} className="w-14 h-14 rounded-full object-cover border-2 border-white" alt="" />
+                        ? <img onClick={() => setPhotoZoom({ url: detailAppt.pets!.photo_url!, name: detailAppt.pets?.name })} src={detailAppt.pets.photo_url} className="cursor-zoom-in w-14 h-14 rounded-full object-cover border-2 border-white" alt="" />
                         : <div className="w-14 h-14 rounded-full bg-sky-100 flex items-center justify-center text-3xl">🐶</div>}
                       <div className="flex-1 min-w-0">
                         {editingApptName ? (
@@ -5725,32 +5733,31 @@ export default function DeskAdmin() {
                     const nowMs = Date.now()
                     const isOverdue = (a: Appointment) => !(a as { is_walk_in?: boolean | null }).is_walk_in && !a.grooming_status && parseApptTime(a.appointment_date, a.appointment_time).getTime() < nowMs - 5 * 60000
                     const lateCount    = appointments.filter(isOverdue).length
-                    // "Not here yet" includes the late ones (shown as a red sub-line) so nothing is counted twice
-                    const notHereCount = appointments.filter(a => !a.grooming_status && a.status !== 'completed').length
+                    // Late ones are counted only under Late (not Coming Up), so the cards add up to Total
+                    const comingCount  = appointments.filter(a => !a.grooming_status && a.status !== 'completed' && !isOverdue(a)).length
                     const waitingCount = appointments.filter(a => a.grooming_status === 'waiting').length
-    const workingCount = appointments.filter(a => a.grooming_status === 'incare').length
-    const inSalonCount = waitingCount + workingCount
+                    const workingCount = appointments.filter(a => a.grooming_status === 'incare').length
                     const readyAppts   = appointments.filter(a => a.grooming_status === 'ready')
                     const waitingLong  = readyAppts.filter(a => (pickupWaitMins(a, pickupNow) ?? 0) >= 60).length
                     const doneCount    = appointments.filter(a => a.grooming_status === 'done' || a.status === 'completed').length
                     const tiles: { label: string; value: number; color: string; sub?: string; subColor?: string }[] = [
-      { label: 'Total 今日總數', value: notHereCount + inSalonCount + readyAppts.length + doneCount, color: 'bg-gray-50 text-gray-800 border-gray-200' },
-      { label: 'Not here yet 未到店', value: notHereCount, color: 'bg-sky-50 text-sky-700 border-sky-100',
-        sub: lateCount > 0 ? `${lateCount} late 遲到` : undefined, subColor: 'text-red-600' },
-      { label: 'In salon 店內', value: inSalonCount, color: 'bg-amber-50 text-amber-700 border-amber-100',
-        sub: inSalonCount > 0 ? `${waitingCount} waiting 候位 · ${workingCount} grooming 美容中` : undefined, subColor: 'text-amber-700' },
-      { label: 'Ready for pickup 待接回', value: readyAppts.length,
-        color: waitingLong > 0 ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-green-50 text-green-700 border-green-100',
-        sub: waitingLong > 0 ? `⏰ ${waitingLong} over 1h · 請聯絡主人` : undefined, subColor: 'text-orange-700' },
-      { label: 'Done 已完成', value: doneCount, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-    ]
+                      { label: 'Total 今日總數', value: comingCount + lateCount + waitingCount + workingCount + readyAppts.length + doneCount, color: 'bg-violet-50 text-violet-700 border-violet-100' },
+                      { label: 'Coming Up 即將到店', value: comingCount, color: 'bg-sky-50 text-sky-700 border-sky-100' },
+                      { label: 'Late 遲到', value: lateCount, color: lateCount > 0 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-gray-50 text-gray-400 border-gray-100' },
+                      { label: 'Checked In 已報到', value: waitingCount, color: 'bg-amber-50 text-amber-700 border-amber-100' },
+                      { label: 'Working 美容中', value: workingCount, color: 'bg-sky-50 text-sky-700 border-sky-100' },
+                      { label: 'Ready to Pick Up 待接回', value: readyAppts.length,
+                        color: waitingLong > 0 ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-green-50 text-green-700 border-green-100',
+                        sub: waitingLong > 0 ? `⏰ ${waitingLong} over 1h · 請聯絡主人` : undefined, subColor: 'text-orange-700' },
+                      { label: 'Checked Out 已結帳 🎉', value: doneCount, color: 'bg-pink-50 text-pink-700 border-pink-100' },
+                    ]
                     return (
                       <>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                           {tiles.map(s => (
-                            <div key={s.label} className={`rounded-2xl border p-4 ${s.color}`}>
+                            <div key={s.label} className={`rounded-2xl border p-3 md:p-4 ${s.color}`}>
                               <p className="text-3xl font-bold">{s.value}</p>
-                              <p className="text-sm font-medium mt-1">{s.label}</p>
+                              <p className="text-sm font-medium mt-1 leading-tight">{s.label}</p>
                               {s.sub && <p className={`text-xs font-bold mt-1 ${s.subColor ?? ''}`}>{s.sub}</p>}
                             </div>
                           ))}
@@ -5773,7 +5780,7 @@ export default function DeskAdmin() {
 
                         {/* Appointment table */}
                         {(() => {
-                          const GRID = '90px 1fr 110px 90px 230px 90px'
+                          const GRID = '90px 1fr 110px 90px 230px 90px 90px'
 
                           const fmtTs = (iso: string | null) => {
                             if (!iso) return null
@@ -5793,13 +5800,13 @@ export default function DeskAdmin() {
                               : 'hover:bg-gray-50/60'
 
                             const gsPill = gs === 'waiting'
-                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md mt-1">⏳ Waiting</span>
+                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md mt-1">⏳ Checked In</span>
                               : gs === 'incare'
                               ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 bg-sky-100 border border-sky-200 px-1.5 py-0.5 rounded-md mt-1">✂️ In Care</span>
                               : gs === 'ready'
                               ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-md mt-1">🔔 Ready</span>
                               : gs === 'done'
-                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-pink-600 bg-pink-50 border border-pink-100 px-1.5 py-0.5 rounded-md mt-1">🎉 Done</span>
+                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-pink-600 bg-pink-50 border border-pink-100 px-1.5 py-0.5 rounded-md mt-1">🎉 Checked Out</span>
                               : <span className={`text-xs px-1.5 py-0.5 rounded-md mt-1 inline-block ${STATUS_COLORS[appt.status] ?? 'bg-gray-100 text-gray-500'}`}>{appt.status.replace('_',' ')}</span>
 
                             let lateBadge: ReactNode = null
@@ -5812,15 +5819,24 @@ export default function DeskAdmin() {
                                 : <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">On time ✓</span>
                             }
 
+                            const fmtDur = (mins: number) => mins >= 60 ? `${Math.floor(mins / 60)}h${mins % 60 > 0 ? ` ${mins % 60}m` : ''}` : `${mins} min`
                             let groomTime: ReactNode = <span className="text-xs text-gray-300 italic">—</span>
                             if (appt.grooming_started_at && appt.grooming_finished_at) {
                               const mins = Math.round((new Date(appt.grooming_finished_at).getTime() - new Date(appt.grooming_started_at).getTime()) / 60000)
-                              const h = Math.floor(mins / 60); const m = mins % 60
-                              const label = h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m} min`
+                              const label = fmtDur(mins)
                               groomTime = <div><p className="text-sm font-bold text-green-600">{label}</p><p className="text-xs text-green-400">total groom</p></div>
                             } else if (appt.grooming_started_at && isInCare) {
                               const mins = Math.round((Date.now() - new Date(appt.grooming_started_at).getTime()) / 60000)
-                              groomTime = <div><p className="text-sm font-bold text-sky-600">{mins} min</p><p className="text-xs text-sky-400">in progress</p></div>
+                              groomTime = <div><p className="text-sm font-bold text-sky-600">{fmtDur(mins)}</p><p className="text-xs text-sky-400">in progress</p></div>
+                            }
+
+                            // In-store time: check-in → check-out (live while the pet is still in the salon)
+                            let inStoreTime: ReactNode = null
+                            if (appt.checked_in_at) {
+                              const endMs = appt.checked_out_at ? new Date(appt.checked_out_at).getTime() : Date.now()
+                              const mins = Math.max(0, Math.round((endMs - new Date(appt.checked_in_at).getTime()) / 60000))
+                              const live = !appt.checked_out_at
+                              inStoreTime = <p className={`text-sm font-bold ${live ? 'text-amber-600' : 'text-violet-600'}`}>{fmtDur(mins)}</p>
                             }
 
                             const hasNotes = !!(appt.notes_list?.length || appt.notes || appt.notes_english)
@@ -5851,7 +5867,7 @@ export default function DeskAdmin() {
                                 {/* Pet / Owner */}
                                 <div className="flex items-center gap-2">
                                   {appt.pets?.photo_url
-                                    ? <img src={appt.pets.photo_url} className="w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
+                                    ? <img onClick={e => { e.stopPropagation(); setPhotoZoom({ url: appt.pets!.photo_url!, name: appt.pets?.name }) }} src={appt.pets.photo_url} className="cursor-zoom-in w-9 h-9 rounded-full object-cover flex-shrink-0" alt="" />
                                     : <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-base flex-shrink-0">🐶</div>}
                                   <div>
                                     <p className="text-sm font-semibold text-gray-800">
@@ -5943,6 +5959,11 @@ export default function DeskAdmin() {
                                     </div>
                                   )}
                                 </div>
+
+                                {/* In-store time (check-in → check-out) */}
+                                <div>
+                                  {inStoreTime ?? <span className="text-xs text-gray-300 italic">—</span>}
+                                </div>
                               </div>
                             )
                           }
@@ -5952,7 +5973,7 @@ export default function DeskAdmin() {
                               className="px-5 py-3 border-b border-gray-100 bg-gray-50 grid text-xs font-semibold text-gray-500 uppercase tracking-wide gap-3"
                               style={{ gridTemplateColumns: GRID }}
                             >
-                              <span>Appt</span><span>Pet / Owner</span><span>Service</span><span>Staff</span><span>Timeline</span><span>Groom Time</span>
+                              <span>Appt</span><span>Pet / Owner</span><span>Service</span><span>Staff</span><span>Timeline</span><span>Groom Time</span><span>In Store Time</span>
                             </div>
                           )
 
@@ -5999,9 +6020,9 @@ export default function DeskAdmin() {
                                 items: appointments.filter(a => !a.grooming_status && !isOverdue2(a)).sort(byTime),
                               },
                               {
-                                label: 'Done',
+                                label: 'Checked Out',
                                 emoji: '🎉',
-                                color: 'bg-emerald-50 border-emerald-100 text-emerald-700',
+                                color: 'bg-pink-50 border-pink-100 text-pink-700',
                                 items: appointments.filter(a => a.grooming_status === 'done' || (!a.grooming_status && a.status === 'completed')).sort(byTime),
                               },
                             ].filter(g => g.items.length > 0)
@@ -6075,7 +6096,7 @@ export default function DeskAdmin() {
           {/* ── GROOMING BOARD ─────────────────────────────────────────── */}
           {tab === 'grooming' && (() => {
             const GSTAGES = [
-              { id: 'waiting', label: 'Waiting',          icon: '⏳', bg: 'bg-amber-50',  border: 'border-amber-200', text: 'text-amber-700',  badge: 'bg-amber-400',  btn: 'bg-amber-500 hover:bg-amber-600',  next: 'Start Grooming →' },
+              { id: 'waiting', label: 'Checked In',       icon: '⏳', bg: 'bg-amber-50',  border: 'border-amber-200', text: 'text-amber-700',  badge: 'bg-amber-400',  btn: 'bg-amber-500 hover:bg-amber-600',  next: 'Start Grooming →' },
               { id: 'incare',  label: 'In Good Hands 🐾', icon: '✂️', bg: 'bg-sky-50',    border: 'border-sky-200',   text: 'text-sky-700',    badge: 'bg-sky-500',    btn: 'bg-sky-500 hover:bg-sky-600',      next: 'Mark Ready →' },
               { id: 'ready',   label: 'Ready to Pick Up', icon: '🔔', bg: 'bg-green-50',  border: 'border-green-200', text: 'text-green-700',  badge: 'bg-green-500',  btn: 'bg-green-500 hover:bg-green-600',  next: 'Check Out' },
               { id: 'done',    label: 'Checked Out',      icon: '🎉', bg: 'bg-pink-50',   border: 'border-pink-200',  text: 'text-pink-700',   badge: 'bg-pink-500',   btn: '',                                 next: '' },
@@ -8931,11 +8952,21 @@ export default function DeskAdmin() {
             const nextPayrollEndStr = fmtLocalDate(nextPayrollEnd)
 
             // ── Income by groomer chart data (own range selector) ──────────
+            // Follows the date buttons at the top of Reports (Today / Next Pay / This Pay / ... / Custom)
             const chartInRange = (date: string) => {
-              if (incomeChartRange === 'today') return date === todayStr
-              if (incomeChartRange === 'week') return date >= weekAgoStr
-              if (incomeChartRange === 'this_payroll') return date >= thisPayrollStartStr && date <= thisPayrollEndStr
-              return date >= lastPayrollStartStr && date <= lastPayrollEndStr
+              if (reportsRange === 'today') return date === todayStr
+              if (reportsRange === 'week') return date >= weekAgoStr
+              if (reportsRange === 'next_payroll') return date >= nextPayrollStartStr && date <= nextPayrollEndStr
+              if (reportsRange === 'this_payroll') return date >= thisPayrollStartStr && date <= thisPayrollEndStr
+              if (reportsRange === 'last_payroll') return date >= lastPayrollStartStr && date <= lastPayrollEndStr
+              if (reportsRange === 'month') return date >= monthStart
+              if (reportsRange === 'last_month') return date >= lastMonthStart && date < lastMonthEnd
+              if (reportsRange === 'custom') {
+                if (reportsCustomStart && date < reportsCustomStart) return false
+                if (reportsCustomEnd && date > reportsCustomEnd) return false
+                return true
+              }
+              return true
             }
             const chartByGroomer: Record<string, { revenue: number; tips: number }> = {}
             reportsAppts.forEach(a => {
@@ -8950,6 +8981,31 @@ export default function DeskAdmin() {
               .map(([name, v]) => ({ name, ...v, total: v.revenue + v.tips }))
               .sort((a, b) => b.total - a.total)
             const chartStoreTotal = chartRows.reduce((sum, r) => sum + r.total, 0)
+            // ── Take-home per groomer for the same range: own commission + tip share, minus assist paid out, plus assist earned ──
+            const takeHomeBy: Record<string, { comm: number; tip: number; out: number; inn: number }> = {}
+            const thRow = (k: string) => (takeHomeBy[k] ||= { comm: 0, tip: 0, out: 0, inn: 0 })
+            reportsAppts.forEach(a => {
+              if (a.status === 'cancelled' || a.payment_status !== 'paid' || !chartInRange(a.appointment_date)) return
+              const owner = canonicalStaffName(a.assigned_groomer, staff.map(s => s.name))
+              if (!owner) return
+              const ownerStaff = staff.find(s => sameStaff(s.name, owner))
+              const rates = ownerStaff ? ratesOn(ownerStaff, a.appointment_date) : { commission: 0, tip: 0 }
+              const comm = commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * rates.commission / 100
+              const tip = parseFloat(a.tip_amount || '0') * rates.tip / 100
+              const row = thRow(owner)
+              row.comm += comm; row.tip += tip
+              const ai = assistInfo(a)
+              const cut = ai?.amount ?? 0
+              if (ai && cut > 0) {
+                row.out += cut
+                const helper = canonicalStaffName(ai.name, staff.map(s => s.name))
+                if (helper) thRow(helper).inn += cut
+              }
+            })
+            const takeHomeRows = Object.entries(takeHomeBy)
+              .map(([name, v]) => ({ name, ...v, total: v.comm + v.tip - v.out + v.inn }))
+              .sort((x, y) => y.total - x.total)
+            const takeHomeSum = takeHomeRows.reduce((sum, r) => sum + r.total, 0)
             const chartMax = Math.max(...chartRows.map(r => r.total), 1)
 
             // ── Store monthly revenue across the year (2026) ──
@@ -9018,6 +9074,15 @@ export default function DeskAdmin() {
             const perfRateFor = (d: string) => perfStaff ? ratesOn(perfStaff, d).commission : 0
             const perfCommission = perfPaid.reduce((s, a) => s + commissionableAmount(parseFloat(a.payment_amount || '0'), parseFloat((a as { discount_amount?: string | null }).discount_amount || '0'), (a as { discount_bearer?: string | null }).discount_bearer) * perfRateFor(a.appointment_date) / 100, 0)
             const perfRatesUsed = Array.from(new Set(perfPaid.map(a => perfRateFor(a.appointment_date)))).sort((x, y) => x - y)
+            // Assist: what this groomer pays out on own dogs, earns on others' dogs, and their tip share
+            const perfTipShare = perfPaid.reduce((s, a) => s + parseFloat(a.tip_amount || '0') * (perfStaff ? ratesOn(perfStaff, a.appointment_date).tip : 0) / 100, 0)
+            const perfAssistOut = perfPaid.reduce((s, a) => s + (assistInfo(a)?.amount ?? 0), 0)
+            const perfAssistJobsIn = reportsAppts
+              .filter(a => a.payment_status === 'paid' && perfInRange(a.appointment_date) && !!assistInfo(a) && sameStaff((a as { helper_groomer?: string | null }).helper_groomer, activePerfGroomer) && !sameStaff(a.assigned_groomer, activePerfGroomer))
+              .sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || a.appointment_time.localeCompare(b.appointment_time))
+            const perfAssistIn = perfAssistJobsIn.reduce((s, a) => s + (assistInfo(a)?.amount ?? 0), 0)
+            const perfHasAssist = perfAssistOut > 0 || perfAssistJobsIn.length > 0 || perfAppts.some(a => !!assistInfo(a))
+            const perfTotalPay = perfCommission + perfTipShare - perfAssistOut + perfAssistIn
             const perfCommPct = perfRatesUsed.length === 0 ? (perfStaff ? ratesOn(perfStaff, todayStr).commission : 0)
               : perfRatesUsed.length === 1 ? String(perfRatesUsed[0]) : `${perfRatesUsed[0]}–${perfRatesUsed[perfRatesUsed.length - 1]}`
             const perfRangeLabel: Record<string, string> = { today: 'Today', week: 'This Week', this_payroll: 'This Pay', last_payroll: 'Last Pay', month: 'This Month', last_month: 'Last Month' }
@@ -9349,6 +9414,67 @@ export default function DeskAdmin() {
                       )
                     })()}
 
+                    {/* ── INCOME BY GROOMER CHART ───────────────────────────── */}
+                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                          <h3 className="font-bold text-gray-800">📊 Performance</h3>
+                          <p className="text-xs text-gray-400 mt-0.5">Service revenue + tips · store total ${chartStoreTotal.toFixed(2)}</p>
+                        </div>
+                        <span className="text-xs font-semibold text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-1.5">{rangeLabelMap[reportsRange]}</span>
+                      </div>
+                      <div className="px-5 py-4">
+                        {chartRows.length === 0 ? (
+                          <p className="text-sm text-gray-400 text-center py-4">No paid appointments in this period.</p>
+                        ) : (
+                          <>
+                            {chartRows.map(r => (
+                              <div key={r.name} className="mb-3 last:mb-0">
+                                <div className="flex items-center justify-between text-sm mb-1">
+                                  <span className="font-semibold text-gray-700">✂️ {firstName(r.name)}</span>
+                                  <span className="text-gray-500">
+                                    ${r.total.toFixed(2)}
+                                    <span className="text-gray-300 mx-1">·</span>
+                                    <span className="text-gray-400">{chartStoreTotal > 0 ? Math.round(r.total / chartStoreTotal * 100) : 0}% of store</span>
+                                  </span>
+                                </div>
+                                <div className="flex h-6 rounded-lg overflow-hidden bg-gray-50">
+                                  <div className="bg-sky-500" style={{ width: `${(r.revenue / chartMax) * 100}%` }} />
+                                  <div className="bg-emerald-400" style={{ width: `${(r.tips / chartMax) * 100}%` }} />
+                                </div>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500 inline-block" />Service revenue</span>
+                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />Tips</span>
+                            </div>
+                            {takeHomeRows.length > 0 && (
+                              <div className="mt-5 pt-4 border-t border-gray-100">
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-sm font-bold text-indigo-800">💰 Take-home by groomer <span className="text-xs font-normal text-gray-400">· commission + tip share, after assists</span></p>
+                                  <p className="text-sm font-bold text-indigo-700">${takeHomeSum.toFixed(2)}</p>
+                                </div>
+                                <div className="divide-y divide-gray-100">
+                                  {takeHomeRows.map(r => (
+                                    <div key={r.name} className="flex items-center justify-between gap-3 py-2">
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-gray-700">✂️ {firstName(r.name)}</p>
+                                        <p className="text-xs text-gray-400">
+                                          <span className="font-semibold text-emerald-600">Comm ${r.comm.toFixed(2)}</span> + <span className="font-semibold text-sky-600">Tip ${r.tip.toFixed(2)}</span>
+                                          {r.out > 0 && <span className="font-semibold text-red-500"> − Assist ${r.out.toFixed(2)}</span>}
+                                          {r.inn > 0 && <span className="font-semibold text-emerald-600"> + Assisting ${r.inn.toFixed(2)}</span>}
+                                        </p>
+                                      </div>
+                                      <p className="text-lg font-bold text-indigo-700 whitespace-nowrap">${r.total.toFixed(2)}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
                     {/* ── PERFORMANCE (single groomer detail) ───────────────── */}
                     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                       <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
@@ -9420,6 +9546,26 @@ export default function DeskAdmin() {
                             <p className="text-xl font-bold text-violet-700">${perfCommission.toFixed(2)}</p>
                           </div>
                         </div>
+                        {perfHasAssist && (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                            <div className="bg-sky-50 rounded-xl p-3">
+                              <p className="text-xs text-sky-600">Tip share</p>
+                              <p className="text-xl font-bold text-sky-700">${perfTipShare.toFixed(2)}</p>
+                            </div>
+                            <div className="bg-red-50 rounded-xl p-3">
+                              <p className="text-xs text-red-500">Assist paid out</p>
+                              <p className="text-xl font-bold text-red-600">−${perfAssistOut.toFixed(2)}</p>
+                            </div>
+                            <div className="bg-emerald-50 rounded-xl p-3">
+                              <p className="text-xs text-emerald-600">Assist earned</p>
+                              <p className="text-xl font-bold text-emerald-700">+${perfAssistIn.toFixed(2)}</p>
+                            </div>
+                            <div className="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
+                              <p className="text-xs text-indigo-600 font-semibold">Total pay</p>
+                              <p className="text-xl font-bold text-indigo-700">${perfTotalPay.toFixed(2)}</p>
+                            </div>
+                          </div>
+                        )}
                         {perfAppts.length === 0 ? (
                           <p className="text-sm text-gray-400 text-center py-4">No appointments for {activePerfGroomer || 'this groomer'} · {perfRangeLabel[perfRange]}.</p>
                         ) : (
@@ -9439,6 +9585,7 @@ export default function DeskAdmin() {
                                     <span className="truncate">
                                       <span className="font-semibold text-gray-700">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'}</span>
                                       <span className="text-gray-400 text-xs ml-1.5">{serviceMap[a.service] ?? a.service}</span>
+                                      {assistInfo(a) && <span className="ml-1.5">{assistTag(a)}</span>}
                                     </span>
                                   </div>
                                   {isPaid ? (
@@ -9454,56 +9601,26 @@ export default function DeskAdmin() {
                             })}
                           </div>
                         )}
-                      </div>
-                    </div>
-
-                    {/* ── INCOME BY GROOMER CHART ───────────────────────────── */}
-                    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
-                        <div>
-                          <h3 className="font-bold text-gray-800">📊 Performance</h3>
-                          <p className="text-xs text-gray-400 mt-0.5">Service revenue + tips · store total ${chartStoreTotal.toFixed(2)}</p>
-                        </div>
-                        <select
-                          value={incomeChartRange}
-                          onChange={e => setIncomeChartRange(e.target.value as typeof incomeChartRange)}
-                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white"
-                        >
-                          <option value="today">Today</option>
-                          <option value="week">This Week</option>
-                          <option value="this_payroll">This Pay</option>
-                          <option value="last_payroll">Last Pay</option>
-                        </select>
-                      </div>
-                      <div className="px-5 py-4">
-                        {chartRows.length === 0 ? (
-                          <p className="text-sm text-gray-400 text-center py-4">No paid appointments in this period.</p>
-                        ) : (
-                          <>
-                            {chartRows.map(r => (
-                              <div key={r.name} className="mb-3 last:mb-0">
-                                <div className="flex items-center justify-between text-sm mb-1">
-                                  <span className="font-semibold text-gray-700">✂️ {firstName(r.name)}</span>
-                                  <span className="text-gray-500">
-                                    ${r.total.toFixed(2)}
-                                    <span className="text-gray-300 mx-1">·</span>
-                                    <span className="text-gray-400">{chartStoreTotal > 0 ? Math.round(r.total / chartStoreTotal * 100) : 0}% of store</span>
+                        {perfAssistJobsIn.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <p className="text-xs font-bold uppercase tracking-wide text-amber-600 mb-1">🤝 Assisted others</p>
+                            <div className="divide-y divide-gray-100">
+                              {perfAssistJobsIn.map(a => (
+                                <div key={a.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                                  <span className="truncate">
+                                    <span className="text-xs text-gray-400 mr-2">{a.appointment_date}</span>
+                                    <span className="font-semibold text-gray-700">{a.pets?.name ?? 'Pet'}</span>
+                                    <span className="text-gray-400 text-xs ml-1.5">for {firstName(a.assigned_groomer)} · {assistInfo(a)?.terms}</span>
                                   </span>
+                                  <span className="font-semibold text-emerald-600 whitespace-nowrap">+${(assistInfo(a)?.amount ?? 0).toFixed(2)}</span>
                                 </div>
-                                <div className="flex h-6 rounded-lg overflow-hidden bg-gray-50">
-                                  <div className="bg-sky-500" style={{ width: `${(r.revenue / chartMax) * 100}%` }} />
-                                  <div className="bg-emerald-400" style={{ width: `${(r.tips / chartMax) * 100}%` }} />
-                                </div>
-                              </div>
-                            ))}
-                            <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
-                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500 inline-block" />Service revenue</span>
-                              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />Tips</span>
+                              ))}
                             </div>
-                          </>
+                          </div>
                         )}
                       </div>
                     </div>
+
 
                     {/* ── STORE MONTHLY REVENUE (YEAR) ──────────────────────── */}
                     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">

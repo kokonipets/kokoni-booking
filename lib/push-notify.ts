@@ -36,6 +36,8 @@ export async function sendPushToStaff(
       .or(`assigned_groomer.ilike.${staffName.trim().split(/\s+/)[0]}%,assigned_bather.ilike.${staffName.trim().split(/\s+/)[0]}%`)
       .in('status', ['pending', 'rescheduled', 'confirmed'])
       .eq('groomer_confirmed', false)
+      // only today onward — same list the Pending tab shows (old unaccepted bookings must not inflate the icon badge)
+      .gte('appointment_date', new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }))
 
     // Always send at least 1 — never clear the badge via a push
     const badgeCount = Math.max(rawCount ?? 0, 1)
