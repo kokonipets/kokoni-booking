@@ -205,7 +205,25 @@ export async function POST(req: NextRequest) {
           .eq('active', true)
           .ilike('code', promoCode)
           .maybeSingle()
+        // One use per client: skip if this client already has another (not
+        // cancelled / no-show) booking with this promo on a different day.
+        // Same-day bookings still get it, so a client bringing two dogs in
+        // together gets the promo on both.
+        let alreadyUsed = false
         if (coupon?.code) {
+          const myDigits = String(phone || '').replace(/\D/g, '').slice(-10)
+          const { data: prior } = await supabase
+            .from('appointments')
+            .select('id, client_phone, appointment_date, status')
+            .ilike('promo_code', coupon.code)
+          alreadyUsed = (prior ?? []).some(p =>
+            p.id !== appointment.id &&
+            String(p.client_phone || '').replace(/\D/g, '').slice(-10) === myDigits &&
+            p.appointment_date !== date &&
+            !['cancelled', 'no_show'].includes(String(p.status || '').toLowerCase())
+          )
+        }
+        if (coupon?.code && !alreadyUsed) {
           const { error: promoErr } = await supabase.from('appointments').update({ promo_code: coupon.code }).eq('id', appointment.id)
           if (promoErr) console.warn('promo_code not saved (run promo migration?):', promoErr.message)
         }
