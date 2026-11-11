@@ -195,7 +195,30 @@ export async function POST(req: NextRequest) {
     // code matches an active coupon, remember it on the appointment so checkout
     // pre-selects that coupon. Best-effort — an unknown code, or the promo_code
     // column not migrated yet, never blocks the booking.
-    const promoRaw = (body.promoCode as string | undefined) || req.cookies.get('kokoni_promo')?.value
+    let promoRaw = (body.promoCode as string | undefined) || req.cookies.get('kokoni_promo')?.value
+    // No promo cookie (e.g. the client booked from the saved home-screen app,
+    // or typed the address instead of tapping the link): if we texted this
+    // client an announcement with a ?promo=CODE link in the last 14 days, the
+    // offer was meant for them — use that code.
+    if (!promoRaw && !anonymousWalkIn) {
+      try {
+        const ten = String(phone || '').replace(/\D/g, '').slice(-10)
+        const since = new Date(Date.now() - 14 * 86400000).toISOString()
+        const { data: recent } = await supabase
+          .from('sms_messages')
+          .select('body, created_at')
+          .eq('direction', 'outbound')
+          .eq('client_phone', ten)
+          .ilike('body', '%promo=%')
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+          .limit(1)
+        const m = recent?.[0]?.body?.match(/promo=([A-Za-z0-9_-]+)/)
+        if (m) promoRaw = m[1]
+      } catch (e) {
+        console.error('Promo lookup from recent texts failed (non-blocking):', e)
+      }
+    }
     const promoCode = (promoRaw || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30)
     if (promoCode && appointment?.id && !anonymousWalkIn) {
       try {
