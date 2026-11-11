@@ -9572,6 +9572,7 @@ export default function DeskAdmin() {
                           <div className="bg-gray-50 rounded-xl p-3">
                             <p className="text-xs text-gray-500">Tips</p>
                             <p className="text-xl font-bold text-gray-800">${perfTips.toFixed(2)}</p>
+                            <p className="text-[11px] font-semibold text-emerald-600">{perfRevenue > 0 ? `${(perfTips / perfRevenue * 100).toFixed(1)}% of revenue` : '—'}</p>
                           </div>
                           <div className="bg-violet-50 rounded-xl p-3">
                             <p className="text-xs text-violet-500">Commission ({perfCommPct}%)</p>
