@@ -211,7 +211,8 @@ export default function SettingsPage() {
   const [minDaysSinceVisit, setMinDaysSinceVisit] = useState(0)
   const [broadcastRecipients, setBroadcastRecipients] = useState<{ name: string; firstName: string; pets: string; phone: string; lastVisit: string | null; daysSinceVisit: number | null }[]>([])
   const [showBroadcastRecipients, setShowBroadcastRecipients] = useState(false)
-  const [broadcastHistory, setBroadcastHistory] = useState<{ id: string; message: string; tag_name: string | null; sent_count: number; failed_count: number; total_count: number; sent_at: string }[]>([])
+  const [broadcastHistory, setBroadcastHistory] = useState<{ id: string; message: string; tag_name: string | null; sent_count: number; failed_count: number; total_count: number; sent_at: string; recipients?: { phone: string; name: string; pets: string; ok: boolean }[] | null }[]>([])
+  const [openHistoryId, setOpenHistoryId] = useState<string | null>(null)
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [closedDays, setClosedDays] = useState<Set<string>>(new Set())
   const [blockedHours, setBlockedHours] = useState<{ start: string; end: string }[]>([])
@@ -2937,6 +2938,36 @@ export default function SettingsPage() {
                         </p>
                       </div>
                       <p className="text-sm text-gray-700 whitespace-pre-wrap">{h.message}</p>
+                      {Array.isArray(h.recipients) && h.recipients.length > 0 && (
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setOpenHistoryId(id => (id === h.id ? null : h.id))}
+                            className="text-xs font-semibold text-sky-600 hover:underline"
+                          >
+                            {openHistoryId === h.id ? '▾ Hide' : '▸ Show'} recipients ({h.recipients.length}) 查看收件名單
+                          </button>
+                          {openHistoryId === h.id && (
+                            <div className="mt-2 max-h-64 overflow-y-auto border border-gray-100 rounded-lg">
+                              <table className="w-full text-xs">
+                                <thead className="bg-gray-50 text-gray-500 sticky top-0">
+                                  <tr><th className="text-left px-2 py-1">Client</th><th className="text-left px-2 py-1">Pet</th><th className="text-left px-2 py-1">Phone</th><th className="text-left px-2 py-1"></th></tr>
+                                </thead>
+                                <tbody>
+                                  {h.recipients.map(r => (
+                                    <tr key={r.phone} className="border-t border-gray-100">
+                                      <td className="px-2 py-1">{r.name || '—'}</td>
+                                      <td className="px-2 py-1">{r.pets || '—'}</td>
+                                      <td className="px-2 py-1">{r.phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</td>
+                                      <td className="px-2 py-1">{r.ok ? '✅' : '❌ failed'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

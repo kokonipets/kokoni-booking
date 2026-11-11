@@ -241,6 +241,7 @@ export async function POST(req: NextRequest) {
   let sent = 0
   let failed = 0
   const failures: { phone: string; error: string }[] = []
+  const delivered: { phone: string; name: string; pets: string; ok: boolean }[] = []
 
   // Send in small concurrent batches rather than one at a time (too slow for a
   // few hundred clients) or all at once (risks tripping Twilio's rate limit).
@@ -251,7 +252,10 @@ export async function POST(req: NextRequest) {
       batch.map(c => sendSMS(`+1${c.digits}`, personalize(message, c), 'broadcast'))
     )
     results.forEach((r, idx) => {
-      if (r.status === 'fulfilled' && r.value.success) {
+      const c = batch[idx]
+      const ok = r.status === 'fulfilled' && !!r.value.success
+      delivered.push({ phone: c.digits, name: c.name, pets: c.pets, ok })
+      if (ok) {
         sent++
       } else {
         failed++
@@ -266,14 +270,21 @@ export async function POST(req: NextRequest) {
   // Record this send to history — best-effort; a logging failure shouldn't make
   // an otherwise-successful send look like it failed.
   try {
-    await supabase.from('broadcast_log').insert({
+    const row: Record<string, unknown> = {
       message,
       tag_id: audience.tagId || null,
       tag_name: audienceLabel || (audience.tagId ? (tagName || null) : null),
       sent_count: sent,
       failed_count: failed,
       total_count: targets.length,
-    })
+      recipients: delivered,
+    }
+    const { error: logErr } = await supabase.from('broadcast_log').insert(row)
+    if (logErr) {
+      // recipients column not migrated yet — still log the send without it
+      delete row.recipients
+      await supabase.from('broadcast_log').insert(row)
+    }
   } catch {
     // ignore — history is a convenience, not required for the send itself
   }

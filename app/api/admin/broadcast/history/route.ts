@@ -16,11 +16,10 @@ function getAdminClient() {
 // actually sent (test sends are never logged here), newest first.
 export async function GET() {
   const supabase = getAdminClient()
-  const { data, error } = await supabase
-    .from('broadcast_log')
-    .select('id, message, tag_name, sent_count, failed_count, total_count, sent_at')
-    .order('sent_at', { ascending: false })
-    .limit(50)
+  const base = 'id, message, tag_name, sent_count, failed_count, total_count, sent_at'
+  const run = (cols: string) => supabase.from('broadcast_log').select(cols).order('sent_at', { ascending: false }).limit(50)
+  let { data, error } = await run(base + ', recipients')
+  if (error) ({ data, error } = await run(base)) // recipients column not migrated yet
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ history: data ?? [] })
