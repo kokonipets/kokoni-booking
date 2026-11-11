@@ -3308,6 +3308,11 @@ export default function DeskAdmin() {
                               👥 +{groupSiblingNames(appt).join(', ')}
                             </span>
                           )}
+                          {(appt as { promo_code?: string | null }).promo_code && (
+                            <span className="text-[10px] font-bold text-pink-700 bg-pink-50 border border-pink-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked with a promo link">
+                              🎟️ {(appt as { promo_code?: string | null }).promo_code}
+                            </span>
+                          )}
                               </div>
                               <div>
                                 <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -3925,6 +3930,11 @@ export default function DeskAdmin() {
                   {services.find(s => s.id === detailAppt.service)?.name ?? serviceMap[detailAppt.service] ?? detailAppt.service}
                 </span>
                 <span className="text-xs text-gray-500">{formatDate(detailAppt.appointment_date)} · {detailAppt.appointment_time}</span>
+                {(detailAppt as { promo_code?: string | null }).promo_code && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-pink-100 text-pink-700 border border-pink-200 whitespace-nowrap" title="Booked with a promo link — the coupon is pre-selected at checkout">
+                    🎟️ {(detailAppt as { promo_code?: string | null }).promo_code}
+                  </span>
+                )}
                 <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[detailAppt.status]??'bg-gray-100 text-gray-500'}`}>{detailAppt.status}</span>
               </div>
             </div>
@@ -6494,6 +6504,11 @@ export default function DeskAdmin() {
                               👥 +{groupSiblingNames(appt).join(', ')}
                             </span>
                           )}
+                          {(appt as { promo_code?: string | null }).promo_code && (
+                            <span className="text-[10px] font-bold text-pink-700 bg-pink-50 border border-pink-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked with a promo link">
+                              🎟️ {(appt as { promo_code?: string | null }).promo_code}
+                            </span>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -6540,6 +6555,11 @@ export default function DeskAdmin() {
                               👥 +{groupSiblingNames(appt).join(', ')}
                             </span>
                           )}
+                          {(appt as { promo_code?: string | null }).promo_code && (
+                            <span className="text-[10px] font-bold text-pink-700 bg-pink-50 border border-pink-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked with a promo link">
+                              🎟️ {(appt as { promo_code?: string | null }).promo_code}
+                            </span>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -6579,6 +6599,11 @@ export default function DeskAdmin() {
                               👥 +{groupSiblingNames(appt).join(', ')}
                             </span>
                           )}
+                          {(appt as { promo_code?: string | null }).promo_code && (
+                            <span className="text-[10px] font-bold text-pink-700 bg-pink-50 border border-pink-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked with a promo link">
+                              🎟️ {(appt as { promo_code?: string | null }).promo_code}
+                            </span>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{appt.clients?.name}</p>
@@ -6616,6 +6641,11 @@ export default function DeskAdmin() {
                           {appt.group_id && groupSiblingNames(appt).length > 0 && (
                             <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked together, same client">
                               👥 +{groupSiblingNames(appt).join(', ')}
+                            </span>
+                          )}
+                          {(appt as { promo_code?: string | null }).promo_code && (
+                            <span className="text-[10px] font-bold text-pink-700 bg-pink-50 border border-pink-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Booked with a promo link">
+                              🎟️ {(appt as { promo_code?: string | null }).promo_code}
                             </span>
                           )}
                         </div>
