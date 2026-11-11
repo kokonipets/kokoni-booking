@@ -3188,7 +3188,7 @@ export default function DeskAdmin() {
             const CAL_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
             const calDow = new Date(dayStr + 'T12:00:00').getDay()
             const calDayName = CAL_DAY_NAMES[calDow]
-            const storeClosedToday = !openDays.includes(calDow) && !specialOpenDates.includes(dayStr)
+            const storeClosedToday = blockedDates.some(bd => bd.date === dayStr) || (!openDays.includes(calDow) && !specialOpenDates.includes(dayStr))
 
             const CAL_START = 8 * 60, CAL_END = 19 * 60, CAL_PX = 1.6
             const fmtCalMin = (mins: number) => {
@@ -9885,6 +9885,7 @@ export default function DeskAdmin() {
             // route's), so "no staff" on this month view means the same thing it means everywhere
             // else — a real, bookable-hours gap, not just "nobody happens to have an appointment".
             const isStaffWorking = (s: StaffMember, dateStr: string, dow: number): boolean => {
+              if (blockedDates.some(bd => bd.date === dateStr)) return false // store closed that day overrides any staff schedule / special hours
               if (s.days_off?.includes(dateStr)) return false
               const special = s.special_hours?.[dateStr]
               if (special?.start && special?.end) return special.end > special.start
@@ -9926,7 +9927,8 @@ export default function DeskAdmin() {
                       const isToday=dateStr===today
                       const isSelected=dateStr===selectedDay
                       const dayDow = new Date(dateStr+'T12:00:00').getDay()
-                      const isStoreClosedDay = !openDays.includes(dayDow) && !specialOpenDates.includes(dateStr)
+                      const blockedDay = blockedDates.find(bd => bd.date === dateStr)
+                      const isStoreClosedDay = !!blockedDay || (!openDays.includes(dayDow) && !specialOpenDates.includes(dateStr))
                       // Only flag "no staff" on a day the store is actually open — a closed day
                       // (e.g. Tue/Sat) gets its own label instead, so the two reasons a day looks
                       // empty (closed vs. open-but-unstaffed) are never confused for each other.
@@ -9940,7 +9942,7 @@ export default function DeskAdmin() {
                             {dayNum}
                           </div>
                           {isStoreClosedDay ? (
-                            <div className="text-xs text-gray-400 font-medium mb-0.5">Closed</div>
+                            <div className="text-xs text-gray-400 font-medium mb-0.5">Closed{blockedDay?.reason ? <span className="block font-normal text-[10px] text-gray-400 truncate">{blockedDay.reason}</span> : null}</div>
                           ) : noStaffThisDay ? (
                             <div className="text-xs text-rose-500 font-semibold mb-0.5" title="No groomer is scheduled to work this day">⚠️ No staff</div>
                           ) : null}

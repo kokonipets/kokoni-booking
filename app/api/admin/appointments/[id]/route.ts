@@ -30,14 +30,24 @@ export async function PATCH(
   const id = context.params.id
 
   if (action === 'confirm') {
-    const { error: updateError } = await supabase
+    // Already confirmed (e.g. the groomer taps Accept after the front desk confirmed, or a double tap):
+    // do nothing, so the client never gets a second "Appointment Confirmed" text.
+    const { data: cur } = await supabase.from('appointments').select('status').eq('id', id).maybeSingle()
+    if (cur && ['confirmed', 'in_progress', 'completed'].includes(cur.status as string)) {
+      return NextResponse.json({ success: true, already_confirmed: true })
+    }
+    // Atomic claim: only the call that actually flips the status goes on to send the SMS
+    const { data: flipped, error: updateError } = await supabase
       .from('appointments')
       .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
       .eq('id', id)
+      .neq('status', 'confirmed')
+      .select('id')
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
+    if (!flipped || flipped.length === 0) return NextResponse.json({ success: true, already_confirmed: true })
 
     // Fetch appointment details for SMS
     const { data: appt } = await supabase
