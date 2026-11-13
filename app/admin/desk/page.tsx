@@ -2735,10 +2735,9 @@ export default function DeskAdmin() {
         // legend
         const lx = M + dSize + 30
         let ly = y + 36
-        const pct = (v: number) => totalPay > 0 ? `${Math.round((v / totalPay) * 100)}%` : '0%'
         const legend: [string, string, [number,number,number]][] = [
-          ['Commission', `${money(g.commission)}  (${pct(g.commission)})`, BLUE],
-          ['Tip share', `${money(g.tipShare)}  (${pct(g.tipShare)})`, ORANGE],
+          ['Commission', money(g.commission), BLUE],
+          ['Tip share', money(g.tipShare), ORANGE],
         ]
         legend.forEach(([label, val, col]) => {
           doc.setFillColor(...col)
