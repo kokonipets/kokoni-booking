@@ -8330,6 +8330,53 @@ export default function DeskAdmin() {
                                 <p className="text-xs text-gray-400 mt-0.5">${g.tips.toFixed(2)} collected × {g.tipRate}%</p>
                               </div>
                             </div>
+                            {(() => {
+                              const its = payrollReport.itemsByGroomer?.[g.name] || []
+                              if (its.length === 0) return null
+                              const fdShort = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                              const m = (n: number) => `$${(n || 0).toFixed(2)}`
+                              return (
+                                <div className="px-4 pb-3 border-t border-gray-100 pt-3 overflow-x-auto">
+                                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">📋 Appointment detail</p>
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="border-b border-gray-200 text-gray-500">
+                                        <th className="text-left font-semibold pb-1.5 pr-2">Date</th>
+                                        <th className="text-left font-semibold pb-1.5 pr-2">Dog</th>
+                                        <th className="text-left font-semibold pb-1.5 pr-2">Service</th>
+                                        <th className="text-right font-semibold pb-1.5 px-2">Amount</th>
+                                        <th className="text-right font-semibold text-sky-600 pb-1.5 px-2">Comm.</th>
+                                        <th className="text-right font-semibold text-emerald-600 pb-1.5 pl-2">Tip</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {its.map((it, i) => (
+                                        <tr key={i} className={!it.paid ? 'text-gray-400' : ''}>
+                                          <td className="py-1.5 pr-2 whitespace-nowrap">{i === 0 || its[i - 1].date !== it.date ? fdShort(it.date) : ''}</td>
+                                          <td className="py-1.5 pr-2">
+                                            <span className="font-semibold text-gray-800">{it.dog}</span>
+                                            {it.breed && <span className="text-gray-400"> · {it.breed}</span>}
+                                          </td>
+                                          <td className="py-1.5 pr-2">{it.service}{!it.paid && <span className="text-amber-500"> (unpaid)</span>}</td>
+                                          <td className="py-1.5 px-2 text-right">{m(it.amount)}</td>
+                                          <td className="py-1.5 px-2 text-right text-sky-700 font-semibold">{m(it.commission)}</td>
+                                          <td className="py-1.5 pl-2 text-right text-emerald-700 font-semibold">{m(it.tip)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                    <tfoot>
+                                      <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold text-gray-800">
+                                        <td className="py-2 pr-2">Subtotal</td>
+                                        <td className="py-2 pr-2" colSpan={2}>{its.filter(x => x.service !== 'Assist').length} appointments</td>
+                                        <td className="py-2 px-2 text-right">{m(its.reduce((t, x) => t + x.amount, 0))}</td>
+                                        <td className="py-2 px-2 text-right text-sky-700">{m(its.reduce((t, x) => t + x.commission, 0))}</td>
+                                        <td className="py-2 pl-2 text-right text-emerald-700">{m(its.reduce((t, x) => t + x.tip, 0))}</td>
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              )
+                            })()}
                             {(payrollReport.assistByGroomer?.[g.name]?.length ?? 0) > 0 && (
                               <div className="px-4 pb-3 border-t border-gray-100 pt-3">
                                 <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">🤝 Assist</p>
