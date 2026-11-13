@@ -258,7 +258,9 @@ export async function POST(req: NextRequest) {
     // 4b. Auto-translate customer notes (best-effort, don't block booking if it fails)
     if (notes && notes.trim() && appointment?.id) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
+        // Same origin as this request — the old VERCEL_URL fallback pointed at the per-deployment
+        // URL (often behind Vercel protection) or fell through to localhost, so translations silently failed.
+        const baseUrl = req.nextUrl.origin
         const tRes = await fetch(`${baseUrl}/api/translate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
