@@ -2660,6 +2660,12 @@ export default function DeskAdmin() {
           [`Tip share rate (your cut of tips)`, `${g.tipRate}%`],
           ['Tip share earned', money(g.tipShare)],
         ]
+        // Assist (already netted into commission / tip share above) — spelled out so it's easy to follow
+        const assistAll = payrollReport.assistByGroomer?.[g.name] || []
+        const assistOut = assistAll.filter(l => l.kind === 'by').reduce((t, l) => t + l.amount, 0)
+        const assistIn = assistAll.filter(l => l.kind === 'for').reduce((t, l) => t + l.amount, 0)
+        if (assistOut > 0) rows.push(['Assist paid to others (deducted above)', `-${money(assistOut)}`])
+        if (assistIn > 0) rows.push(['Assist earned from others (included above)', `+${money(assistIn)}`])
         const rowH = 24, tableW = W - M * 2
         rows.forEach((r, i) => {
           const ry = y + i * rowH
