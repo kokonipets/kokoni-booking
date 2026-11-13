@@ -836,6 +836,8 @@ export default function DeskAdmin() {
   type PayrollSent = { id: string; groomer_name: string; period_start: string; period_end: string; pay_date: string | null; total_pay: number | string; summary: { appts?: number; revenue?: number; commission?: number; tips?: number; tipShare?: number; assistOut?: number; assistIn?: number } | null; sent_by: string | null; sent_at: string }
   const [payrollSent, setPayrollSent] = useState<PayrollSent[]>([])
   const [payrollSendBusy, setPayrollSendBusy] = useState<string | null>(null)
+  const [payrollCurrentOpen, setPayrollCurrentOpen] = useState(true)
+  const [payDateOpen, setPayDateOpen] = useState<Record<string, boolean>>({})
 
   // Reports
   const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'next_payroll' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('today')
@@ -8249,74 +8251,31 @@ export default function DeskAdmin() {
               {/* ── Report Output ── */}
               {payrollReport && (
                 <>
-                  {/* Section 1: Daily Transactions */}
-                  <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h2 className="text-lg font-bold text-gray-800">📋 Daily Transactions</h2>
-                        <p className="text-xs text-gray-400 mt-0.5">{payrollStartDate} → {payrollEndDate}{payrollSelectedGroomer ? ` · ${payrollSelectedGroomer}` : ' · All Groomers'}</p>
-                      </div>
-                    </div>
-                    {payrollReport.daily.length === 0 ? (
-                      <p className="text-sm text-gray-500 py-4 text-center">No appointments found for this period.</p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b-2 border-gray-200">
-                              <th className="text-left text-xs font-semibold text-gray-500 pb-2 pr-3">Date</th>
-                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-2">Appts</th>
-                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-2">Revenue</th>
-                              <th className="text-right text-xs font-semibold text-sky-600 pb-2 px-2">Commission</th>
-                              <th className="text-right text-xs font-semibold text-gray-500 pb-2 px-2">Tips</th>
-                              <th className="text-right text-xs font-semibold text-emerald-600 pb-2 pl-2">Tip Share</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {payrollReport.daily.map(row => (
-                              <tr key={row.date} className="hover:bg-gray-50">
-                                <td className="py-2 pr-3 text-gray-800 font-medium whitespace-nowrap">
-                                  {new Date(row.date + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
-                                </td>
-                                <td className="py-2 px-2 text-right text-gray-600">{row.appts}</td>
-                                <td className="py-2 px-2 text-right text-gray-700">${row.revenue.toFixed(2)}</td>
-                                <td className="py-2 px-2 text-right text-sky-700 font-semibold">${row.commission.toFixed(2)}</td>
-                                <td className="py-2 px-2 text-right text-gray-500">${row.tips.toFixed(2)}</td>
-                                <td className="py-2 pl-2 text-right text-emerald-700 font-semibold">${row.tipShare.toFixed(2)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                          <tfoot>
-                            <tr className="border-t-2 border-gray-400 bg-gray-50">
-                              <td className="py-3 pr-3 text-sm font-bold text-gray-800">Period Total</td>
-                              <td className="py-3 px-2 text-right text-sm font-bold text-gray-800">
-                                {payrollReport.daily.reduce((s, r) => s + r.appts, 0)}
-                              </td>
-                              <td className="py-3 px-2 text-right text-sm font-bold text-gray-800">
-                                ${payrollReport.daily.reduce((s, r) => s + r.revenue, 0).toFixed(2)}
-                              </td>
-                              <td className="py-3 px-2 text-right text-sm font-bold text-sky-700">
-                                ${payrollReport.daily.reduce((s, r) => s + r.commission, 0).toFixed(2)}
-                              </td>
-                              <td className="py-3 px-2 text-right text-sm font-bold text-gray-500">
-                                ${payrollReport.daily.reduce((s, r) => s + r.tips, 0).toFixed(2)}
-                              </td>
-                              <td className="py-3 pl-2 text-right text-sm font-bold text-emerald-700">
-                                ${payrollReport.daily.reduce((s, r) => s + r.tipShare, 0).toFixed(2)}
-                              </td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-
                   {/* Section 2: Groomer Pay Summary */}
                   {payrollReport.groomers.length > 0 && (
                     <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                      <h2 className="text-lg font-bold text-gray-800 mb-1">💰 Groomer Pay Summary</h2>
-                      <p className="text-xs text-gray-400 mb-4">What each groomer earns for this period</p>
-                      <div className="space-y-4">
+                      {(() => {
+                        const fdl = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        const paidCount = payrollReport.groomers.filter(g => payrollSent.some(x => x.groomer_name === g.name && x.period_start === payrollStartDate && x.period_end === payrollEndDate)).length
+                        const total = payrollReport.groomers.reduce((t, g) => t + g.commission + g.tipShare, 0)
+                        return (
+                          <button onClick={() => setPayrollCurrentOpen(o => !o)} className="w-full flex items-center justify-between gap-3 text-left">
+                            <div>
+                              <h2 className="text-lg font-bold text-gray-800">💰 {payrollPayDate ? `Pay date ${fdl(payrollPayDate)}` : 'Pay period'}</h2>
+                              <p className="text-xs text-gray-400 mt-0.5">Pay period {fdl(payrollStartDate)} – {fdl(payrollEndDate)} · {payrollReport.groomers.length} groomer{payrollReport.groomers.length === 1 ? '' : 's'}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${paidCount === payrollReport.groomers.length ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                                {paidCount === payrollReport.groomers.length ? '✓ All paid' : `${paidCount}/${payrollReport.groomers.length} paid`}
+                              </span>
+                              <span className="text-xl font-bold text-purple-700">${total.toFixed(2)}</span>
+                              <span className="text-gray-400 text-sm">{payrollCurrentOpen ? '▲' : '▼'}</span>
+                            </div>
+                          </button>
+                        )
+                      })()}
+                      {payrollCurrentOpen && (<>
+                      <div className="space-y-4 mt-4">
                         {payrollReport.groomers.map(g => (
                           <div key={g.name} className="border border-gray-200 rounded-xl overflow-hidden">
                             <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
@@ -8332,14 +8291,14 @@ export default function DeskAdmin() {
                                     <div className="text-right">
                                       <button
                                         onClick={() => {
-                                          if (sent && !confirm(`${g.name}'s statement for this period was already sent. Send again and replace it?`)) return
+                                          if (sent && !confirm(`${g.name} was already confirmed and paid for this period. Send again and replace the statement?`)) return
                                           exportPayrollPDF(g.name)
                                         }}
                                         disabled={!!payrollSendBusy || actionLoading === 'payroll-pdf'}
                                         className={`text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50 ${sent ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-purple-600 text-white hover:bg-purple-700'}`}>
-                                        {busy ? '⏳ Sending…' : sent ? '✓ Sent · Resend' : '📤 Send to groomer'}
+                                        {busy ? '⏳ Sending…' : sent ? '✓ Paid · Resend' : '✓ Confirm & Pay'}
                                       </button>
-                                      {sent && <p className="text-[11px] text-gray-400 mt-1">{new Date(sent.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{sent.sent_by ? ` · ${sent.sent_by}` : ''}</p>}
+                                      {sent && <p className="text-[11px] text-gray-400 mt-1">Paid {new Date(sent.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{sent.sent_by ? ` · ${sent.sent_by}` : ''}</p>}
                                     </div>
                                   )
                                 })()}
@@ -8386,6 +8345,7 @@ export default function DeskAdmin() {
                           </span>
                         </div>
                       )}
+                      </>)}
                     </div>
                   )}
                 </>
@@ -8393,10 +8353,10 @@ export default function DeskAdmin() {
 
               {/* Sent payrolls — what each groomer can see in their dashboard, grouped by pay date */}
               <div className="bg-white rounded-2xl border border-gray-200 p-6">
-                <h2 className="text-lg font-bold text-gray-800 mb-1">📤 Sent Payrolls</h2>
-                <p className="text-xs text-gray-400 mb-4">Statements you've sent to groomers (they see them in the Payroll tab of their dashboard). Newest pay date first.</p>
+                <h2 className="text-lg font-bold text-gray-800 mb-1">📅 Pay Dates</h2>
+                <p className="text-xs text-gray-400 mb-4">Pay dates you've confirmed and paid (groomers see them in the Payroll tab of their dashboard). Newest first — tap a pay date to see each groomer.</p>
                 {payrollSent.length === 0 ? (
-                  <p className="text-sm text-gray-400">Nothing sent yet. Generate a report above, then use “Send to groomer” on each groomer.</p>
+                  <p className="text-sm text-gray-400">Nothing confirmed yet. Generate a report above, then press “Confirm &amp; Pay” on each groomer.</p>
                 ) : (() => {
                   const groups: { key: string; payDate: string | null; rows: PayrollSent[] }[] = []
                   payrollSent.forEach(r => {
@@ -8410,19 +8370,26 @@ export default function DeskAdmin() {
                     <div className="space-y-4">
                       {groups.map(grp => (
                         <div key={grp.key} className="border border-gray-200 rounded-xl overflow-hidden">
-                          <div className="bg-gray-50 px-4 py-2.5 flex items-center justify-between">
-                            <p className="font-bold text-gray-800 text-sm">
-                              {grp.payDate ? `Pay date ${fd(grp.payDate)}` : `Period ending ${fd(grp.rows[0].period_end)}`}
-                            </p>
-                            <p className="text-xs text-gray-500">{grp.rows.length} sent · <span className="font-semibold text-purple-700">${grp.rows.reduce((t, r) => t + Number(r.total_pay || 0), 0).toFixed(2)}</span></p>
-                          </div>
-                          <div className="divide-y divide-gray-100">
+                          <button onClick={() => setPayDateOpen(o => ({ ...o, [grp.key]: !o[grp.key] }))} className="w-full bg-gray-50 px-4 py-3 flex items-center justify-between text-left">
+                            <div>
+                              <p className="font-bold text-gray-800 text-sm">
+                                {grp.payDate ? `Pay date ${fd(grp.payDate)}` : `Period ending ${fd(grp.rows[0].period_end)}`}
+                              </p>
+                              <p className="text-xs text-gray-400">Pay period {fd(grp.rows[0].period_start)} – {fd(grp.rows[0].period_end)}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-gray-500">{grp.rows.length} paid</span>
+                              <span className="font-bold text-purple-700">${grp.rows.reduce((t, r) => t + Number(r.total_pay || 0), 0).toFixed(2)}</span>
+                              <span className="text-gray-400 text-sm">{payDateOpen[grp.key] ? '▲' : '▼'}</span>
+                            </div>
+                          </button>
+                          {payDateOpen[grp.key] && <div className="divide-y divide-gray-100">
                             {grp.rows.map(r => (
                               <div key={r.id} className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
                                 <div>
                                   <p className="text-sm font-semibold text-gray-800">{r.groomer_name}</p>
                                   <p className="text-xs text-gray-400">
-                                    Period {fd(r.period_start)} – {fd(r.period_end)} · sent {new Date(r.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{r.sent_by ? ` by ${r.sent_by}` : ''}
+                                    Paid {new Date(r.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{r.sent_by ? ` by ${r.sent_by}` : ''}
                                   </p>
                                   {r.summary && (
                                     <p className="text-xs text-gray-500 mt-0.5">
@@ -8439,7 +8406,7 @@ export default function DeskAdmin() {
                                 </div>
                               </div>
                             ))}
-                          </div>
+                          </div>}
                         </div>
                       ))}
                     </div>
