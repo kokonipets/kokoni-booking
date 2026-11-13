@@ -4062,6 +4062,20 @@ function ApptCard({
               <p className="text-xs text-gray-400 mt-1">📨 Requested {formatRequestedAt(appt.created_at)}</p>
             )}
 
+            {/* Customer request from booking — shown right on the card so groomers don't miss it */}
+            {appt.notes && appt.notes.trim() && (() => {
+              const zh = (appt as unknown as { notes_chinese?: string | null }).notes_chinese
+              return (
+                <div className="mt-1.5 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-2 py-1.5">
+                  <p className="font-bold text-amber-700 mb-0.5">📝 客人備註 Customer note</p>
+                  <p className="whitespace-pre-wrap">{appt.notes}</p>
+                  {zh && zh.trim() && zh.trim() !== appt.notes.trim() && (
+                    <p className="whitespace-pre-wrap text-amber-800/80 mt-1 flex gap-1 items-start"><span className="inline-flex items-center justify-center w-4 h-4 rounded bg-red-500 text-white text-[10px] font-bold leading-none flex-shrink-0 mt-px">中</span><span>{zh}</span></p>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* Notes chips (exclude add-on entries) */}
             {appt.notes_list && appt.notes_list.filter((n: {is_addon?: boolean}) => !n.is_addon).length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">

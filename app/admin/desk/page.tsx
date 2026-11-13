@@ -536,6 +536,9 @@ export default function DeskAdmin() {
   const [detailApptBackStack, setDetailApptBackStack] = useState<Appointment[]>([])
   const [detailClient, setDetailClient] = useState<ClientRecord | null>(null)
   const [detailClientLoading, setDetailClientLoading] = useState(false)
+  // Service History is per pet (not the whole household)
+  const histPetId = detailAppt?.pet_id ?? detailAppt?.pets?.id ?? null
+  const histAppts = (detailClient?.appointments ?? []).filter(a => !histPetId || !a.pet_id || a.pet_id === histPetId)
   const [smsConsentSaving, setSmsConsentSaving] = useState(false)
   // Which History-tab past visit is expanded inline (view details without
   // leaving the current appointment popup).
@@ -824,9 +827,10 @@ export default function DeskAdmin() {
   const [payrollNotes, setPayrollNotes] = useState('')
   const [payrollSelectedGroomer, setPayrollSelectedGroomer] = useState('')
   type PayrollDailyRow = {date:string;appts:number;revenue:number;tips:number;commission:number;tipShare:number}
+  type PayrollItemRow = {date:string;dog:string;breed:string;service:string;amount:number;commission:number;tip:number;paid:boolean}
   type PayrollGroomerRow = {name:string;helperJobs?:number;appts:number;revenue:number;tips:number;commission:number;tipShare:number;commRate:number;tipRate:number}
   type PayrollAssistLine = {date:string;pet:string;kind:'by'|'for';other:string;amount:number}
-  type PayrollReportData = {daily: PayrollDailyRow[]; groomers: PayrollGroomerRow[]; dailyByGroomer: Record<string, PayrollDailyRow[]>; assistByGroomer?: Record<string, PayrollAssistLine[]>}
+  type PayrollReportData = {daily: PayrollDailyRow[]; groomers: PayrollGroomerRow[]; dailyByGroomer: Record<string, PayrollDailyRow[]>; itemsByGroomer: Record<string, PayrollItemRow[]>; assistByGroomer?: Record<string, PayrollAssistLine[]>}
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
 
   // Reports
@@ -2254,14 +2258,19 @@ export default function DeskAdmin() {
 
       // ── Per-groomer daily breakdown (for per-groomer PDF detail tables) ──
       const dailyByGroomer: Record<string, PayrollDailyRow[]> = {}
+      const itemsByGroomer: Record<string, PayrollItemRow[]> = {}
       groomersToShow.forEach(member => {
         const mByDate: Record<string, {appts:number;revenue:number;tips:number;commission:number;tipShare:number}> = {}
-        appts.filter((a: any) => sameStaff(a.assigned_groomer, member.name)).forEach((a: any) => {
+        const memberItems: PayrollItemRow[] = []
+        appts.filter((a: any) => sameStaff(a.assigned_groomer, member.name))
+          .sort((a: any, b: any) => `${a.appointment_date} ${a.appointment_time || ''}`.localeCompare(`${b.appointment_date} ${b.appointment_time || ''}`))
+          .forEach((a: any) => {
           const d = a.appointment_date
           const cRate = ratesOn(member, d).commission / 100
           const tRate = ratesOn(member, d).tip / 100
           if (!mByDate[d]) mByDate[d] = { appts: 0, revenue: 0, tips: 0, commission: 0, tipShare: 0 }
           mByDate[d].appts += 1
+          let itAmount = 0, itComm = 0, itTip = 0
           if (a.payment_status === 'paid') {
             // revenue shown is always pre-discount; commission base depends
             // on this appointment's discount_bearer (lib/commission.ts).
@@ -2275,7 +2284,17 @@ export default function DeskAdmin() {
             const cut = ownerShare(a).cut
             mByDate[d].commission += commBase * cRate - cut.comm
             mByDate[d].tipShare += tip * tRate - cut.tip
+            itAmount = rev
+            itComm = commBase * cRate - cut.comm
+            itTip = tip * tRate - cut.tip
           }
+          memberItems.push({
+            date: d,
+            dog: a.pets?.name || '—',
+            breed: a.pets?.breed || '',
+            service: serviceMap[a.service] ?? a.service ?? '',
+            amount: itAmount, commission: itComm, tip: itTip, paid: a.payment_status === 'paid',
+          })
         })
         // Helper income on other groomers' appointments
         appts.filter((a: any) => sameStaff(a.helper_groomer, member.name) && !sameStaff(a.assigned_groomer, member.name) && a.payment_status === 'paid').forEach((a: any) => {
@@ -2284,7 +2303,9 @@ export default function DeskAdmin() {
           const cut = ownerShare(a).cut
           mByDate[d].commission += cut.comm
           mByDate[d].tipShare += cut.tip
+          memberItems.push({ date: d, dog: `${a.pets?.name || '—'} (assist for ${a.assigned_groomer || '—'})`, breed: '', service: 'Assist', amount: 0, commission: cut.comm, tip: cut.tip, paid: true })
         })
+        itemsByGroomer[member.name] = memberItems
         dailyByGroomer[member.name] = Object.entries(mByDate)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([date, v]) => ({ date, appts: v.appts, revenue: v.revenue, tips: v.tips, commission: v.commission, tipShare: v.tipShare }))
@@ -2301,7 +2322,7 @@ export default function DeskAdmin() {
       })
       Object.values(assistByGroomer).forEach(l => l.sort((x, y) => x.date.localeCompare(y.date)))
 
-      setPayrollReport({ daily, groomers, dailyByGroomer, assistByGroomer })
+      setPayrollReport({ daily, groomers, dailyByGroomer, itemsByGroomer, assistByGroomer })
     } catch (e) {
       console.error(e)
       alert('Error generating payroll report')
@@ -2682,54 +2703,96 @@ export default function DeskAdmin() {
           ly += 40
         })
 
-        // ── Daily detail table ──
-        const daily = payrollReport.dailyByGroomer[g.name] || []
+        // ── Daily detail table (one row per dog, like the Unicorn statement) ──
+        const items = payrollReport.itemsByGroomer?.[g.name] || []
         let dy = y + dSize + 36
         doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK)
         doc.text('Daily Detail', M, dy)
         dy += 14
-        const cols = [
-          { label: 'Date', x: M + 8, align: 'left' as const },
-          { label: 'Appts', x: M + 130, align: 'right' as const },
-          { label: 'Revenue', x: M + 230, align: 'right' as const },
-          { label: 'Tips', x: M + 330, align: 'right' as const },
-          { label: 'Commission', x: M + 440, align: 'right' as const },
-          { label: 'Tip Share', x: W - M - 8, align: 'right' as const },
-        ]
+        const cDate = M + 6
+        const cDog = M + 92
+        const cSvc = M + 210
+        const cAmt = W - M - 168   // right
+        const cComm = W - M - 78   // right
+        const cTip = W - M - 6     // right
+        const svcMaxW = cAmt - 48 - cSvc
+        // jsPDF's built-in font can't draw CJK / fancy characters (garbles the whole string) --
+        // swap look-alikes for ASCII and drop anything outside the font's range.
+        const PDF_CHAR_MAP: Record<string, string> = { '【': '[', '】': ']', '〔': '[', '〕': ']', '（': '(', '）': ')', '↳': '-' }
+        const PDF_SAFE_EXTRA = /[–—‘’“”•… -ÿ]/
+        const pdfSafe = (text: string) => {
+          if (!text) return ''
+          let out = ''
+          for (const ch of text) {
+            if (PDF_CHAR_MAP[ch]) { out += PDF_CHAR_MAP[ch]; continue }
+            const code = ch.codePointAt(0) || 0
+            if (code < 0x2000 || PDF_SAFE_EXTRA.test(ch)) out += ch
+          }
+          return out
+        }
+        const fit = (rawText: string, maxW: number) => {
+          const text = pdfSafe(rawText)
+          if (!text) return ''
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+          if (doc.getTextWidth(text) <= maxW) return text
+          let t = text
+          while (t.length > 1 && doc.getTextWidth(t + '…') > maxW) t = t.slice(0, -1)
+          return t + '…'
+        }
         const drawDailyHeader = (hy: number) => {
           doc.setFillColor(...SKY)
           doc.rect(M, hy, W - M * 2, 22, 'F')
           doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
-          cols.forEach(c => doc.text(c.label, c.x, hy + 15, { align: c.align }))
+          doc.text('Date', cDate, hy + 15)
+          doc.text('Dog', cDog, hy + 15)
+          doc.text('Service', cSvc, hy + 15)
+          doc.text('Amount', cAmt, hy + 15, { align: 'right' })
+          doc.text('Comm.', cComm, hy + 15, { align: 'right' })
+          doc.text('Tip', cTip, hy + 15, { align: 'right' })
           return hy + 22
         }
         dy = drawDailyHeader(dy)
-        const drH = 20
-        const renderRow = (cells: string[], ry: number, shade: boolean, bold = false) => {
-          if (shade) { doc.setFillColor(247, 250, 254); doc.rect(M, ry, W - M * 2, drH, 'F') }
-          doc.setTextColor(...INK); doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(9)
-          cols.forEach((c, i) => doc.text(cells[i], c.x, ry + 14, { align: c.align }))
-        }
-        daily.forEach((r, i) => {
-          if (dy > H - 70) { doc.addPage(); dy = M; dy = drawDailyHeader(dy) }
-          renderRow([fmtDate(r.date), String(r.appts), money(r.revenue), money(r.tips), money(r.commission), money(r.tipShare)], dy, i % 2 === 0)
+        const drH = 26
+        let prevDate = '', groupIdx = -1
+        items.forEach((it) => {
+          if (dy > H - 70) { doc.addPage(); dy = M; prevDate = ''; dy = drawDailyHeader(dy) }
+          const newDate = it.date !== prevDate
+          if (newDate) groupIdx += 1
+          if (groupIdx % 2 === 1) { doc.setFillColor(247, 250, 254); doc.rect(M, dy, W - M * 2, drH, 'F') }
+          if (newDate) {
+            doc.setTextColor(...BLUE); doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
+            doc.text(fmtDate(it.date), cDate, dy + 16)
+          }
+          doc.setTextColor(...INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5)
+          doc.text(fit(it.dog || '—', cSvc - cDog - 6) || '—', cDog, dy + (it.breed ? 12 : 16))
+          if (it.breed) {
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...GREY)
+            doc.text(fit(it.breed, cSvc - cDog - 6), cDog, dy + 21)
+          }
+          doc.setTextColor(...INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+          doc.text(fit(it.service || '', svcMaxW), cSvc, dy + 16)
+          doc.text(money(it.amount), cAmt, dy + 16, { align: 'right' })
+          doc.text(money(it.commission), cComm, dy + 16, { align: 'right' })
+          doc.text(money(it.tip), cTip, dy + 16, { align: 'right' })
+          prevDate = it.date
           dy += drH
         })
-        if (daily.length === 0) {
+        if (items.length === 0) {
           doc.setTextColor(...GREY); doc.setFont('helvetica', 'italic'); doc.setFontSize(9)
-          doc.text('No appointments in this period.', M + 8, dy + 14); dy += drH
+          doc.text('No appointments in this period.', cDate, dy + 14); dy += drH
         } else {
           if (dy > H - 70) { doc.addPage(); dy = M }
-          doc.setFillColor(...LIGHT); doc.rect(M, dy, W - M * 2, drH + 2, 'F')
-          renderRow([
-            'TOTAL',
-            String(daily.reduce((s, r) => s + r.appts, 0)),
-            money(daily.reduce((s, r) => s + r.revenue, 0)),
-            money(daily.reduce((s, r) => s + r.tips, 0)),
-            money(daily.reduce((s, r) => s + r.commission, 0)),
-            money(daily.reduce((s, r) => s + r.tipShare, 0)),
-          ], dy, false, true)
-          dy += drH + 2
+          doc.setFillColor(...LIGHT); doc.rect(M, dy, W - M * 2, drH, 'F')
+          doc.setTextColor(...INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5)
+          doc.text('SUBTOTAL', cDate, dy + 16)
+          doc.setFont('helvetica', 'normal')
+          const nAppts = items.filter(it => it.service !== 'Assist').length
+          doc.text(`${nAppts} appointment${nAppts === 1 ? '' : 's'}`, cDog, dy + 16)
+          doc.setFont('helvetica', 'bold')
+          doc.text(money(items.reduce((t, it) => t + it.amount, 0)), cAmt, dy + 16, { align: 'right' })
+          doc.text(money(items.reduce((t, it) => t + it.commission, 0)), cComm, dy + 16, { align: 'right' })
+          doc.text(money(items.reduce((t, it) => t + it.tip, 0)), cTip, dy + 16, { align: 'right' })
+          dy += drH
         }
 
         // ── Assist detail (who this person paid / assisted) ──
@@ -5063,14 +5126,14 @@ export default function DeskAdmin() {
                     <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Service History</p>
                       {detailClient && (
-                        <span className="text-xs text-gray-400">{detailClient.appointments.length} visit{detailClient.appointments.length !== 1 ? 's' : ''} total</span>
+                        <span className="text-xs text-gray-400">{histAppts.length} visit{histAppts.length !== 1 ? 's' : ''} total</span>
                       )}
                     </div>
                     {detailClientLoading ? (
                       <div className="px-4 py-5 bg-white text-center"><p className="text-sm text-gray-400">Loading…</p></div>
-                    ) : detailClient && detailClient.appointments.length > 0 ? (
+                    ) : detailClient && histAppts.length > 0 ? (
                       <div className="divide-y divide-gray-50">
-                        {[...detailClient.appointments]
+                        {[...histAppts]
                           .sort((a, b) => new Date(b.appointment_date).getTime() - new Date(a.appointment_date).getTime())
                           .map(a => (
                             <div key={a.id}>
@@ -5888,6 +5951,19 @@ export default function DeskAdmin() {
                                       {hasNotes && <span className="ml-1.5 text-xs bg-amber-100 text-amber-700 font-semibold px-1.5 py-0.5 rounded-md">📝</span>}
                                     </p>
                                     <p className="text-xs text-gray-400">{firstName(appt.clients?.name)} · {appt.client_phone}</p>
+                                    {/* Customer request from booking, shown inline so the desk sees it at a glance */}
+                                    {appt.notes && appt.notes.trim() && (
+                                      <div className="mt-1.5 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-2 py-1.5">
+                                        <p className="font-bold text-amber-700 mb-0.5">📝 客人備註 Customer note</p>
+                                        <p className="whitespace-pre-wrap">{appt.notes}</p>
+                                        {appt.notes_chinese && appt.notes_chinese.trim() && appt.notes_chinese.trim() !== appt.notes.trim() && (
+                                          <p className="whitespace-pre-wrap text-amber-800/80 mt-1 flex gap-1 items-start">
+                                            <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-red-500 text-white text-[10px] font-bold leading-none flex-shrink-0 mt-px">中</span>
+                                            <span>{appt.notes_chinese}</span>
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
 
@@ -8338,12 +8414,15 @@ export default function DeskAdmin() {
                 const svcRes = cashierService && cashierService !== appt.service
                   ? await fetch(`/api/admin/appointments/${appt.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'change-service', service: cashierService }) })
                   : null
-                if ((await res.json()).success) {
+                const editData = await res.json().catch(() => ({} as { success?: boolean; error?: string }))
+                if (editData.success) {
                   setReportsAppts(prev => prev.map(x => x.id === appt.id
                     ? { ...x, payment_amount: cashierAmount, tip_amount: totalTipStr(), extra_tip_amount: extraTipStr(), extra_tip_method: extraTipStr() ? cashierExtraMethod : null, service: cashierService || x.service }
                     : x))
                   setCashierExpandedId(null); setCashierMode(null)
                   showToast('✓ Updated!')
+                } else {
+                  showToast(`⚠️ Could not save: ${editData.error || 'please try again'}`)
                 }
                 void svcRes
               } catch {/**/}
@@ -8427,8 +8506,8 @@ export default function DeskAdmin() {
                       <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
                         <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">Tip $</span>
                         <input type="number" min="0" step="0.01" placeholder="0"
-                          value={cashierTip} onChange={e => setCashierTip(e.target.value)}
-                          className="w-16 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
+                          value={cashierTip} onChange={e => setCashierTip(e.target.value)} onFocus={e => e.target.select()}
+                          className="w-24 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
                       </div>
                       <div className="flex items-center border border-green-200 rounded-lg overflow-hidden bg-green-50" title="Extra tip paid another way (e.g. cash on top of a card tip)">
                         <span className="text-xs text-green-700 px-2 border-r border-green-200 py-1.5">+ Extra tip $</span>
@@ -8472,8 +8551,8 @@ export default function DeskAdmin() {
                       <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
                         <span className="text-xs text-gray-400 px-2 border-r border-gray-200 py-1.5">Tip $</span>
                         <input type="number" min="0" step="0.01" placeholder="0"
-                          value={cashierTip} onChange={e => setCashierTip(e.target.value)}
-                          className="w-16 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
+                          value={cashierTip} onChange={e => setCashierTip(e.target.value)} onFocus={e => e.target.select()}
+                          className="w-24 text-sm font-bold text-gray-800 py-1.5 px-2 focus:outline-none" />
                       </div>
                       <div className="flex items-center border border-green-200 rounded-lg overflow-hidden bg-green-50" title="Extra tip paid another way (e.g. cash on top of a card tip)">
                         <span className="text-xs text-green-700 px-2 border-r border-green-200 py-1.5">+ Extra tip $</span>
