@@ -62,7 +62,12 @@ export async function POST(req: NextRequest) {
   const sentBy = decodeURIComponent(req.headers.get('x-actor-name') || '') || 'Admin'
   const path = `${periodEnd}/${slug(groomerName)}-${Date.now()}.pdf`
   const bytes = Buffer.from(await file.arrayBuffer())
-  const up = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: 'application/pdf', upsert: false })
+  let up = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: 'application/pdf', upsert: false })
+  if (up.error && /bucket.*not found/i.test(up.error.message)) {
+    // First send ever: create the private bucket on the fly, then retry
+    await supabase.storage.createBucket(BUCKET, { public: false })
+    up = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: 'application/pdf', upsert: false })
+  }
   if (up.error) return NextResponse.json({ error: `Upload failed: ${up.error.message}` }, { status: 500 })
 
   // Remember the older statement(s) for the same groomer + period so we can replace them
