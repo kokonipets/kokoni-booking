@@ -258,17 +258,41 @@ export default function GroomerDashboard() {
   const [sentError, setSentError] = useState('')
   const [openStatementId, setOpenStatementId] = useState<string | null>(null)
   const [pdfBusyId, setPdfBusyId] = useState<string | null>(null)
+  // Which statements this groomer has already looked at (per device)
+  const [seenPayrollIds, setSeenPayrollIds] = useState<string[] | null>(null)
+  const [newPayrollIds, setNewPayrollIds] = useState<string[]>([])
+  const payrollSeenKey = `kokoni_payroll_seen_${(user?.name || '').trim().split(/\s+/)[0]?.toLowerCase() || 'x'}`
   useEffect(() => {
-    if (activeTab !== 'payroll' || !user?.name) return
+    if (!user?.name) return
+    try { setSeenPayrollIds(JSON.parse(localStorage.getItem(payrollSeenKey) || '[]')) } catch { setSeenPayrollIds([]) }
+  }, [user?.name, payrollSeenKey])
+  // Load sent statements on open, when switching tabs, and every minute (so the red badge shows up on its own)
+  useEffect(() => {
+    if (!user?.name) return
     let cancelled = false
-    setSentLoading(true); setSentError('')
-    fetch(`/api/groomer/payroll-statements?staff_name=${encodeURIComponent(user.name)}`, { cache: 'no-store' })
-      .then(r => r.json())
-      .then(d => { if (!cancelled) { if (d.error) setSentError(d.error); else setSentStatements(d.statements ?? []) } })
-      .catch(() => { if (!cancelled) setSentError('Could not load payroll statements') })
-      .finally(() => { if (!cancelled) setSentLoading(false) })
-    return () => { cancelled = true }
+    const load = (showSpinner: boolean) => {
+      if (showSpinner) { setSentLoading(true); setSentError('') }
+      fetch(`/api/groomer/payroll-statements?staff_name=${encodeURIComponent(user.name)}`, { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => { if (!cancelled) { if (d.error) { if (showSpinner) setSentError(d.error) } else setSentStatements(d.statements ?? []) } })
+        .catch(() => { if (!cancelled && showSpinner) setSentError('Could not load payroll statements') })
+        .finally(() => { if (!cancelled && showSpinner) setSentLoading(false) })
+    }
+    load(activeTab === 'payroll')
+    const t = setInterval(() => load(false), 60000)
+    return () => { cancelled = true; clearInterval(t) }
   }, [activeTab, user?.name])
+  const payrollUnread = seenPayrollIds ? sentStatements.filter(st => !seenPayrollIds.includes(st.id)).length : 0
+  // Opening the Payroll tab clears the badge (cards that were new keep a small "New" tag for this visit)
+  useEffect(() => {
+    if (activeTab !== 'payroll' || !seenPayrollIds || sentStatements.length === 0) return
+    const unseen = sentStatements.map(st => st.id).filter(id => !seenPayrollIds.includes(id))
+    if (unseen.length === 0) return
+    setNewPayrollIds(prev => Array.from(new Set([...prev, ...unseen])))
+    const next = Array.from(new Set([...seenPayrollIds, ...unseen]))
+    setSeenPayrollIds(next)
+    try { localStorage.setItem(payrollSeenKey, JSON.stringify(next)) } catch { /* ignore */ }
+  }, [activeTab, sentStatements, seenPayrollIds, payrollSeenKey])
   const prevPendingCountRef = useRef<number | null>(null)
   const [updateLoading, setUpdateLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -1564,6 +1588,7 @@ export default function GroomerDashboard() {
     {
       key: 'payroll',
       label: 'Payroll',
+      badge: payrollUnread || undefined,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
           <path d="M6 3h9l4 4v14H6z" />
@@ -3526,7 +3551,10 @@ export default function GroomerDashboard() {
               <div key={st.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                 <button onClick={() => setOpenStatementId(open ? null : st.id)} className="w-full px-4 py-3.5 flex items-center justify-between text-left">
                   <div>
-                    <p className="text-sm font-bold text-gray-800">{st.pay_date ? `Pay date ${fd(st.pay_date)}` : `Period ending ${fd(st.period_end)}`}</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {st.pay_date ? `Pay date ${fd(st.pay_date)}` : `Period ending ${fd(st.period_end)}`}
+                      {newPayrollIds.includes(st.id) && <span className="ml-2 align-middle text-[10px] font-bold text-white bg-red-500 rounded-full px-1.5 py-0.5">NEW</span>}
+                    </p>
                     <p className="text-xs text-gray-400 mt-0.5">Pay period {fs(st.period_start)} – {fs(st.period_end)}</p>
                   </div>
                   <div className="text-right">
