@@ -837,6 +837,12 @@ export default function DeskAdmin() {
   const [payrollSent, setPayrollSent] = useState<PayrollSent[]>([])
   const [payrollSendBusy, setPayrollSendBusy] = useState<string | null>(null)
   const [payrollCurrentOpen, setPayrollCurrentOpen] = useState(true)
+  // "Nov. 13, 2026" style (AP abbreviations) so the pay date reads clearly
+  const fmtPayDate = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number)
+    const MONTHS = ['Jan.', 'Feb.', 'March', 'April', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.']
+    return `${MONTHS[m - 1]} ${d}, ${y}`
+  }
   const [payDateOpen, setPayDateOpen] = useState<Record<string, boolean>>({})
 
   // Reports
@@ -8261,7 +8267,8 @@ export default function DeskAdmin() {
                         return (
                           <button onClick={() => setPayrollCurrentOpen(o => !o)} className="w-full flex items-center justify-between gap-3 text-left">
                             <div>
-                              <h2 className="text-lg font-bold text-gray-800">💰 {payrollPayDate ? `Pay date ${fdl(payrollPayDate)}` : 'Pay period'}</h2>
+                              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">💰 Pay date</p>
+                              <h2 className="text-xl font-bold text-gray-800">{payrollPayDate ? fmtPayDate(payrollPayDate) : 'Not set'}</h2>
                               <p className="text-xs text-gray-400 mt-0.5">Pay period {fdl(payrollStartDate)} – {fdl(payrollEndDate)} · {payrollReport.groomers.length} groomer{payrollReport.groomers.length === 1 ? '' : 's'}</p>
                             </div>
                             <div className="flex items-center gap-3">
@@ -8278,8 +8285,9 @@ export default function DeskAdmin() {
                       <div className="space-y-4 mt-4">
                         {payrollReport.groomers.map(g => (
                           <div key={g.name} className="border border-gray-200 rounded-xl overflow-hidden">
-                            <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
+                            <div className="bg-gray-50 px-4 py-3 flex items-center justify-between cursor-pointer select-none" onClick={() => setPayDateOpen(o => ({ ...o, [`grm:${g.name}`]: !o[`grm:${g.name}`] }))}>
                               <div>
+                                <span className="text-gray-400 text-xs mr-2">{payDateOpen[`grm:${g.name}`] ? '▲' : '▼'}</span>
                                 <span className="font-bold text-gray-800">{g.name}</span>
                                 <span className="text-xs text-gray-500 ml-2">{g.appts} appointment{g.appts !== 1 ? 's' : ''}</span>
                               </div>
@@ -8290,11 +8298,13 @@ export default function DeskAdmin() {
                                   return (
                                     <div className="text-right">
                                       <button
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                          e.stopPropagation() // don't toggle the detail dropdown
+                                          if (payrollSendBusy || actionLoading === 'payroll-pdf') return // one at a time, without greying out the others
                                           if (sent && !confirm(`${g.name} was already confirmed and paid for this period. Send again and replace the statement?`)) return
                                           exportPayrollPDF(g.name)
                                         }}
-                                        disabled={!!payrollSendBusy || actionLoading === 'payroll-pdf'}
+                                        disabled={busy}
                                         className={`text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50 ${sent ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-purple-600 text-white hover:bg-purple-700'}`}>
                                         {busy ? '⏳ Sending…' : sent ? '✓ Paid · Resend' : '✓ Confirm & Pay'}
                                       </button>
@@ -8308,6 +8318,7 @@ export default function DeskAdmin() {
                                 </div>
                               </div>
                             </div>
+                            {payDateOpen[`grm:${g.name}`] && (<>
                             <div className="px-4 py-3 grid grid-cols-2 gap-4">
                               <div>
                                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Commission</p>
@@ -8334,6 +8345,7 @@ export default function DeskAdmin() {
                                 <p className="text-[11px] text-gray-400 mt-1">Already included in the totals above.</p>
                               </div>
                             )}
+                            </>)}
                           </div>
                         ))}
                       </div>
@@ -8372,8 +8384,9 @@ export default function DeskAdmin() {
                         <div key={grp.key} className="border border-gray-200 rounded-xl overflow-hidden">
                           <button onClick={() => setPayDateOpen(o => ({ ...o, [grp.key]: !o[grp.key] }))} className="w-full bg-gray-50 px-4 py-3 flex items-center justify-between text-left">
                             <div>
-                              <p className="font-bold text-gray-800 text-sm">
-                                {grp.payDate ? `Pay date ${fd(grp.payDate)}` : `Period ending ${fd(grp.rows[0].period_end)}`}
+                              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Pay date</p>
+                              <p className="font-bold text-gray-800 text-base">
+                                {grp.payDate ? fmtPayDate(grp.payDate) : `Period ending ${fd(grp.rows[0].period_end)}`}
                               </p>
                               <p className="text-xs text-gray-400">Pay period {fd(grp.rows[0].period_start)} – {fd(grp.rows[0].period_end)}</p>
                             </div>
