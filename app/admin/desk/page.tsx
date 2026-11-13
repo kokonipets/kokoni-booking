@@ -832,6 +832,10 @@ export default function DeskAdmin() {
   type PayrollAssistLine = {date:string;pet:string;kind:'by'|'for';other:string;amount:number}
   type PayrollReportData = {daily: PayrollDailyRow[]; groomers: PayrollGroomerRow[]; dailyByGroomer: Record<string, PayrollDailyRow[]>; itemsByGroomer: Record<string, PayrollItemRow[]>; assistByGroomer?: Record<string, PayrollAssistLine[]>}
   const [payrollReport, setPayrollReport] = useState<PayrollReportData|null>(null)
+  // Statements already sent to groomers (their Payroll tab shows these)
+  type PayrollSent = { id: string; groomer_name: string; period_start: string; period_end: string; pay_date: string | null; total_pay: number | string; summary: { appts?: number; revenue?: number; commission?: number; tips?: number; tipShare?: number; assistOut?: number; assistIn?: number } | null; sent_by: string | null; sent_at: string }
+  const [payrollSent, setPayrollSent] = useState<PayrollSent[]>([])
+  const [payrollSendBusy, setPayrollSendBusy] = useState<string | null>(null)
 
   // Reports
   const [reportsRange, setReportsRange] = useState<'today' | 'week' | 'next_payroll' | 'this_payroll' | 'last_payroll' | 'month' | 'last_month' | 'all' | 'custom'>('today')
@@ -2483,10 +2487,39 @@ export default function DeskAdmin() {
     XLSX.writeFile(wb, filename)
   }, [payrollReport, payrollStartDate, payrollEndDate, payrollSelectedGroomer])
 
-  // Export payroll report to per-groomer PDF statements (one file each; zipped if multiple)
-  const exportPayrollPDF = useCallback(async () => {
+  const fetchPayrollSent = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/payroll-statements', { cache: 'no-store' })
+      const data = await res.json()
+      setPayrollSent(Array.isArray(data.statements) ? data.statements : [])
+    } catch { /* silent */ }
+  }, [])
+
+  const openSentStatement = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/payroll-statements?id=${encodeURIComponent(id)}`, { cache: 'no-store' })
+      const data = await res.json()
+      if (data.url) window.open(data.url, '_blank')
+      else alert(data.error || 'Could not open the PDF')
+    } catch { alert('Could not open the PDF') }
+  }, [])
+
+  const unsendStatement = useCallback(async (id: string, name: string) => {
+    if (!confirm(`Un-send ${name}'s payroll statement? They will no longer see it.`)) return
+    try {
+      const res = await fetch(`/api/admin/payroll-statements?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error || 'Could not un-send'); return }
+      await fetchPayrollSent()
+    } catch { alert('Could not un-send') }
+  }, [fetchPayrollSent])
+
+  // Export payroll report to per-groomer PDF statements (one file each; zipped if multiple).
+  // When called with a groomer's name (string) it instead SENDS only that groomer's PDF to their dashboard.
+  const exportPayrollPDF = useCallback(async (sendTo?: unknown) => {
     if (!payrollReport) return
+    const only = typeof sendTo === 'string' ? sendTo : null
     setActionLoading('payroll-pdf')
+    if (only) setPayrollSendBusy(only)
     try {
       const { jsPDF } = await import('jspdf')
       const JSZip = (await import('jszip')).default
@@ -2835,7 +2868,7 @@ export default function DeskAdmin() {
       }
 
       const groomersWithData = payrollReport.groomers.filter(g => g.appts > 0 || (g.helperJobs ?? 0) > 0 || payrollSelectedGroomer)
-      if (groomersWithData.length === 0) { alert('No groomer data to export.'); return }
+      if (!only && groomersWithData.length === 0) { alert('No groomer data to export.'); return }
 
       const coverUrl = await loadCover()
       const safe = (s: string) => s.replace(/[^a-z0-9]+/gi, '-')
@@ -2845,6 +2878,34 @@ export default function DeskAdmin() {
         link.href = url; link.download = filename
         document.body.appendChild(link); link.click(); document.body.removeChild(link)
         window.URL.revokeObjectURL(url)
+      }
+
+      if (only) {
+        const g = payrollReport.groomers.find(x => x.name === only)
+        if (!g) { alert('No data for that groomer in this report.'); return }
+        const doc = buildDoc(g, coverUrl)
+        const assistAll = payrollReport.assistByGroomer?.[g.name] || []
+        const summary = {
+          appts: g.appts, revenue: g.revenue, commission: g.commission, tips: g.tips, tipShare: g.tipShare,
+          commRate: g.commRate, tipRate: g.tipRate,
+          assistOut: assistAll.filter(l => l.kind === 'by').reduce((t, l) => t + l.amount, 0),
+          assistIn: assistAll.filter(l => l.kind === 'for').reduce((t, l) => t + l.amount, 0),
+        }
+        let sentBy = 'Admin'
+        try { const a = JSON.parse(readAuthRaw('admin') || 'null'); sentBy = a?.name || a?.username || 'Admin' } catch { /* ignore */ }
+        const fd = new FormData()
+        fd.append('groomer_name', g.name)
+        fd.append('period_start', payrollStartDate)
+        fd.append('period_end', payrollEndDate)
+        fd.append('pay_date', payrollPayDate || '')
+        fd.append('total_pay', String(Math.round((g.commission + g.tipShare) * 100) / 100))
+        fd.append('summary', JSON.stringify(summary))
+        fd.append('file', doc.output('blob'), `payroll-${safe(g.name)}-${payrollStartDate}-to-${payrollEndDate}.pdf`)
+        const res = await fetch('/api/admin/payroll-statements', { method: 'POST', headers: { 'x-actor-name': encodeURIComponent(sentBy) }, body: fd })
+        const j = await res.json().catch(() => ({}))
+        if (!res.ok) { alert(`Could not send: ${j.error || res.status}`); return }
+        await fetchPayrollSent()
+        return
       }
 
       if (groomersWithData.length === 1) {
@@ -2862,11 +2923,12 @@ export default function DeskAdmin() {
       }
     } catch (e) {
       console.error(e)
-      alert('Error generating payroll PDFs')
+      alert(only ? 'Error sending payroll statement' : 'Error generating payroll PDFs')
     } finally {
       setActionLoading(null)
+      setPayrollSendBusy(null)
     }
-  }, [payrollReport, payrollStartDate, payrollEndDate, payrollPayDate, payrollSelectedGroomer])
+  }, [payrollReport, payrollStartDate, payrollEndDate, payrollPayDate, payrollSelectedGroomer, fetchPayrollSent])
 
   const fetchCashierLogins = useCallback(async () => {
     try {
@@ -3049,7 +3111,7 @@ export default function DeskAdmin() {
     if (tab === 'calendar') { fetchCalendar(); fetchSettings() }
     else if (tab === 'clients' || tab === 'not_opted_in') fetchClients()
     else if (tab === 'vaccines') fetchVaccineRecords()
-    else if (tab === 'payroll') fetchPayroll()
+    else if (tab === 'payroll') { fetchPayroll(); fetchPayrollSent() }
     else if (tab === 'settings') fetchSettings()
     else if (tab === 'reviews') {
       const fetchReviewSettings = async () => {
@@ -3108,7 +3170,7 @@ export default function DeskAdmin() {
     }
     else if (tab === 'reports') { fetchReports(); fetchPayroll() }
     else if (tab === 'deleted_noshow') { fetchNoShowAppts(); fetchDeletedAppts() }
-  }, [authed, tab, fetchCalendar, fetchClients, fetchVaccineRecords, fetchPayroll, fetchSettings, fetchAppointments, fetchReports, fetchCashierLogins, calendarMonth, fetchNoShowAppts, fetchDeletedAppts])
+  }, [authed, tab, fetchCalendar, fetchClients, fetchVaccineRecords, fetchPayroll, fetchPayrollSent, fetchSettings, fetchAppointments, fetchReports, fetchCashierLogins, calendarMonth, fetchNoShowAppts, fetchDeletedAppts])
 
   // Poll pending count every 30s so badge always stays current
   useEffect(() => {
@@ -8172,7 +8234,7 @@ export default function DeskAdmin() {
                         ⬇️ Excel
                       </button>
                       <button
-                        onClick={exportPayrollPDF}
+                        onClick={() => exportPayrollPDF()}
                         disabled={actionLoading === 'payroll-pdf'}
                         title="One branded PDF statement per groomer (zipped if multiple) — ready to email with payment"
                         className="px-4 py-2 bg-sky-700 hover:bg-sky-800 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
@@ -8262,9 +8324,29 @@ export default function DeskAdmin() {
                                 <span className="font-bold text-gray-800">{g.name}</span>
                                 <span className="text-xs text-gray-500 ml-2">{g.appts} appointment{g.appts !== 1 ? 's' : ''}</span>
                               </div>
-                              <div className="text-right">
-                                <p className="text-xs text-gray-400">Total pay</p>
-                                <p className="text-lg font-bold text-purple-700">${(g.commission + g.tipShare).toFixed(2)}</p>
+                              <div className="flex items-center gap-4">
+                                {(() => {
+                                  const sent = payrollSent.find(x => x.groomer_name === g.name && x.period_start === payrollStartDate && x.period_end === payrollEndDate)
+                                  const busy = payrollSendBusy === g.name
+                                  return (
+                                    <div className="text-right">
+                                      <button
+                                        onClick={() => {
+                                          if (sent && !confirm(`${g.name}'s statement for this period was already sent. Send again and replace it?`)) return
+                                          exportPayrollPDF(g.name)
+                                        }}
+                                        disabled={!!payrollSendBusy || actionLoading === 'payroll-pdf'}
+                                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50 ${sent ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-purple-600 text-white hover:bg-purple-700'}`}>
+                                        {busy ? '⏳ Sending…' : sent ? '✓ Sent · Resend' : '📤 Send to groomer'}
+                                      </button>
+                                      {sent && <p className="text-[11px] text-gray-400 mt-1">{new Date(sent.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{sent.sent_by ? ` · ${sent.sent_by}` : ''}</p>}
+                                    </div>
+                                  )
+                                })()}
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-400">Total pay</p>
+                                  <p className="text-lg font-bold text-purple-700">${(g.commission + g.tipShare).toFixed(2)}</p>
+                                </div>
                               </div>
                             </div>
                             <div className="px-4 py-3 grid grid-cols-2 gap-4">
@@ -8308,6 +8390,62 @@ export default function DeskAdmin() {
                   )}
                 </>
               )}
+
+              {/* Sent payrolls — what each groomer can see in their dashboard, grouped by pay date */}
+              <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                <h2 className="text-lg font-bold text-gray-800 mb-1">📤 Sent Payrolls</h2>
+                <p className="text-xs text-gray-400 mb-4">Statements you've sent to groomers (they see them in the Payroll tab of their dashboard). Newest pay date first.</p>
+                {payrollSent.length === 0 ? (
+                  <p className="text-sm text-gray-400">Nothing sent yet. Generate a report above, then use “Send to groomer” on each groomer.</p>
+                ) : (() => {
+                  const groups: { key: string; payDate: string | null; rows: PayrollSent[] }[] = []
+                  payrollSent.forEach(r => {
+                    const key = r.pay_date || `period-${r.period_end}`
+                    let grp = groups.find(x => x.key === key)
+                    if (!grp) { grp = { key, payDate: r.pay_date, rows: [] }; groups.push(grp) }
+                    grp.rows.push(r)
+                  })
+                  const fd = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                  return (
+                    <div className="space-y-4">
+                      {groups.map(grp => (
+                        <div key={grp.key} className="border border-gray-200 rounded-xl overflow-hidden">
+                          <div className="bg-gray-50 px-4 py-2.5 flex items-center justify-between">
+                            <p className="font-bold text-gray-800 text-sm">
+                              {grp.payDate ? `Pay date ${fd(grp.payDate)}` : `Period ending ${fd(grp.rows[0].period_end)}`}
+                            </p>
+                            <p className="text-xs text-gray-500">{grp.rows.length} sent · <span className="font-semibold text-purple-700">${grp.rows.reduce((t, r) => t + Number(r.total_pay || 0), 0).toFixed(2)}</span></p>
+                          </div>
+                          <div className="divide-y divide-gray-100">
+                            {grp.rows.map(r => (
+                              <div key={r.id} className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-800">{r.groomer_name}</p>
+                                  <p className="text-xs text-gray-400">
+                                    Period {fd(r.period_start)} – {fd(r.period_end)} · sent {new Date(r.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{r.sent_by ? ` by ${r.sent_by}` : ''}
+                                  </p>
+                                  {r.summary && (
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                      {r.summary.appts ?? 0} appts · Commission ${Number(r.summary.commission || 0).toFixed(2)} · Tip share ${Number(r.summary.tipShare || 0).toFixed(2)}
+                                      {Number(r.summary.assistOut || 0) > 0 && <span className="text-red-500"> · Assist −${Number(r.summary.assistOut).toFixed(2)}</span>}
+                                      {Number(r.summary.assistIn || 0) > 0 && <span className="text-emerald-600"> · Assist +${Number(r.summary.assistIn).toFixed(2)}</span>}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-base font-bold text-purple-700">${Number(r.total_pay || 0).toFixed(2)}</span>
+                                  <button onClick={() => openSentStatement(r.id)} className="text-xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded-lg">📄 View PDF</button>
+                                  <button onClick={() => unsendStatement(r.id, r.groomer_name)} className="text-xs font-semibold text-red-500 border border-red-200 px-2.5 py-1 rounded-lg">Un-send</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </div>
 
               {/* Staff commission rates reference */}
               <div className="bg-white rounded-2xl border border-gray-200 p-6">

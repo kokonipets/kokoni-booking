@@ -68,7 +68,7 @@ type AuthUser = {
   permissions?: Record<string, boolean>
 }
 
-type NavKey = 'today' | 'pending' | 'calendar' | 'earnings'
+type NavKey = 'today' | 'pending' | 'calendar' | 'earnings' | 'payroll'
 
 const TIME_OPTIONS = [
   '7:00 AM', '7:15 AM', '7:30 AM', '7:45 AM',
@@ -251,6 +251,24 @@ export default function GroomerDashboard() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<NavKey>('today')
+  // Payroll statements the admin has sent to this groomer
+  type SentStatement = { id: string; period_start: string; period_end: string; pay_date: string | null; total_pay: number | string; sent_at: string; summary: { appts?: number; revenue?: number; commission?: number; tips?: number; tipShare?: number; commRate?: number; tipRate?: number; assistOut?: number; assistIn?: number } | null }
+  const [sentStatements, setSentStatements] = useState<SentStatement[]>([])
+  const [sentLoading, setSentLoading] = useState(false)
+  const [sentError, setSentError] = useState('')
+  const [openStatementId, setOpenStatementId] = useState<string | null>(null)
+  const [pdfBusyId, setPdfBusyId] = useState<string | null>(null)
+  useEffect(() => {
+    if (activeTab !== 'payroll' || !user?.name) return
+    let cancelled = false
+    setSentLoading(true); setSentError('')
+    fetch(`/api/groomer/payroll-statements?staff_name=${encodeURIComponent(user.name)}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) { if (d.error) setSentError(d.error); else setSentStatements(d.statements ?? []) } })
+      .catch(() => { if (!cancelled) setSentError('Could not load payroll statements') })
+      .finally(() => { if (!cancelled) setSentLoading(false) })
+    return () => { cancelled = true }
+  }, [activeTab, user?.name])
   const prevPendingCountRef = useRef<number | null>(null)
   const [updateLoading, setUpdateLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -1540,6 +1558,16 @@ export default function GroomerDashboard() {
           <circle cx="12" cy="12" r="9" />
           <path d="M12 6.5v1.3M12 16.2v1.3" />
           <path d="M14.6 10c0-1.1-1.2-2-2.6-2s-2.6.8-2.6 1.8c0 2.3 5.2 1 5.2 3.3c0 1-1.2 1.9-2.6 1.9s-2.6-.9-2.6-2" />
+        </svg>
+      ),
+    },
+    {
+      key: 'payroll',
+      label: 'Payroll',
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6">
+          <path d="M6 3h9l4 4v14H6z" />
+          <path d="M15 3v4h4M9 12h7M9 16h7" />
         </svg>
       ),
     },
@@ -3475,10 +3503,80 @@ export default function GroomerDashboard() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* PAYROLL TAB — statements the admin has sent to me                  */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'payroll' && (
+        <div className="px-4 pt-5 pb-4 space-y-4">
+          <h2 className="text-xl font-bold text-gray-800">My Payroll</h2>
+          <p className="text-xs text-gray-400 -mt-2">Your pay statements, newest first. They appear here once the office sends them.</p>
+          {sentLoading && sentStatements.length === 0 && <p className="text-sm text-gray-400">Loading…</p>}
+          {sentError && <p className="text-sm text-red-500">{sentError}</p>}
+          {!sentLoading && !sentError && sentStatements.length === 0 && (
+            <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+              <p className="text-3xl mb-2">🧾</p>
+              <p className="text-sm text-gray-500">No payroll statements yet.</p>
+            </div>
+          )}
+          {sentStatements.map(st => {
+            const fd = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            const fs = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            const sm = st.summary
+            const open = openStatementId === st.id
+            return (
+              <div key={st.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                <button onClick={() => setOpenStatementId(open ? null : st.id)} className="w-full px-4 py-3.5 flex items-center justify-between text-left">
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">{st.pay_date ? `Pay date ${fd(st.pay_date)}` : `Period ending ${fd(st.period_end)}`}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Pay period {fs(st.period_start)} – {fs(st.period_end)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-400">Total pay</p>
+                    <p className="text-lg font-bold text-indigo-700">${Number(st.total_pay || 0).toFixed(2)}</p>
+                  </div>
+                </button>
+                {open && (
+                  <div className="border-t border-gray-100 px-4 py-3 space-y-2">
+                    {sm && (
+                      <div className="text-sm space-y-1.5">
+                        <div className="flex justify-between"><span className="text-gray-500">Appointments</span><span className="font-semibold text-gray-800">{sm.appts ?? 0}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">Revenue</span><span className="font-semibold text-gray-800">${Number(sm.revenue || 0).toFixed(2)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">Commission{sm.commRate != null ? ` (${sm.commRate}%)` : ''}</span><span className="font-semibold text-sky-700">${Number(sm.commission || 0).toFixed(2)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">Tips collected</span><span className="font-semibold text-gray-800">${Number(sm.tips || 0).toFixed(2)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-500">Tip share{sm.tipRate != null ? ` (${sm.tipRate}%)` : ''}</span><span className="font-semibold text-emerald-700">${Number(sm.tipShare || 0).toFixed(2)}</span></div>
+                        {Number(sm.assistOut || 0) > 0 && <div className="flex justify-between"><span className="text-gray-500">Assist paid to others <span className="text-gray-400">(already deducted)</span></span><span className="font-semibold text-red-500">−${Number(sm.assistOut).toFixed(2)}</span></div>}
+                        {Number(sm.assistIn || 0) > 0 && <div className="flex justify-between"><span className="text-gray-500">Assist earned <span className="text-gray-400">(already included)</span></span><span className="font-semibold text-emerald-600">+${Number(sm.assistIn).toFixed(2)}</span></div>}
+                        <div className="flex justify-between border-t border-gray-100 pt-2"><span className="font-bold text-gray-800">Total pay</span><span className="font-bold text-indigo-700">${Number(st.total_pay || 0).toFixed(2)}</span></div>
+                      </div>
+                    )}
+                    <button
+                      disabled={pdfBusyId === st.id}
+                      onClick={async () => {
+                        setPdfBusyId(st.id)
+                        try {
+                          const res = await fetch(`/api/groomer/payroll-statements?staff_name=${encodeURIComponent(user?.name || '')}&id=${encodeURIComponent(st.id)}`, { cache: 'no-store' })
+                          const data = await res.json()
+                          if (data.url) { if (!window.open(data.url, '_blank')) window.location.href = data.url }
+                          else alert(data.error || 'Could not open the PDF')
+                        } catch { alert('Could not open the PDF') }
+                        finally { setPdfBusyId(null) }
+                      }}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-sm py-2.5 rounded-xl">
+                      {pdfBusyId === st.id ? 'Opening…' : '📄 View full statement (PDF)'}
+                    </button>
+                    <p className="text-[11px] text-gray-400 text-center">Sent {new Date(st.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
       {/* BOTTOM NAV                                                         */}
       {/* ══════════════════════════════════════════════════════════════════ */}
       <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 z-40 safe-area-pb">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {navItems.map(({ key, label, icon, badge }) => {
             const isActive = activeTab === key
             return (
