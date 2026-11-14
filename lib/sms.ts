@@ -198,6 +198,9 @@ export async function notifyAdminNewRequest(data: {
   return sendSMS(process.env.ADMIN_PHONE!, body, 'notifyAdminNewRequest')
 }
 
+// Shared footer for automated client texts: address, short map link, "don't reply" notice.
+const SMS_FOOTER = `\n\n📍 Kokoni Pet Grooming Salon\n1381 E Las Tunas Dr, San Gabriel, CA 91776\nhttps://maps.app.goo.gl/rG3ksu3ASKut6gyS8\n\n🤖 This is an automated message — please don't reply to this number. Questions? Text us at (626) 621-4646.\nReply STOP to opt out.`
+
 // Notify client that booking is confirmed
 export async function notifyClientConfirmed(data: {
   to: string
@@ -206,7 +209,7 @@ export async function notifyClientConfirmed(data: {
   date: string
   time: string
 }) {
-  const body = `Appointment Confirmed!\nHi ${data.clientName}! ${data.petName}'s appointment is confirmed for ${data.date} at ${data.time}.\n📍 1381 E Las Tunas Dr, San Gabriel, CA 91776\nKokoni Pet Grooming Salon - (626) 621-4646\nReply STOP to opt out.`
+  const body = `Appointment Confirmed!\nHi ${data.clientName}! ${data.petName}'s appointment is confirmed for ${data.date} at ${data.time}.${SMS_FOOTER}`
   return sendSMS(data.to, body, 'notifyClientConfirmed')
 }
 
@@ -218,7 +221,7 @@ export async function notifyClientRescheduled(data: {
   date: string
   time: string
 }) {
-  const body = `Appointment Rescheduled!\nHi ${data.clientName}! ${data.petName}'s appointment has been moved to ${data.date} at ${data.time}.\nQuestions? Call us at (626) 621-4646\nKokoni Pet Grooming Salon\nReply STOP to opt out.`
+  const body = `Appointment Rescheduled!\nHi ${data.clientName}! ${data.petName}'s appointment has been moved to ${data.date} at ${data.time}.${SMS_FOOTER}`
   return sendSMS(data.to, body, 'notifyClientRescheduled')
 }
 
@@ -231,7 +234,7 @@ export async function notifyClientGroomingReady(data: {
 }) {
   const firstName = data.clientName.split(' ')[0]
   const noteLine = data.customerNote?.trim() ? `\n💌 From your groomer: ${data.customerNote.trim()}` : ''
-  const body = `Hi ${firstName}! 🐾 Great news — ${data.petName} will be ready for pickup in 15 minutes! Please pick up within 30 minutes to avoid a late pickup fee.${noteLine}\n📍 https://maps.app.goo.gl/qDTcGhcazqsHvahQ7\nKokoni Pet Grooming Salon — (626) 621-4646\nReply STOP to opt out.`
+  const body = `Hi ${firstName}! 🐾 Great news — ${data.petName} will be ready for pickup in 15 minutes! Please pick up within 30 minutes to avoid a late pickup fee.${noteLine}${SMS_FOOTER}`
   return sendSMS(data.to, body, 'notifyClientGroomingReady')
 }
 
@@ -249,6 +252,6 @@ export async function sendAppointmentReminder(data: {
     asian_fusion: 'Asian Fusion Style',
   }
   const svcLabel = serviceLabels[data.service] ?? data.service
-  const body = `Hi ${data.clientName}! 🐾 Reminder: ${data.petName}'s ${svcLabel} appointment is TOMORROW at ${data.time}.\nKokoni Pet Grooming Salon — (626) 621-4646\nReply STOP to opt out.`
+  const body = `Hi ${data.clientName}! 🐾 Reminder: ${data.petName}'s ${svcLabel} appointment is TOMORROW at ${data.time}.${SMS_FOOTER}`
   return sendSMS(data.to, body, 'sendAppointmentReminder')
 }

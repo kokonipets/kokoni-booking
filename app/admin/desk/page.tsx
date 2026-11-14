@@ -5715,7 +5715,7 @@ export default function DeskAdmin() {
 
       {!isBookMode && <div className={`w-72 bg-sky-50 border-r border-sky-100 flex flex-col min-h-screen fixed left-0 top-0 bottom-0 z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         {/* Facility header */}
-        <div className="px-4 py-4 border-b border-sky-100">
+        <div className="px-4 py-4 border-b border-sky-100" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}>
           <div className="flex items-center gap-3">
             <Image src="/logo.png" alt="Kokoni" width={40} height={40} className="rounded-full shrink-0" />
             <div className="min-w-0">
