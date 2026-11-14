@@ -1132,7 +1132,10 @@ export default function DeskAdmin() {
   const [loadingDeletedAppts, setLoadingDeletedAppts] = useState(false)
 
   // ── Block list 黑名單 ── (blocked clients can't book online / self check-in, get no automated texts)
-  type BlockedClientRow = { phone: string; name: string | null; reason: string | null; added_at: string; added_by: string | null }
+  type BlockedClientRow = { phone: string; name: string | null; reason: string | null; added_at: string; added_by: string | null
+    pets?: { name: string; photo_url: string | null }[]
+    history?: { date: string; time: string | null; service: string | null; status: string; pet?: string | null }[] }
+  const [blkHistoryOpen, setBlkHistoryOpen] = useState<string | null>(null)
   const [blocklist, setBlocklist] = useState<BlockedClientRow[]>([])
   const [blockPhone, setBlockPhone] = useState('')
   const [blockName, setBlockName] = useState('')
@@ -10738,6 +10741,42 @@ export default function DeskAdmin() {
                           <p className="text-sm font-semibold text-gray-800">{b.name || 'Unknown'} <span className="font-normal text-gray-500">· {b.phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</span></p>
                           {b.reason && <p className="text-xs text-red-600 mt-0.5">{b.reason}</p>}
                           <p className="text-[11px] text-gray-400 mt-0.5">Added {new Date(b.added_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}{b.added_by ? ` by ${b.added_by}` : ''}</p>
+                          {(b.pets?.length ?? 0) > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              {b.pets!.map((p, i) => (
+                                <span key={i} className="flex items-center gap-1.5 bg-gray-50 border border-gray-100 rounded-full pl-1 pr-2.5 py-0.5">
+                                  {p.photo_url
+                                    ? <img src={p.photo_url} className="w-6 h-6 rounded-full object-cover" alt="" />
+                                    : <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs">🐶</span>}
+                                  <span className="text-xs font-medium text-gray-700">{p.name}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {(() => {
+                            const h = b.history || []
+                            const done = h.filter(x => x.status === 'completed').length
+                            const ns = h.filter(x => x.status === 'no_show').length
+                            return (
+                              <div className="mt-2">
+                                <button onClick={() => setBlkHistoryOpen(blkHistoryOpen === b.phone ? null : b.phone)} className="text-xs font-semibold text-sky-700 hover:underline">
+                                  {blkHistoryOpen === b.phone ? '▾' : '▸'} History 紀錄 · {done} completed{ns ? ` · ${ns} no-show` : ''} · {h.length} total
+                                </button>
+                                {blkHistoryOpen === b.phone && (
+                                  <div className="mt-1.5 border border-gray-100 rounded-lg divide-y divide-gray-50 max-h-60 overflow-y-auto">
+                                    {h.length === 0 ? <p className="text-xs text-gray-400 px-3 py-2">No appointments on record.</p> : h.map((x, i) => (
+                                      <div key={i} className="px-3 py-1.5 flex items-center gap-2 text-xs">
+                                        <span className="text-gray-500 w-28 flex-shrink-0">{formatDate(x.date)}{x.time ? ` · ${x.time}` : ''}</span>
+                                        <span className="font-medium text-gray-800">{x.pet ?? 'Pet'}</span>
+                                        <span className="text-gray-500 truncate flex-1">{serviceMap[x.service ?? ''] ?? x.service}</span>
+                                        <span className={`px-2 py-0.5 rounded-full font-medium ${x.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : x.status === 'no_show' ? 'bg-rose-100 text-rose-600' : 'bg-gray-100 text-gray-600'}`}>{x.status}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => { setEditBlkPhone(b.phone); setEditBlkName(b.name || ''); setEditBlkReason(b.reason || '') }} className="text-xs font-semibold text-sky-700 border border-sky-200 hover:bg-sky-50 px-3 py-1.5 rounded-lg">Edit 編輯</button>

@@ -22,7 +22,21 @@ export async function GET(req: NextRequest) {
   const lookup = req.nextUrl.searchParams.get('lookup')
   if (lookup) return NextResponse.json({ name: await clientNameFor(supabase, lookup) })
   const list = await loadBlocklist(supabase)
-  const out = await Promise.all(list.map(async b => ({ ...b, name: b.name || (await clientNameFor(supabase, b.phone)) })))
+  const out = await Promise.all(list.map(async b => {
+    const k = phoneKey(b.phone)
+    const pat = `%${k.slice(0, 3)}%${k.slice(3, 6)}%${k.slice(6)}%`
+    const [name, petsRes, apptsRes] = await Promise.all([
+      b.name ? Promise.resolve(b.name) : clientNameFor(supabase, b.phone),
+      supabase.from('pets').select('name, photo_url').ilike('client_phone', pat).limit(12),
+      supabase.from('appointments').select('appointment_date, appointment_time, service, status, pets(name)').ilike('client_phone', pat)
+        .order('appointment_date', { ascending: false }).limit(60),
+    ])
+    const history = (apptsRes.data || []).map((a: any) => ({
+      date: a.appointment_date, time: a.appointment_time, service: a.service, status: a.status,
+      pet: Array.isArray(a.pets) ? a.pets[0]?.name : a.pets?.name,
+    }))
+    return { ...b, name, pets: petsRes.data || [], history }
+  }))
   return NextResponse.json({ blocked: out.sort((a, b) => b.added_at.localeCompare(a.added_at)) })
 }
 
