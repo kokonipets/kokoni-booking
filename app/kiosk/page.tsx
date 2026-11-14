@@ -176,6 +176,7 @@ export default function KioskPage() {
   const [mode, setMode] = useState<Mode>('checkin')
   const [step, setStep] = useState<Step>('welcome')
   const [phone, setPhone] = useState('')
+  const [kioskBlocked, setKioskBlocked] = useState(false) // block list → "please see the front desk"
   const [appt, setAppt] = useState<KioskAppointment | null>(null)
   const [appointments, setAppointments] = useState<KioskAppointment[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -218,6 +219,7 @@ export default function KioskPage() {
     fetch('/api/kiosk/reconcile-square', { method: 'POST' }).catch(() => {})
     setStep('welcome')
     setPhone('')
+    setKioskBlocked(false)
     setAppt(null)
     setAppointments([])
     setError('')
@@ -559,6 +561,7 @@ export default function KioskPage() {
     try {
       const res = await fetch(`/api/kiosk/lookup?phone=${phone}&mode=${mode}`)
       const data = await res.json()
+      setKioskBlocked(!!data.blocked)
       if (data.appointments && data.appointments.length > 0) {
         setAppointments(data.appointments)
         setAppt(data.appointments[0])
@@ -761,6 +764,11 @@ export default function KioskPage() {
       {step === 'not-found' && (
         <div className="relative flex flex-col items-center gap-10 w-full max-w-2xl text-center">
           <div className="bg-white rounded-3xl shadow-xl p-12 w-full">
+            {kioskBlocked ? (<>
+              <div className="text-9xl mb-6">🙋</div>
+              <h2 className="text-5xl font-black text-gray-800 mb-4">Please see the front desk</h2>
+              <p className="text-gray-500 text-2xl">A team member will be right with you.</p>
+            </>) : (<>
             <div className="text-9xl mb-6">🔍</div>
             <h2 className="text-5xl font-black text-gray-800 mb-4">No appointment found</h2>
             <p className="text-gray-500 text-2xl">
@@ -768,6 +776,7 @@ export default function KioskPage() {
               <span className="text-gray-800 font-bold text-4xl">{formatPhoneDisplay(phone)}</span><br/>
               today. Please see the front desk for help.
             </p>
+            </>)}
           </div>
           <div className="flex gap-4 w-full">
             <button onClick={() => { setPhone(''); setStep('phone') }}

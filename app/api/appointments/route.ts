@@ -3,6 +3,7 @@ import { createSupabaseServer } from '@/lib/supabase'
 import { checkBookableDate } from '@/lib/bookable-date'
 import { notifyAdminNewRequest } from '@/lib/sms'
 import { sendPushToAdmin } from '@/lib/push-notify'
+import { findBlocked } from '@/lib/blocklist'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -38,6 +39,16 @@ export async function POST(req: NextRequest) {
     anonDogName,
     groupId,
   } = body
+
+  // Block list: don't take bookings from blocked clients. The message stays neutral — we don't
+  // tell the customer they're on a list — and the office gets a push so staff know.
+  {
+    const blocked = await findBlocked(supabase, phone)
+    if (blocked) {
+      sendPushToAdmin('🚫 Blocked client tried to book', `${blocked.name || ''} ${phone}`.trim(), { type: 'blocked-client' }).catch(() => {})
+      return NextResponse.json({ error: 'No dates available right now. Please check again later.' }, { status: 403 })
+    }
+  }
 
   // Anonymous walk-in (quick services like Nail Trim): the customer doesn't want to leave
   // any info and waits on site, so everything books under ONE shared placeholder client and

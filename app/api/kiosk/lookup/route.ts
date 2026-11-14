@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { findBlocked } from '@/lib/blocklist'
+import { sendPushToAdmin } from '@/lib/push-notify'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -21,6 +23,16 @@ export async function GET(req: NextRequest) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
 
   if (!phone) return NextResponse.json({ error: 'Phone required' }, { status: 400 })
+
+  // Block list: a blocked client can't self check-in — the kiosk tells them to see the front desk,
+  // and the office gets a push. (Checkout is left alone so anyone already in the shop can still pay.)
+  if (mode === 'checkin') {
+    const blocked = await findBlocked(supabase, phone)
+    if (blocked) {
+      sendPushToAdmin('🚫 Blocked client at kiosk', `${blocked.name || ''} ${phone}`.trim(), { type: 'blocked-client' }).catch(() => {})
+      return NextResponse.json({ appointments: [], blocked: true })
+    }
+  }
 
   // Anonymous Nail Trim walk-ins all book under one placeholder phone (see /api/appointments).
   // At checkout they type the short code 1234 instead; list only today's still-unpaid ones.

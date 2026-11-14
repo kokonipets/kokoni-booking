@@ -857,7 +857,15 @@ export async function PATCH(
         effectivePaymentAmount = existingForAmount?.payment_amount ?? '0'
       }
       const paidAmount = parseFloat(String(effectivePaymentAmount ?? '0')) || 0
-      updates.status = paidAmount > 0 ? 'completed' : 'no_show'
+      if (paidAmount > 0) {
+        updates.status = 'completed'
+      } else {
+        // $0 usually means "client never came" → no-show. But if the client DID check in
+        // (e.g. a refund after a dispute / sick dog), the visit happened: keep it completed
+        // so it stays in History and the pet's record, just with $0.
+        const { data: ci } = await supabase.from('appointments').select('checked_in_at').eq('id', id).single()
+        updates.status = ci?.checked_in_at ? 'completed' : 'no_show'
+      }
       // Also move the appointment to "Checked Out" on the Grooming Board.
       // Normally the kiosk's own "Done" tap does this the moment the customer
       // pays. But when staff key the payment in later (e.g. a Venmo/Zelle

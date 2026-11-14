@@ -1,5 +1,6 @@
 import twilio from 'twilio'
 import { createSupabaseServer } from './supabase'
+import { findBlocked } from './blocklist'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mode: 'live' | 'test' | 'off'
@@ -94,9 +95,20 @@ async function logSms(entry: {
   }
 }
 
+// Automated client texts that must NOT go to a blocked client (manual chat replies from the office still can).
+const AUTOMATED_TEMPLATES = new Set(['notifyClientConfirmed', 'notifyClientRescheduled', 'notifyClientGroomingReady', 'sendAppointmentReminder'])
+
+async function isBlockedPhone(phone: string): Promise<boolean> {
+  try { return !!(await findBlocked(createSupabaseServer(), phone)) } catch { return false }
+}
+
 export async function sendSMS(to: string, body: string, template?: string) {
   const mode = getMode()
   const toNorm = normalize(to)
+  if (template && AUTOMATED_TEMPLATES.has(template) && await isBlockedPhone(toNorm)) {
+    await logSms({ mode, status: 'suppressed', to_number: toNorm, body, template, suppressed_reason: 'blocklist' })
+    return { success: true, suppressed: true, mode }
+  }
   const whitelist = getWhitelist().map(normalize)
   const forward = process.env.SMS_TEST_FORWARD ? normalize(process.env.SMS_TEST_FORWARD) : null
 

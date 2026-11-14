@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer } from '@/lib/supabase'
+import { findBlocked } from '@/lib/blocklist'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -11,6 +12,8 @@ export async function GET(req: NextRequest) {
   if (!phone) return NextResponse.json({ error: 'Phone required' }, { status: 400 })
 
   const supabase = createSupabaseServer()
+  // Block list → the booking page shows "no dates available" (it never says the client is blocked)
+  const blocked = !!(await findBlocked(supabase, phone))
 
   const { data: client } = await supabase
     .from('clients')
@@ -18,7 +21,7 @@ export async function GET(req: NextRequest) {
     .eq('phone', phone)
     .single()
 
-  if (!client) return NextResponse.json({ found: false })
+  if (!client) return NextResponse.json({ found: false, blocked })
 
   const { data: petsRaw } = await supabase
     .from('pets')

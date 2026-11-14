@@ -352,6 +352,7 @@ const NAV = [
   { key: 'reviews',    label: 'SMS Reviews 簡訊評價',             icon: '⭐' },
   { key: 'reports',    label: 'Reports 報表',                 icon: '📊' },
   { key: 'deleted_noshow', label: 'Deleted & No-Shows 刪除/未到',  icon: '🗑️' },
+  { key: 'blocklist',  label: 'Block List 黑名單',                icon: '🚫' },
   { key: 'settings',   label: 'Settings 設定',                icon: '⚙️' },
 ] as const
 
@@ -1130,6 +1131,55 @@ export default function DeskAdmin() {
   const [deletedApptsData, setDeletedApptsData] = useState<{ id: string; deleted_at: string; appointment_id: string | null; client_phone: string | null; appointment: Partial<Appointment> }[]>([])
   const [loadingDeletedAppts, setLoadingDeletedAppts] = useState(false)
 
+  // ── Block list 黑名單 ── (blocked clients can't book online / self check-in, get no automated texts)
+  type BlockedClientRow = { phone: string; name: string | null; reason: string | null; added_at: string; added_by: string | null }
+  const [blocklist, setBlocklist] = useState<BlockedClientRow[]>([])
+  const [blockPhone, setBlockPhone] = useState('')
+  const [blockName, setBlockName] = useState('')
+  const [blkReason, setBlkReason] = useState('')
+  const [blockSaving, setBlockSaving] = useState(false)
+  const fetchBlocklist = useCallback(async () => {
+    try { const r = await fetch('/api/admin/blocklist', { cache: 'no-store' }); const d = await r.json(); setBlocklist(d.blocked || []) } catch { /* ignore */ }
+  }, [])
+  useEffect(() => { fetchBlocklist() }, [fetchBlocklist])
+  const blockedEntryFor = useCallback((phone: string | null | undefined) => {
+    const k = (phone || '').replace(/\D/g, '').slice(-10)
+    return k.length >= 7 ? blocklist.find(b => b.phone.replace(/\D/g, '').slice(-10) === k) ?? null : null
+  }, [blocklist])
+  const addToBlocklist = async () => {
+    if (blockPhone.replace(/\D/g, '').length < 10) { alert('Enter the full 10-digit phone number.'); return }
+    setBlockSaving(true)
+    try {
+      const r = await fetch('/api/admin/blocklist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: blockPhone, name: blockName, reason: blkReason }) })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Could not add'); return }
+      setBlockPhone(''); setBlockName(''); setBlkReason('')
+      await fetchBlocklist()
+    } finally { setBlockSaving(false) }
+  }
+  const [editBlkPhone, setEditBlkPhone] = useState<string | null>(null)
+  const [editBlkName, setEditBlkName] = useState('')
+  const [editBlkReason, setEditBlkReason] = useState('')
+  const saveBlockEdit = async () => {
+    if (!editBlkPhone) return
+    const r = await fetch('/api/admin/blocklist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: editBlkPhone, name: editBlkName, reason: editBlkReason }) })
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Could not save'); return }
+    setEditBlkPhone(null)
+    await fetchBlocklist()
+  }
+  const blockFromNoShow = async (phone: string | null | undefined, name: string | null | undefined, count: number) => {
+    if (!phone) { alert('No phone number on this appointment.'); return }
+    const reason = prompt(`Move ${name || phone} to the block list?\nReason 原因:`, `No-show x${count}`)
+    if (reason === null) return
+    const r = await fetch('/api/admin/blocklist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, name: name || '', reason }) })
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Could not add'); return }
+    await fetchBlocklist()
+  }
+  const removeFromBlocklist = async (b: BlockedClientRow) => {
+    if (!confirm(`Remove ${b.name || b.phone} from the block list?`)) return
+    await fetch(`/api/admin/blocklist?phone=${encodeURIComponent(b.phone)}`, { method: 'DELETE' })
+    await fetchBlocklist()
+  }
+
   const fetchNoShowAppts = useCallback(async () => {
     setLoadingNoShowAppts(true)
     try {
@@ -1861,6 +1911,8 @@ export default function DeskAdmin() {
 
   const submitQuickAddAppt = async () => {
     if (!addingApptSlot || !addApptPhone || (!addApptPetId && !addApptPetName)) return
+    const blockedHit = blockedEntryFor(addApptPhone)
+    if (blockedHit && !confirm(`🚫 This client is on the BLOCK LIST${blockedHit.reason ? `:\n“${blockedHit.reason}”` : '.'}\n\nBook anyway?`)) return
     const extras = addApptExtraPets.filter(p => p.petId || p.petName)
     setAddApptSaving(true)
     try {
@@ -3177,6 +3229,7 @@ export default function DeskAdmin() {
     }
     else if (tab === 'reports') { fetchReports(); fetchPayroll() }
     else if (tab === 'deleted_noshow') { fetchNoShowAppts(); fetchDeletedAppts() }
+    else if (tab === 'blocklist') fetchBlocklist()
   }, [authed, tab, fetchCalendar, fetchClients, fetchVaccineRecords, fetchPayroll, fetchPayrollSent, fetchSettings, fetchAppointments, fetchReports, fetchCashierLogins, calendarMonth, fetchNoShowAppts, fetchDeletedAppts])
 
   // Poll pending count every 30s so badge always stays current
@@ -5730,7 +5783,7 @@ export default function DeskAdmin() {
               <>
                 {group('客人預約 Appointments', A, [
                   navBtn('requests', A), navBtn('staff_cal', A), navBtn('calendar', A), navBtn('today', A),
-                  navBtn('intake', A), navBtn('deleted_noshow', A),
+                  navBtn('intake', A), navBtn('deleted_noshow', A), navBtn('blocklist', A),
                 ])}
                 {group('客人資料 Clients', K, [
                   navBtn('clients', K), navBtn('not_opted_in', K), navBtn('vaccines', K),
@@ -10578,7 +10631,21 @@ export default function DeskAdmin() {
                             <p className="text-sm font-semibold text-gray-800 truncate">{a.pets?.name ?? 'Pet'}{a.is_new_client && ' ⭐'} <span className="font-normal text-gray-400">· {a.clients?.name ?? a.client_phone}</span></p>
                             <p className="text-xs text-gray-500 truncate">{serviceMap[a.service] ?? a.service} · {formatDate(a.appointment_date)} · {a.appointment_time}</p>
                           </div>
-                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-100 text-rose-600 flex-shrink-0">no-show</span>
+                          {(() => {
+                            const k = (a.client_phone || '').replace(/\D/g, '').slice(-10)
+                            const cnt = k ? noShowAppts.filter(x => (x.client_phone || '').replace(/\D/g, '').slice(-10) === k).length : 1
+                            const isBlocked = !!blockedEntryFor(a.client_phone)
+                            return (
+                              <>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${cnt >= 2 ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-700'}`}>No-shows ×{cnt}</span>
+                                {isBlocked
+                                  ? <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-800 text-white flex-shrink-0">🚫 Blocked</span>
+                                  : <span role="button" tabIndex={0}
+                                      onClick={e => { e.stopPropagation(); blockFromNoShow(a.client_phone, a.clients?.name, cnt) }}
+                                      className="text-xs px-2 py-1 rounded-lg font-semibold border border-red-300 text-red-600 hover:bg-red-50 flex-shrink-0">🚫 Move to block list</span>}
+                              </>
+                            )
+                          })()}
                           <span className="text-gray-300 text-lg flex-shrink-0">›</span>
                         </button>
                       ))}
@@ -10618,6 +10685,72 @@ export default function DeskAdmin() {
               </div>
             )
           })()}
+
+          {/* ── BLOCK LIST 黑名單 ───────────────────────────────────────────── */}
+          {tab === 'blocklist' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                <h2 className="text-lg font-bold text-gray-800 mb-1">🚫 Block List 黑名單</h2>
+                <p className="text-xs text-gray-400 mb-4">
+                  Blocked clients see “No dates available” when booking online, can’t self check-in at the kiosk (it says “Please see the front desk”), and get no automatic texts.
+                  You’ll get a push notification if they try. Staff see a warning when booking them from here.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                  <input value={blockPhone} inputMode="tel" placeholder="Phone 電話"
+                    onChange={e => {
+                      const v = e.target.value
+                      setBlockPhone(v)
+                      if (v.replace(/\D/g, '').length >= 10) {
+                        fetch(`/api/admin/blocklist?lookup=${encodeURIComponent(v)}`).then(r => r.json()).then(d => { setBlockName(d.name || '') }).catch(() => {})
+                      } else setBlockName('')
+                    }}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  <input value={blockName} onChange={e => setBlockName(e.target.value)} placeholder="Name 姓名 (auto-filled)"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  <input value={blkReason} onChange={e => setBlkReason(e.target.value)} placeholder="Reason 原因 (e.g. payment dispute)"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm md:col-span-1" />
+                  <button onClick={addToBlocklist} disabled={blockSaving}
+                    className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg px-4 py-2">
+                    {blockSaving ? 'Adding…' : '🚫 Add to block list'}
+                  </button>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                <p className="text-sm font-semibold text-gray-700 mb-3">{blocklist.length} blocked</p>
+                {blocklist.length === 0 ? (
+                  <p className="text-sm text-gray-400">No one is on the block list.</p>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {blocklist.map(b => (
+                      editBlkPhone === b.phone ? (
+                      <div key={b.phone} className="py-3 flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-gray-500">{b.phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</span>
+                        <input value={editBlkName} onChange={e => setEditBlkName(e.target.value)} placeholder="Name 姓名"
+                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-44" />
+                        <input value={editBlkReason} onChange={e => setEditBlkReason(e.target.value)} placeholder="Reason 原因"
+                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[200px]" />
+                        <button onClick={saveBlockEdit} className="text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 px-3 py-1.5 rounded-lg">Save 儲存</button>
+                        <button onClick={() => setEditBlkPhone(null)} className="text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 px-3 py-1.5 rounded-lg">Cancel</button>
+                      </div>
+                      ) : (
+                      <div key={b.phone} className="py-3 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">{b.name || 'Unknown'} <span className="font-normal text-gray-500">· {b.phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</span></p>
+                          {b.reason && <p className="text-xs text-red-600 mt-0.5">{b.reason}</p>}
+                          <p className="text-[11px] text-gray-400 mt-0.5">Added {new Date(b.added_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}{b.added_by ? ` by ${b.added_by}` : ''}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => { setEditBlkPhone(b.phone); setEditBlkName(b.name || ''); setEditBlkReason(b.reason || '') }} className="text-xs font-semibold text-sky-700 border border-sky-200 hover:bg-sky-50 px-3 py-1.5 rounded-lg">Edit 編輯</button>
+                          <button onClick={() => removeFromBlocklist(b)} className="text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 px-3 py-1.5 rounded-lg">Remove 移除</button>
+                        </div>
+                      </div>
+                      )
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── SETTINGS ─────────────────────────────────────────────────── */}
           {tab === 'settings' && (

@@ -267,6 +267,7 @@ export default function BookPageZhTw() {
   // Fail closed: no day bookable until real open days load from settings.
   const [allowedDays, setAllowedDays] = useState<number[]>([])
   const [blockedDates, setBlockedDates] = useState<string[]>([])
+  const [blockedClient, setBlockedClient] = useState(false) // block list → every date greyed out, "no dates available"
   const [specialOpenDates, setSpecialOpenDates] = useState<string[]>([])
   const [dynamicTimeSlots, setDynamicTimeSlots] = useState<string[]>(TIME_SLOTS)
   const [openDaysLabel, setOpenDaysLabel] = useState('週一至週六')
@@ -394,7 +395,7 @@ export default function BookPageZhTw() {
     setDateSlots(null)
     const svcParam = forService ? `&service=${encodeURIComponent(forService)}` : ''
     const tierParam = forSizeTier ? `&size_tier=${encodeURIComponent(forSizeTier)}` : ''
-    fetch(`/api/slots?date=${dateStr}${svcParam}${tierParam}&t=${Date.now()}`)
+    fetch(`/api/slots?date=${dateStr}&phone=${encodeURIComponent(phone.replace(/\D/g, ''))}${svcParam}${tierParam}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { if (Array.isArray(data.slots)) setDateSlots(data.slots) })
       .catch(() => {})
@@ -454,6 +455,7 @@ export default function BookPageZhTw() {
     try {
       const res = await fetch(`/api/client?phone=${encodeURIComponent(digits)}`)
       const data = await res.json()
+      setBlockedClient(!!data.blocked)
       if (data.found) {
         setClientName(data.client.name)
         setPets(data.pets || [])
@@ -862,6 +864,7 @@ export default function BookPageZhTw() {
             <ChevronRight className="w-5 h-5 text-sky-700" />
           </button>
         </div>
+        {blockedClient && <p className="text-sm font-semibold text-red-600 text-center mb-3">目前沒有可預約的日期，請稍後再查看。</p>}
         <div className="grid grid-cols-7 gap-1 text-center mb-2">
           {['日','一','二','三','四','五','六'].map(d => (
             <div key={d} className="text-xs font-medium text-gray-400 py-1">{d}</div>
@@ -876,7 +879,7 @@ export default function BookPageZhTw() {
             const isPast = !isToday && date < today
             const isClosed = !allowedDays.includes(date.getDay()) && !specialOpenDates.includes(dateStr)
             const isBlockedDate = !isToday && blockedDates.includes(dateStr)
-            const isDisabled = isPast || isClosed || isBlockedDate
+            const isDisabled = isPast || isClosed || isBlockedDate || blockedClient
             const isSelected = selectedDate?.toDateString() === date.toDateString()
             return (
               <button key={idx} disabled={isDisabled}

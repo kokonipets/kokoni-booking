@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { checkBookableDate } from '@/lib/bookable-date'
 import { matchTier } from '@/lib/serviceTier'
+import { findBlocked } from '@/lib/blocklist'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -65,6 +66,12 @@ export async function GET(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+
+  // Block list: when the booking page passes the customer's phone, a blocked client gets no times at all.
+  const phoneParam = searchParams.get('phone')
+  if (phoneParam && await findBlocked(supabase, phoneParam)) {
+    return NextResponse.json({ slots: [], groomer_count: 0, booked: {} }, { headers: { 'Cache-Control': 'no-store' } })
+  }
 
   // 1. Load salon settings
   const { data: settingsRows } = await supabase.from('salon_settings').select('*')

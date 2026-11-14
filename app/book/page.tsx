@@ -276,6 +276,7 @@ export default function BookPage() {
   // the salon is actually closed (e.g. Saturday).
   const [allowedDays, setAllowedDays] = useState<number[]>([])
   const [blockedDates, setBlockedDates] = useState<string[]>([])
+  const [blockedClient, setBlockedClient] = useState(false) // block list → every date greyed out, "no dates available"
   const [specialOpenDates, setSpecialOpenDates] = useState<string[]>([])
   const [dynamicTimeSlots, setDynamicTimeSlots] = useState<string[]>(TIME_SLOTS)
   const [openDaysLabel, setOpenDaysLabel] = useState('Monday – Saturday')
@@ -323,7 +324,7 @@ export default function BookPage() {
     // rule out any slot that would run into closing time or another appointment down the line
     // — not just slots where nobody's free at the exact moment it starts.
     const tierParam = forSizeTier ? `&size_tier=${encodeURIComponent(forSizeTier)}` : ''
-    fetch(`/api/slots?date=${dateStr}${svcParam}${tierParam}&t=${Date.now()}`)
+    fetch(`/api/slots?date=${dateStr}&phone=${encodeURIComponent(phone.replace(/\D/g, ''))}${svcParam}${tierParam}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { if (Array.isArray(data.slots)) setDateSlots(data.slots) })
       .catch(() => {})
@@ -387,6 +388,7 @@ export default function BookPage() {
     try {
       const res = await fetch(`/api/client?phone=${encodeURIComponent(digits)}`)
       const data = await res.json()
+      setBlockedClient(!!data.blocked)
       if (data.found) {
         setClientName(data.client.name)
         setPets(data.pets || [])
@@ -833,6 +835,7 @@ export default function BookPage() {
             <ChevronRight className="w-5 h-5 text-sky-700" />
           </button>
         </div>
+        {blockedClient && <p className="text-sm font-semibold text-red-600 text-center mb-3">No dates available right now. Please check again later.</p>}
         <div className="grid grid-cols-7 gap-1 text-center mb-2">
           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
             <div key={d} className="text-xs font-medium text-gray-400 py-1">{d}</div>
@@ -847,7 +850,7 @@ export default function BookPage() {
             const isPast = !isToday && date < today   // today is never "past"
             const isClosed = !allowedDays.includes(date.getDay()) && !specialOpenDates.includes(dateStr)
             const isBlockedDate = !isToday && blockedDates.includes(dateStr) // today can't be blocked
-            const isDisabled = isPast || isClosed || isBlockedDate
+            const isDisabled = isPast || isClosed || isBlockedDate || blockedClient
             const isSelected = selectedDate?.toDateString() === date.toDateString()
 
             return (
