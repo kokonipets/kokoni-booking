@@ -3666,8 +3666,19 @@ export default function DeskAdmin() {
                                     // One groomer does the dogs back to back, so the block is the SUM of
                                     // each dog's own service time.
                                     const dur = [a, ...mates].reduce((s, d) => s + serviceDurationMin(d.service, (d as { size_tier?: string | null }).size_tier), 0)
-                                    return { a, mates, startMin, dur, endMin: startMin + dur }
-                                  }).sort((x, y) => x.startMin - y.startMin)
+                                    return { a, mates, startMin, dur, endMin: startMin + dur, isAssist: false as boolean }
+                                  })
+                                  // Jobs where this groomer is the ASSIST for someone else's dog — shown in their column too
+                                  // (never grouped with their own dogs), styled differently so they can't be mistaken for their own.
+                                  dayAppts
+                                    .filter(a => a.helper_groomer && sameStaff(a.helper_groomer, s.name) && !sameStaff(a.assigned_groomer, s.name))
+                                    .forEach(a => {
+                                      const d = parseApptTime(a.appointment_date, a.appointment_time)
+                                      const startMin = d.getHours() * 60 + d.getMinutes()
+                                      const dur = serviceDurationMin(a.service, (a as { size_tier?: string | null }).size_tier)
+                                      timed.push({ a, mates: [], startMin, dur, endMin: startMin + dur, isAssist: true })
+                                    })
+                                  timed.sort((x, y) => x.startMin - y.startMin)
 
                                   type TimedItem = typeof timed[number]
                                   const laidOut: (TimedItem & { lane: number; laneCount: number })[] = []
@@ -3696,7 +3707,7 @@ export default function DeskAdmin() {
                                   })
                                   flushCluster()
 
-                                  return laidOut.map(({ a, mates, startMin, dur, lane, laneCount }) => {
+                                  return laidOut.map(({ a, mates, startMin, dur, lane, laneCount, isAssist }) => {
                                     const top = (startMin - CAL_START) * CAL_PX
                                     const h = dur * CAL_PX
                                     const isDone = a.status === 'completed' || !!a.checked_out_at
@@ -3704,7 +3715,9 @@ export default function DeskAdmin() {
                                     // Color = service (so different services are easy to tell apart at a
                                     // glance); a dashed border marks an appointment that hasn't checked in yet.
                                     const svcColor = serviceBlockColor(a.service)
-                                    const cls = `${svcColor.bg} ${svcColor.border} ${svcColor.text} ${isDone || isCheckedIn ? 'border-solid' : 'border-dashed'}`
+                                    const cls = isAssist
+                                      ? 'bg-red-50 border-red-400 text-red-800 border-2 border-dashed'
+                                      : `${svcColor.bg} ${svcColor.border} ${svcColor.text} ${isDone || isCheckedIn ? 'border-solid' : 'border-dashed'}`
                                     const widthPct = 100 / laneCount
                                     return (
                                       <div key={a.id}
@@ -3714,8 +3727,10 @@ export default function DeskAdmin() {
                                           top: `${Math.max(top, 0)}px`, height: `${Math.max(h - 2, 20)}px`,
                                           left: `calc(${lane * widthPct}% + 2px)`,
                                           width: `calc(${widthPct}% - 4px)`,
+                                          ...(isAssist ? { backgroundImage: 'repeating-linear-gradient(135deg, rgba(239,68,68,0.12) 0 6px, transparent 6px 12px)' } : {}),
                                         }}
                                         title={`${[a, ...mates].map(d => d.pets?.name ?? '').join(' + ')} · ${serviceMap[a.service] ?? a.service} · ${fmtCalMin(startMin)}–${fmtCalMin(startMin + dur)}`}>
+                                        {isAssist && <p className="font-bold truncate text-[9px] uppercase tracking-wide">🤝 Assist · for {a.assigned_groomer || '—'}{a.helper_status === 'pending' ? ' (pending)' : ''}</p>}
                                         <p className="font-bold truncate">
                                           {[a, ...mates].map((d, di) => (
                                             <span key={d.id}>
@@ -3724,6 +3739,11 @@ export default function DeskAdmin() {
                                                 className={mates.length > 0 ? 'hover:underline' : ''}>
                                                 {d.pets?.name ?? 'Pet'}{d.is_new_client && ' ⭐'}
                                               </span>
+                                              {!isAssist && d.helper_groomer && (
+                                                <span className="ml-1 font-semibold text-red-600 whitespace-nowrap" title={`Assist: ${d.helper_groomer}${d.helper_status === 'pending' ? ' (pending)' : ''}`}>
+                                                  🤝 {d.helper_groomer.split(' ')[0]}{d.helper_status === 'pending' ? '?' : ''}
+                                                </span>
+                                              )}
                                             </span>
                                           ))}
                                         </p>
@@ -6079,7 +6099,8 @@ export default function DeskAdmin() {
                                     <p className="text-sm font-semibold text-gray-800">
                                       {appt.pets?.name ?? '—'}
                                       {appt.is_new_client && ' ⭐'}
-                                      {hasNotes && <span className="ml-1.5 text-xs bg-amber-100 text-amber-700 font-semibold px-1.5 py-0.5 rounded-md">📝</span>}
+                                      {!!(appt.notes || appt.notes_english) && <span className="ml-1.5 text-xs bg-amber-100 text-amber-700 font-semibold px-1.5 py-0.5 rounded-md" title="Customer note 客人備註">📝</span>}
+                                      {!!appt.notes_list?.some(n => !n.is_addon) && <span className="ml-1.5 text-xs bg-violet-100 text-violet-700 font-semibold px-1.5 py-0.5 rounded-md" title="Groomer note 美容師備註">💬</span>}
                                     </p>
                                     <p className="text-xs text-gray-400">{firstName(appt.clients?.name)} · {appt.client_phone}</p>
                                     {/* Customer request from booking, shown inline so the desk sees it at a glance */}
@@ -7737,7 +7758,7 @@ export default function DeskAdmin() {
                                                               )}
                                                               {groomerNotes.length > 0 && (
                                                                 <div className="bg-violet-50/60 border border-violet-100 rounded-lg px-2.5 py-1.5">
-                                                                  <p className="text-[10px] font-bold uppercase tracking-wide text-violet-600 mb-1">📝 Quick Notes ({groomerNotes.length})</p>
+                                                                  <p className="text-[10px] font-bold uppercase tracking-wide text-violet-600 mb-1">💬 Groomer Notes 美容師備註 ({groomerNotes.length})</p>
                                                                   <div className="space-y-1.5">
                                                                     {groomerNotes.map(n => (
                                                                       <div key={n.id} className="border-l-2 border-violet-200 pl-2">
