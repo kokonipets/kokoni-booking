@@ -1358,12 +1358,14 @@ export default function AdminPage() {
   }
 
   const advanceGroomingStatus = async (id: string, nextStatus: 'incare' | 'ready' | 'done') => {
+    const cur = appointments.find(x => x.id === id)
+    if (nextStatus !== 'done' && (cur?.checked_out_at || cur?.grooming_status === 'done') && !confirm('This appointment was already checked out. Re-open it and restart grooming?\n這個預約已經取走了，確定要重新開始嗎？')) return
     setActionLoading(id + nextStatus)
     try {
       const res = await fetch(`/api/admin/appointments/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'grooming-status', grooming_status: nextStatus }),
+        body: JSON.stringify({ action: 'grooming-status', grooming_status: nextStatus, confirm_reopen: true }),
       })
       const data = await res.json()
       if (data.success) {
@@ -4148,7 +4150,10 @@ export default function AdminPage() {
                               { key: 'done',      label: '🎉 Checked Out',      style: 'bg-gray-50 border-gray-200 text-gray-600' },
                             ].map(({ key, label, style }) => (
                               <button key={key}
-                                onClick={() => patchAppt({ action:'grooming-status', grooming_status: key })}
+                                onClick={() => {
+                                  if (key !== 'done' && (a.checked_out_at || gs === 'done') && !confirm('This appointment was already checked out. Re-open it and restart grooming?\n這個預約已經取走了，確定要重新開始嗎？')) return
+                                  patchAppt({ action:'grooming-status', grooming_status: key, confirm_reopen: true })
+                                }}
                                 className={`py-2.5 px-3 rounded-xl border-2 text-sm font-semibold text-left transition-all ${
                                   gs === key ? style + ' ring-2 ring-offset-1 ring-current' : 'bg-white border-gray-100 text-gray-400'
                                 }`}>

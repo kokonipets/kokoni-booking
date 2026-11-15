@@ -614,7 +614,7 @@ export async function PATCH(
 
   // Update grooming pipeline status
   if (action === 'grooming-status') {
-    const { grooming_status, health_check, grooming_quality } = body
+    const { grooming_status, health_check, grooming_quality, confirm_reopen } = body
     if (!grooming_status) return NextResponse.json({ error: 'grooming_status required' }, { status: 400 })
 
     console.log('grooming-status action:', { grooming_status, health_check, grooming_quality, appointmentId: id })
@@ -635,15 +635,23 @@ export async function PATCH(
     // the pipeline forward, make sure a check-in time exists.
     const { data: existingAppt } = await supabase
       .from('appointments')
-      .select('checked_in_at')
+            .select('checked_in_at, grooming_started_at, grooming_status, checked_out_at')
       .eq('id', id)
       .single()
+    // Already checked out (paid & picked up)? Moving it back to waiting / in care / ready re-opens it
+    // (status flips back to "confirmed", the start time changes...). That must be deliberate, so the
+    // caller has to confirm with the user first and send confirm_reopen: true.
+    const wasCheckedOut = !!(existingAppt?.checked_out_at || existingAppt?.grooming_status === 'done')
+    if (wasCheckedOut && grooming_status !== 'done' && !confirm_reopen) {
+      return NextResponse.json({ error: 'This appointment was already checked out.', needs_confirm: true }, { status: 409 })
+    }
     if (existingAppt && !existingAppt.checked_in_at) {
       updates.checked_in_at = now
     }
     // Stamp grooming_started_at the first time a groomer starts working
     if (grooming_status === 'incare') {
-      updates.grooming_started_at = now
+      // Keep the ORIGINAL start time — pressing Start again must not overwrite it
+      if (!existingAppt?.grooming_started_at) updates.grooming_started_at = now
       // If health_check data is provided (initial assessment), save it
       if (health_check) {
         updates.health_check = health_check

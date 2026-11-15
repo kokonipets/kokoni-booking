@@ -1428,12 +1428,15 @@ export default function DeskAdmin() {
 
   const detailUpdateGroomingStatus = async (newStatus: string) => {
     if (!detailAppt) return
+    // Already picked up? Moving it back re-opens it — make sure that's on purpose.
+    const wasOut = !!(detailAppt.checked_out_at || detailAppt.grooming_status === 'done')
+    if (wasOut && newStatus !== 'done' && !confirm('This appointment was already checked out. Re-open it and restart grooming?\n這個預約已經取走了，確定要重新開始嗎？')) return
     setDetailActionLoading('grooming-' + newStatus)
     try {
       const res = await fetch(`/api/admin/appointments/${detailAppt.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'grooming-status', grooming_status: newStatus }),
+        body: JSON.stringify({ action: 'grooming-status', grooming_status: newStatus, confirm_reopen: true }),
       })
       const data = await res.json()
       if (data.success) {
@@ -6372,13 +6375,14 @@ export default function DeskAdmin() {
               const cur = appt.grooming_status || 'waiting'
               const idx = stageOrder.indexOf(cur)
               if (idx <= 0) return
+              if ((cur === 'done' || appt.checked_out_at) && !confirm('This appointment was already checked out. Re-open it and restart grooming?\n這個預約已經取走了，確定要重新開始嗎？')) return
               const prev = stageOrder[idx - 1]
               setGroomingUpdating(appt.id)
               try {
                 await fetch(`/api/admin/appointments/${appt.id}`, {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'grooming-status', grooming_status: prev }),
+                  body: JSON.stringify({ action: 'grooming-status', grooming_status: prev, confirm_reopen: true }),
                 })
                 setGroomingAppts(p => p.map(a => a.id === appt.id ? { ...a, grooming_status: prev } : a))
               } catch { showToast('Update failed') }

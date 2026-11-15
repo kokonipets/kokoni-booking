@@ -705,6 +705,9 @@ export default function GroomerDashboard() {
           )
         }
         showToast(action === 'start' ? '▶ Started!' : 'Updated!')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        showToast(err.needs_confirm ? 'Already checked out — please ask the front desk.' : (err.error || 'Failed to update'))
       }
     } catch (err) {
       console.error(err)
