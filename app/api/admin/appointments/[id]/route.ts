@@ -403,11 +403,20 @@ export async function PATCH(
   // Assign groomer/bather
   if (action === 'assign-staff') {
     const { assigned_groomer, assigned_bather } = body
-    const updates: Record<string, string | null | boolean> = {}
+    const updates: Record<string, string | number | null | boolean> = {}
     if (assigned_groomer !== undefined) updates.assigned_groomer = assigned_groomer || null
     if (assigned_bather !== undefined) updates.assigned_bather = assigned_bather || null
     // Always reset groomer_confirmed so the newly assigned groomer must re-accept
     updates.groomer_confirmed = false
+    // If the new main groomer is the person who was the assist, they can't assist themselves —
+    // drop the assist (and its pay terms) so it doesn't linger on the appointment.
+    if (assigned_groomer) {
+      const { data: curHelper } = await supabase.from('appointments').select('helper_groomer').eq('id', id).single()
+      const h = (curHelper as { helper_groomer?: string | null } | null)?.helper_groomer
+      if (h && h.trim().toLowerCase() === String(assigned_groomer).trim().toLowerCase()) {
+        Object.assign(updates, { helper_groomer: null, helper_pay_type: null, helper_flat_amount: null, helper_commission_percent: null, helper_tip_percent: null, helper_status: null })
+      }
+    }
     const { error } = await supabase
       .from('appointments')
       .update(updates)
