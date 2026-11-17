@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import MetaPixel from '@/components/MetaPixel'
 import PromoBanner from '@/components/PromoBanner'
 
 export const metadata: Metadata = {
@@ -30,5 +31,5 @@ export const viewport: Viewport = {
 }
 
 export default function BookZhCnLayout({ children }: { children: React.ReactNode }) {
-  return <><PromoBanner lang="zh-CN" />{children}</>
+  return <><MetaPixel /><PromoBanner lang="zh-CN" />{children}</>
 }

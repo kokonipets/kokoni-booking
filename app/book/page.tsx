@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { trackPixel } from '@/components/MetaPixel'
 import Image from 'next/image'
 import {
   ChevronLeft,
@@ -194,6 +195,14 @@ const STEPS_LABELS = ['Phone', 'Info', 'Pet', 'Service', 'Date & Time', 'Details
 // ─── Main Component ───────────────────────────────────────
 export default function BookPage() {
   const [step, setStep] = useState<Step>('phone')
+  // Meta Pixel: report a completed booking once when the confirmation screen shows
+  const pixelSentRef = useRef(false)
+  useEffect(() => {
+    if (step === 'confirmed' && !pixelSentRef.current) {
+      pixelSentRef.current = true
+      trackPixel('Schedule')
+    }
+  }, [step])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
