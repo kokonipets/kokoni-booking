@@ -7,6 +7,10 @@ import { useEffect, useState } from 'react'
 // in a cookie by middleware.ts; this only displays it. The discount is applied
 // by staff at checkout (pre-selected for them), so this never promises an
 // amount — just that the code is on the booking.
+// Set to true to show the promo note to clients again. While false, promo links
+// (?promo=CODE) still work: the code is saved on the booking and pre-selected at checkout.
+const SHOW_PROMO_BANNER = false
+
 export default function PromoBanner({ lang }: { lang: 'en' | 'zh-TW' | 'zh-CN' }) {
   const [code, setCode] = useState<string | null>(null)
   useEffect(() => {
@@ -15,7 +19,7 @@ export default function PromoBanner({ lang }: { lang: 'en' | 'zh-TW' | 'zh-CN' }
     const c = (fromUrl || fromCookie || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30)
     if (c) setCode(c)
   }, [])
-  if (!code) return null
+  if (!code || !SHOW_PROMO_BANNER) return null
   const text = lang === 'zh-TW'
     ? `🎉 優惠碼 ${code} 已套用，結帳時會自動折抵`
     : lang === 'zh-CN'
