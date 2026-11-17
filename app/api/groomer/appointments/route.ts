@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { commissionableAmount, helperCut, ratesOn, loadRateHistory } from '@/lib/commission'
+import { sameStaff } from '@/lib/staff-name'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -165,21 +166,17 @@ export async function GET(req: NextRequest) {
       if (!he && hd && hd.length) {
         // Work out what the helper earns on each one, using the OWNER's commission / tip-share rates on that date
         const owners = [...new Set((hd as { assigned_groomer: string | null }[]).map(x => x.assigned_groomer).filter(Boolean))] as string[]
-        const { data: ownerRows } = await supabase.from('staff').select('name, commission_percent, tip_percent').in('name', owners)
+        void owners
+        // Match the owner by exact name first, then by first name — assigned_groomer can be "Jing" while the staff row is "Jing Lee".
+        const { data: allStaffRows } = await supabase.from('staff').select('id, name, commission_percent, tip_percent')
         const hist = await loadRateHistory(supabase)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const byName: Record<string, any> = {}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const o of (ownerRows || []) as any[]) byName[o.name] = o
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: idRows } = await supabase.from('staff').select('id, name').in('name', owners) as any
-        const idByName: Record<string, string> = {}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const r of (idRows || []) as any[]) idByName[r.name] = String(r.id)
+        const staffRows = (allStaffRows || []) as any[]
+        const findOwner = (n: string | null) => n ? (staffRows.find(r => r.name === n) ?? staffRows.find(r => sameStaff(r.name, n)) ?? null) : null
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         helperAppointments = (hd as any[]).map(x => {
-          const o = x.assigned_groomer ? byName[x.assigned_groomer] : null
-          const rates = o ? ratesOn({ ...o, rate_history: hist[idByName[x.assigned_groomer]] || [] }, x.appointment_date) : { commission: 0, tip: 0 }
+          const o = findOwner(x.assigned_groomer)
+          const rates = o ? ratesOn({ ...o, rate_history: hist[String(o.id)] || [] }, x.appointment_date) : { commission: 0, tip: 0 }
           const ownerComm = commissionableAmount(parseFloat(x.payment_amount || '0'), parseFloat(x.discount_amount || '0'), x.discount_bearer) * rates.commission / 100
           const ownerTip = parseFloat(x.tip_amount || '0') * rates.tip / 100
           const cut = helperCut(x, ownerComm, ownerTip)
