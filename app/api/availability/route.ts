@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { parseStaffGate, staffWorksOn } from '@/lib/bookable-date'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -108,7 +109,24 @@ export async function GET() {
   let specialOpenDates: string[] = []
   try { specialOpenDates = settings.special_open_dates ? JSON.parse(settings.special_open_dates) : [] } catch { specialOpenDates = [] }
 
+  // "Only when <staff> is in" gate: dates (next ~200 days) the groomer is NOT working here, so the
+  // booking pages can grey out the gated services. Server checks in /api/slots + /api/appointments enforce it.
+  let staffGate: { services: string[]; off_dates: string[] } | null = null
+  const gate = parseStaffGate(settings.staff_gate)
+  if (gate) {
+    const { data: staffRows } = await supabase.from('staff').select('name, first_name, role, is_active, work_hours, days_off, special_hours')
+    const off: string[] = []
+    const base = new Date()
+    for (let i = 0; i < 200; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i, 12)
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      if (!staffWorksOn((staffRows || []) as Parameters<typeof staffWorksOn>[0], gate.staff, iso)) off.push(iso)
+    }
+    staffGate = { services: gate.services, off_dates: off }
+  }
+
   return NextResponse.json({
+    staff_gate: staffGate,
     open_days: openDays,
     open_time: openTime,
     close_time: closeTime,

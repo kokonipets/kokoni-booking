@@ -287,6 +287,7 @@ export default function BookPage() {
   const [blockedDates, setBlockedDates] = useState<string[]>([])
   const [blockedClient, setBlockedClient] = useState(false) // block list → every date greyed out, "no dates available"
   const [specialOpenDates, setSpecialOpenDates] = useState<string[]>([])
+  const [staffGate, setStaffGate] = useState<{ services: string[]; off_dates: string[] } | null>(null)
   const [dynamicTimeSlots, setDynamicTimeSlots] = useState<string[]>(TIME_SLOTS)
   const [openDaysLabel, setOpenDaysLabel] = useState('Monday – Saturday')
   const [dynamicServices, setDynamicServices] = useState(SERVICES)
@@ -306,6 +307,7 @@ export default function BookPage() {
         }
         if (Array.isArray(data.blocked_dates)) setBlockedDates(data.blocked_dates)
         if (Array.isArray(data.special_open_dates)) setSpecialOpenDates(data.special_open_dates)
+        setStaffGate(data.staff_gate && typeof data.staff_gate === 'object' ? data.staff_gate : null)
         if (data.time_slots && data.time_slots.length > 0) setDynamicTimeSlots(data.time_slots)
         if (data.services && data.services.length > 0) {
           // Show ALL services from API (ignore visibility — admin controls this separately)
@@ -857,7 +859,7 @@ export default function BookPage() {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
             const isToday = date.toDateString() === today.toDateString()
             const isPast = !isToday && date < today   // today is never "past"
-            const isClosed = !allowedDays.includes(date.getDay()) && !specialOpenDates.includes(dateStr)
+            const isClosed = !allowedDays.includes(date.getDay()) && !specialOpenDates.includes(dateStr) || (!!staffGate && staffGate.services.includes(service) && staffGate.off_dates.includes(dateStr))
             const isBlockedDate = !isToday && blockedDates.includes(dateStr) // today can't be blocked
             const isDisabled = isPast || isClosed || isBlockedDate || blockedClient
             const isSelected = selectedDate?.toDateString() === date.toDateString()

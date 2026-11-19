@@ -168,11 +168,21 @@ export async function GET(req: NextRequest) {
         const owners = [...new Set((hd as { assigned_groomer: string | null }[]).map(x => x.assigned_groomer).filter(Boolean))] as string[]
         void owners
         // Match the owner by exact name first, then by first name — assigned_groomer can be "Jing" while the staff row is "Jing Lee".
-        const { data: allStaffRows } = await supabase.from('staff').select('id, name, commission_percent, tip_percent')
+        const { data: allStaffRows } = await supabase.from('staff').select('id, name, role, commission_percent, tip_percent, is_active')
         const hist = await loadRateHistory(supabase)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const staffRows = (allStaffRows || []) as any[]
-        const findOwner = (n: string | null) => n ? (staffRows.find(r => r.name === n) ?? staffRows.find(r => sameStaff(r.name, n)) ?? null) : null
+        // The same person can have several staff rows (e.g. a groomer row AND a manager row with 0% rates).
+        // The assist is based on the GROOMER row, so prefer that, then an active row, then the higher commission.
+        const pickBest = (rows: any[]) => rows.sort((a, b) =>
+          (b.role === 'groomer' ? 1 : 0) - (a.role === 'groomer' ? 1 : 0) ||
+          (b.is_active === false ? 0 : 1) - (a.is_active === false ? 0 : 1) ||
+          Number(b.commission_percent || 0) - Number(a.commission_percent || 0))[0] ?? null
+        const findOwner = (n: string | null) => {
+          if (!n) return null
+          const exact = staffRows.filter(r => r.name === n)
+          return pickBest(exact.length ? exact : staffRows.filter(r => sameStaff(r.name, n)))
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         helperAppointments = (hd as any[]).map(x => {
           const o = findOwner(x.assigned_groomer)

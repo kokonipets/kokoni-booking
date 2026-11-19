@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServer } from '@/lib/supabase'
-import { checkBookableDate } from '@/lib/bookable-date'
+import { checkBookableDate, checkStaffGate } from '@/lib/bookable-date'
 import { notifyAdminNewRequest } from '@/lib/sms'
 import { sendPushToAdmin } from '@/lib/push-notify'
 import { findBlocked } from '@/lib/blocklist'
@@ -117,6 +117,8 @@ export async function POST(req: NextRequest) {
   {
     const check = await checkBookableDate(supabase, date)
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })
+    const sg = await checkStaffGate(supabase, date, service)
+    if (!sg.ok) return NextResponse.json({ error: sg.error }, { status: 400 })
   }
 
   let resolvedPetId = existingPetId

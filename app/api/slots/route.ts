@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { checkBookableDate } from '@/lib/bookable-date'
+import { checkBookableDate, checkStaffGate } from '@/lib/bookable-date'
 import { matchTier } from '@/lib/serviceTier'
 import { findBlocked } from '@/lib/blocklist'
 
@@ -165,6 +165,16 @@ export async function GET(req: NextRequest) {
     const check = await checkBookableDate(supabase, dateStr)
     if (!check.ok) {
       return NextResponse.json({ slots: [], closed: true, groomer_count: 0, booked: {} }, {
+        headers: { 'Cache-Control': 'no-store' }
+      })
+    }
+  }
+
+  // "Only when Wylie is in" services (e.g. Puppy First Groom): no times on days she isn't working here.
+  if (serviceId) {
+    const sg = await checkStaffGate(supabase, dateStr, serviceId)
+    if (!sg.ok) {
+      return NextResponse.json({ slots: [], service_day_blocked: true, groomer_count: 0, booked: {} }, {
         headers: { 'Cache-Control': 'no-store' }
       })
     }

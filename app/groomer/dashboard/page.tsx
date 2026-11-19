@@ -1605,7 +1605,9 @@ export default function GroomerDashboard() {
     <div className="min-h-screen bg-gray-50 pb-24">
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-gray-200">
+      {/* Status-bar cover: keeps scrolled content from showing under time/wifi/battery */}
+      <div className="fixed top-0 inset-x-0 z-50 bg-white pointer-events-none" style={{ height: 'env(safe-area-inset-top, 0px)' }} />
+      <header className="bg-white border-b border-gray-200" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <Image src="/logo.png" alt="Kokoni" width={34} height={34} className="rounded-full" />

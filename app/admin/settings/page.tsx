@@ -191,6 +191,9 @@ export default function SettingsPage() {
   const [storeHoursForm, setStoreHoursForm] = useState<Record<string, { open: string; close: string }>>({})
   const [savingMessage, setSavingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [services, setServices] = useState<ServiceDef[]>([])
+  // "Only when <groomer> is in" gate (reads that groomer's schedule). settings.staff_gate — saved by its own button
+  const [staffGate, setStaffGate] = useState<{ staff: string; services: string[] }>({ staff: '', services: [] })
+  const [savingStaffGate, setSavingStaffGate] = useState(false)
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
   const [serviceFormData, setServiceFormData] = useState<ServiceDef>({ id: '', name: '', desc: '', tiers: DEFAULT_TIERS.map(t => ({...t})) })
   const [savingButton, setSavingButton] = useState<string | null>(null)
@@ -390,6 +393,13 @@ export default function SettingsPage() {
         setClosedDays(new Set(closedArray))
       }
 
+      if (settings.staff_gate) {
+        try {
+          const g = JSON.parse(settings.staff_gate)
+          setStaffGate({ staff: typeof g?.staff === 'string' ? g.staff : '', services: Array.isArray(g?.services) ? g.services.filter((x: unknown) => typeof x === 'string') : [] })
+        } catch { setStaffGate({ staff: '', services: [] }) }
+      }
+
       // Load special open dates (one-off exceptions to the weekly schedule)
       if (settings.special_open_dates) {
         try {
@@ -443,6 +453,24 @@ export default function SettingsPage() {
     } catch (err) {
       console.error(err)
     }
+  }
+
+  const saveStaffGate = async () => {
+    setSavingStaffGate(true)
+    try {
+      const on = !!staffGate.staff && staffGate.services.length > 0
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'staff_gate', value: on ? JSON.stringify(staffGate) : '' })
+      })
+      if (!res.ok) throw new Error('Failed to save groomer-in rule')
+      setSavingMessage({ type: 'success', text: '✅ Saved' })
+    } catch (err) {
+      setSavingMessage({ type: 'error', text: `❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}` })
+    }
+    setTimeout(() => setSavingMessage(null), 4000)
+    setSavingStaffGate(false)
   }
 
   const saveSpecialOpenDates = async (dates: string[]) => {
@@ -1893,6 +1921,40 @@ export default function SettingsPage() {
                       })}
                     </div>
                   )}
+                </div>
+
+                {/* Only when a groomer is in — reads that groomer's schedule (days off / hours) */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm font-semibold text-gray-700">👩‍🎨 Only When This Groomer Is In</p>
+                  <p className="text-xs text-gray-400 mt-0.5 mb-2">Uses the groomer's schedule (Staff → work hours, days off, special hours) — no dates to type. On days she is not working here, the selected services are closed on the booking page (e.g. Puppy First Groom only when Wylie is in).</p>
+                  <select value={staffGate.staff} onChange={e => setStaffGate(prev => ({ ...prev, staff: e.target.value }))}
+                    className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+                    <option value="">Off (no rule)</option>
+                    {Array.from(new Set(staff.filter(m => m.role === 'groomer').map(m => (m.name || '').trim().split(/\s+/)[0]).filter(Boolean))).map(n => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                  {staffGate.staff && (
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-500 font-medium mb-1.5">Services only when {staffGate.staff} is in</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {services.filter(sv => sv.category !== 'addon').map(sv => {
+                          const on = staffGate.services.includes(sv.id)
+                          return (
+                            <button key={sv.id} type="button"
+                              onClick={() => setStaffGate(prev => ({ ...prev, services: on ? prev.services.filter(x => x !== sv.id) : [...prev.services, sv.id] }))}
+                              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border ${on ? 'bg-pink-500 border-pink-500 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-pink-300'}`}>
+                              {sv.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <button type="button" onClick={saveStaffGate} disabled={savingStaffGate}
+                    className="mt-3 text-xs bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-semibold px-3 py-1.5 rounded-lg">
+                    {savingStaffGate ? 'Saving…' : 'Save this rule'}
+                  </button>
                 </div>
 
                 {/* Closed Dates — holidays / days off */}
