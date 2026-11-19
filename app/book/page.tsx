@@ -572,7 +572,7 @@ export default function BookPage() {
   // extra dog in a group booking, so all dogs get an equally full treatment.
   const renderServiceOptions = (selectedServiceId: string, onSelect: (id: string) => void) => {
     // Group by service type using keyword matching
-    const grouped: Record<string, any[]> = { 'Bath & Brush': [], 'Simply Cute': [], 'Asian Fusion': [], 'Other': [] }
+    const grouped: Record<string, any[]> = { 'Bath & Brush': [], 'Simply Cute': [], 'Asian Fusion': [], 'Puppy First Groom': [], 'Other': [] }
     dynamicServices.forEach(s => {
       if (!s.visible && s.visible !== undefined) return // skip hidden services
       // Walk-in mode only offers services flagged "⚡ Walk-in Anytime" in Settings —
@@ -582,10 +582,11 @@ export default function BookPage() {
       if (n.includes('bath') || n.includes('brush')) grouped['Bath & Brush'].push(s)
       else if (n.includes('simply') || n.includes('cute')) grouped['Simply Cute'].push(s)
       else if (n.includes('asian') || n.includes('fusion')) grouped['Asian Fusion'].push(s)
+      else if (n.includes('puppy')) grouped['Puppy First Groom'].push(s)
       else grouped['Other'].push(s) // catch-all so new services still show up
     })
     // Define order: Bath & Brush first, then Simply Cute, then Asian Fusion, then anything else
-    const order = ['Bath & Brush', 'Simply Cute', 'Asian Fusion', 'Other']
+    const order = ['Bath & Brush', 'Simply Cute', 'Asian Fusion', 'Puppy First Groom', 'Other']
     const serviceButton = (s: any) => (
       <button
         key={s.id}

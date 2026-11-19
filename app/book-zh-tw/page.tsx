@@ -631,10 +631,21 @@ export default function BookPageZhTw() {
   // checkmark) for any dog in the booking — used for the primary dog and for every
   // extra dog in a group booking, so all dogs get an equally full treatment.
   const renderServiceOptions = (selectedServiceId: string, onSelect: (id: string) => void) => {
-    const visibleServices = dynamicServices
+    const sortedServices = dynamicServices
       .filter(s => s.visible !== false && (!isWalkIn || s.skipCapacity))
       .slice()
       .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999))
+    // Puppy First Groom is listed right after the Asian Fusion services (same order as the English page)
+    const visibleServices = (() => {
+      const isPuppy = (s: any) => String(s.name || '').toLowerCase().includes('puppy')
+      const rest = sortedServices.filter(s => !isPuppy(s))
+      const pups = sortedServices.filter(isPuppy)
+      if (pups.length === 0) return sortedServices
+      let lastAF = -1
+      rest.forEach((s, i) => { const n = String(s.name || '').toLowerCase(); if (n.includes('asian') || n.includes('fusion')) lastAF = i })
+      rest.splice(lastAF === -1 ? rest.length : lastAF + 1, 0, ...pups)
+      return rest
+    })()
     const serviceButton = (s: any) => (
       <button
         key={s.id}
