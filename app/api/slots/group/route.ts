@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { checkBookableDate } from '@/lib/bookable-date'
+import { checkBookableDate, checkDateServiceRule } from '@/lib/bookable-date'
 import { matchTier } from '@/lib/serviceTier'
 
 export const dynamic = 'force-dynamic'
@@ -76,7 +76,7 @@ type DogRequest = { service: string; size_tier?: string | null }
 type DogAssignment = { index: number; start: string; startMin: number; duration: number; end: string }
 
 export async function POST(req: NextRequest) {
-  let body: { date?: string; dogs?: DogRequest[] }
+  let body: { date?: string; dogs?: DogRequest[]; phone?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }) }
 
   const dateStr = body.date
@@ -97,6 +97,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ slots: [], assignments: {}, closed: true }, {
         headers: { 'Cache-Control': 'no-store' }
       })
+    }
+    // Date Booking Rules apply to every dog's service in the group
+    for (const d of dogs) {
+      const dr = await checkDateServiceRule(supabase, dateStr, body.phone, d?.service)
+      if (!dr.ok) {
+        return NextResponse.json({ slots: [], assignments: {}, service_day_blocked: true, message: dr.error, rule: { code: dr.code, groomer: dr.groomer ?? null } }, {
+          headers: { 'Cache-Control': 'no-store' }
+        })
+      }
     }
   }
 

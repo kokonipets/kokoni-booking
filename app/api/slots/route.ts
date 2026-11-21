@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { checkBookableDate, checkStaffGate } from '@/lib/bookable-date'
+import { checkBookableDate, checkStaffGate, checkDateServiceRule } from '@/lib/bookable-date'
 import { matchTier } from '@/lib/serviceTier'
 import { findBlocked } from '@/lib/blocklist'
 
@@ -175,6 +175,14 @@ export async function GET(req: NextRequest) {
     const sg = await checkStaffGate(supabase, dateStr, serviceId)
     if (!sg.ok) {
       return NextResponse.json({ slots: [], service_day_blocked: true, groomer_count: 0, booked: {} }, {
+        headers: { 'Cache-Control': 'no-store' }
+      })
+    }
+    // Date Booking Rules (e.g. 11/23: Simply Cute only for Mia's returning clients). Only the
+    // booking pages pass a phone; admin screens see every time.
+    const dr = await checkDateServiceRule(supabase, dateStr, phoneParam, serviceId)
+    if (!dr.ok) {
+      return NextResponse.json({ slots: [], service_day_blocked: true, message: dr.error, rule: { code: dr.code, groomer: dr.groomer ?? null }, groomer_count: 0, booked: {} }, {
         headers: { 'Cache-Control': 'no-store' }
       })
     }

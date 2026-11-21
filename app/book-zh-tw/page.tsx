@@ -283,6 +283,11 @@ export default function BookPageZhTw() {
   const [openDaysLabel, setOpenDaysLabel] = useState('週一至週六')
   const [dynamicServices, setDynamicServices] = useState(SERVICES)
   const [dateSlots, setDateSlots] = useState<string[] | null>(null)
+  // Why a date has no times because of a Date Booking Rule (e.g. Mia's returning clients only)
+  const [slotsRuleNote, setSlotsRuleNote] = useState<string | null>(null)
+  const [groupRuleNote, setGroupRuleNote] = useState<string | null>(null)
+  const ruleNoteText = (r: { code?: string; groomer?: string | null } | undefined | null): string | null =>
+    !r || !r.code ? null : (r.code === 'not_offered' ? '此日期不提供這項服務，請選擇其他日期或服務。' : r.code === 'groomer' ? `此日期這項服務僅限 ${r.groomer} 服務過的老客人，請選擇其他日期或來電。` : '此日期這項服務僅限老客人，請選擇其他日期或來電。')
   const [dateSlotsLoading, setDateSlotsLoading] = useState(false)
   const selectedDateRef = useRef<Date | null>(null)
   // Services created later in Admin Settings (e.g. breed-specific tiers, add-ons)
@@ -404,11 +409,12 @@ export default function BookPageZhTw() {
     const dateStr = `${yyyy}-${mm}-${dd}`
     setDateSlotsLoading(true)
     setDateSlots(null)
+    setSlotsRuleNote(null)
     const svcParam = forService ? `&service=${encodeURIComponent(forService)}` : ''
     const tierParam = forSizeTier ? `&size_tier=${encodeURIComponent(forSizeTier)}` : ''
     fetch(`/api/slots?date=${dateStr}&phone=${encodeURIComponent(phone.replace(/\D/g, ''))}${svcParam}${tierParam}&t=${Date.now()}`)
       .then(r => r.json())
-      .then(data => { if (Array.isArray(data.slots)) setDateSlots(data.slots) })
+      .then(data => { setSlotsRuleNote(ruleNoteText(data.rule)); if (Array.isArray(data.slots)) setDateSlots(data.slots) })
       .catch(() => {})
       .finally(() => setDateSlotsLoading(false))
   }, [])
@@ -441,19 +447,21 @@ export default function BookPageZhTw() {
     const dateStr = `${yyyy}-${mm}-${dd}`
     const dogs = [{ service, size_tier: slotSizeTier || undefined }, ...groupExtraPets.map(g => ({ service: g.service }))]
     setGroupSlotsLoading(true)
+    setGroupRuleNote(null)
     fetch('/api/slots/group', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: dateStr, dogs }),
+      body: JSON.stringify({ date: dateStr, dogs, phone: phone.replace(/\D/g, '') }),
     })
       .then(r => r.json())
       .then(data => {
+        setGroupRuleNote(ruleNoteText(data.rule))
         setGroupSlots(Array.isArray(data.slots) ? data.slots : [])
         setGroupAssignments(data.assignments || {})
       })
       .catch(() => { setGroupSlots([]); setGroupAssignments({}) })
       .finally(() => setGroupSlotsLoading(false))
-  }, [isGroupBooking, selectedDate, service, groupExtraPets, slotSizeTier])
+  }, [isGroupBooking, selectedDate, service, groupExtraPets, slotSizeTier, phone])
 
   const handlePhoneLookup = async () => {
     const digits = phone.replace(/\D/g, '')
@@ -1297,7 +1305,7 @@ export default function BookPageZhTw() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-400 text-center py-3">此日期已約滿，請選擇其他日期。</p>
+                    <p className="text-sm text-gray-400 text-center py-3">{(isGroupBooking ? groupRuleNote : slotsRuleNote) || '此日期已約滿，請選擇其他日期。'}</p>
                   )
                 })()}
               </div>

@@ -293,6 +293,11 @@ export default function BookPage() {
   const [dynamicServices, setDynamicServices] = useState(SERVICES)
   // Per-date slot availability (groomer capacity check)
   const [dateSlots, setDateSlots] = useState<string[] | null>(null)
+  // Why a date has no times because of a Date Booking Rule (e.g. Mia's returning clients only)
+  const [slotsRuleNote, setSlotsRuleNote] = useState<string | null>(null)
+  const [groupRuleNote, setGroupRuleNote] = useState<string | null>(null)
+  const ruleNoteText = (r: { code?: string; groomer?: string | null } | undefined | null): string | null =>
+    !r || !r.code ? null : (r.code === 'not_offered' ? 'This service is not offered on this date. Please pick another date or service.' : r.code === 'groomer' ? `On this date, this service is only for ${r.groomer}'s returning clients. Please pick another date, or call us.` : 'On this date, this service is for returning customers only. Please pick another date, or call us.')
   const [dateSlotsLoading, setDateSlotsLoading] = useState(false)
   const selectedDateRef = useRef<Date | null>(null)
 
@@ -330,6 +335,7 @@ export default function BookPage() {
     const dateStr = `${yyyy}-${mm}-${dd}`
     setDateSlotsLoading(true)
     setDateSlots(null)
+    setSlotsRuleNote(null)
     const svcParam = forService ? `&service=${encodeURIComponent(forService)}` : ''
     // Lets the server know how long this specific booking would actually take, so it can
     // rule out any slot that would run into closing time or another appointment down the line
@@ -337,7 +343,7 @@ export default function BookPage() {
     const tierParam = forSizeTier ? `&size_tier=${encodeURIComponent(forSizeTier)}` : ''
     fetch(`/api/slots?date=${dateStr}&phone=${encodeURIComponent(phone.replace(/\D/g, ''))}${svcParam}${tierParam}&t=${Date.now()}`)
       .then(r => r.json())
-      .then(data => { if (Array.isArray(data.slots)) setDateSlots(data.slots) })
+      .then(data => { setSlotsRuleNote(ruleNoteText(data.rule)); if (Array.isArray(data.slots)) setDateSlots(data.slots) })
       .catch(() => {})
       .finally(() => setDateSlotsLoading(false))
   }, [])
@@ -372,19 +378,21 @@ export default function BookPage() {
     const dateStr = `${yyyy}-${mm}-${dd}`
     const dogs = [{ service, size_tier: slotSizeTier || undefined }, ...groupExtraPets.map(g => ({ service: g.service }))]
     setGroupSlotsLoading(true)
+    setGroupRuleNote(null)
     fetch('/api/slots/group', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: dateStr, dogs }),
+      body: JSON.stringify({ date: dateStr, dogs, phone: phone.replace(/\D/g, '') }),
     })
       .then(r => r.json())
       .then(data => {
+        setGroupRuleNote(ruleNoteText(data.rule))
         setGroupSlots(Array.isArray(data.slots) ? data.slots : [])
         setGroupAssignments(data.assignments || {})
       })
       .catch(() => { setGroupSlots([]); setGroupAssignments({}) })
       .finally(() => setGroupSlotsLoading(false))
-  }, [isGroupBooking, selectedDate, service, groupExtraPets, slotSizeTier])
+  }, [isGroupBooking, selectedDate, service, groupExtraPets, slotSizeTier, phone])
 
   // ─── Step: Phone ────────────────────────────────────────
   const handlePhoneLookup = async () => {
@@ -1404,7 +1412,7 @@ export default function BookPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-400 text-center py-3">No available slots — all groomers are fully booked. Please pick another date.</p>
+                    <p className="text-sm text-gray-400 text-center py-3">{(isGroupBooking ? groupRuleNote : slotsRuleNote) || 'No available slots — all groomers are fully booked. Please pick another date.'}</p>
                   )
                 })()}
               </div>

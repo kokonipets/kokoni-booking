@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { tagClasses, type Tag } from '@/lib/tags'
 import { readAuthRaw, saveAuth } from '@/lib/authStorage'
 import { DISCOUNT_BEARER_OPTIONS, type DiscountBearer } from '@/lib/commission'
+import { parseDateServiceRules, type DateServiceRule, type DateServiceEntry } from '@/lib/bookable-date'
 
 type StaffMember = {
   id: string
@@ -194,6 +195,11 @@ export default function SettingsPage() {
   // "Only when <groomer> is in" gate (reads that groomer's schedule). settings.staff_gate — saved by its own button
   const [staffGate, setStaffGate] = useState<{ staff: string; services: string[] }>({ staff: '', services: [] })
   const [savingStaffGate, setSavingStaffGate] = useState(false)
+  // Date Booking Rules: per-date list of services that can be booked, and by whom
+  const [dateRules, setDateRules] = useState<DateServiceRule[]>([])
+  const [newDateRuleDate, setNewDateRuleDate] = useState('')
+  const [savingDateRules, setSavingDateRules] = useState(false)
+  const [dateRulesSaved, setDateRulesSaved] = useState(false)
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
   const [serviceFormData, setServiceFormData] = useState<ServiceDef>({ id: '', name: '', desc: '', tiers: DEFAULT_TIERS.map(t => ({...t})) })
   const [savingButton, setSavingButton] = useState<string | null>(null)
@@ -400,6 +406,8 @@ export default function SettingsPage() {
         } catch { setStaffGate({ staff: '', services: [] }) }
       }
 
+      setDateRules(parseDateServiceRules(settings.date_service_rules))
+
       // Load special open dates (one-off exceptions to the weekly schedule)
       if (settings.special_open_dates) {
         try {
@@ -453,6 +461,39 @@ export default function SettingsPage() {
     } catch (err) {
       console.error(err)
     }
+  }
+
+  const saveDateRules = async (rules: DateServiceRule[]) => {
+    setSavingDateRules(true)
+    try {
+      const clean = rules.slice().sort((a, b) => a.date.localeCompare(b.date))
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'date_service_rules', value: JSON.stringify(clean) })
+      })
+      if (!res.ok) throw new Error('Failed to save date booking rules')
+      setDateRules(clean)
+      setDateRulesSaved(true)
+      setTimeout(() => setDateRulesSaved(false), 2500)
+    } catch (err) {
+      setSavingMessage({ type: 'error', text: `❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}` })
+      setTimeout(() => setSavingMessage(null), 5000)
+    } finally {
+      setSavingDateRules(false)
+    }
+  }
+
+  const setDateRuleService = (date: string, serviceId: string, choice: string) => {
+    setDateRules(prev => prev.map(r => {
+      if (r.date !== date) return r
+      const others = r.services.filter(x => x.id !== serviceId)
+      if (!choice) return { ...r, services: others }
+      const entry: DateServiceEntry = choice.startsWith('groomer:')
+        ? { id: serviceId, who: 'groomer', groomer: choice.slice(8) }
+        : { id: serviceId, who: choice === 'returning' ? 'returning' : 'all' }
+      return { ...r, services: [...others, entry] }
+    }))
   }
 
   const saveStaffGate = async () => {
@@ -1921,6 +1962,65 @@ export default function SettingsPage() {
                       })}
                     </div>
                   )}
+                </div>
+
+                {/* Date Booking Rules — one date: which services, and who can book them */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm font-semibold text-gray-700">📋 Date Booking Rules 指定日期預約規則</p>
+                  <p className="text-xs text-gray-400 mt-0.5 mb-2">For one date only: choose which services customers can book that day, and who can book each one. Services set to "Not offered" can't be booked that day. Dates without a rule work as usual. (The date must also be open — and groomers need hours that day.)</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <input type="date" value={newDateRuleDate} onChange={e => setNewDateRuleDate(e.target.value)}
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-1.5" />
+                    <button type="button" disabled={!newDateRuleDate || dateRules.some(r => r.date === newDateRuleDate)}
+                      onClick={() => { setDateRules(prev => [...prev, { date: newDateRuleDate, services: [] }].sort((a, b) => a.date.localeCompare(b.date))); setNewDateRuleDate('') }}
+                      className="text-xs bg-sky-500 hover:bg-sky-600 disabled:opacity-40 text-white font-semibold px-3 py-1.5 rounded-lg">
+                      + Add date
+                    </button>
+                  </div>
+                  {dateRules.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic py-1">No date rules.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {dateRules.map(rule => {
+                        const [y, m, d] = rule.date.split('-').map(Number)
+                        const label = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })
+                        const groomerNames = Array.from(new Set(staff.filter(st => st.role === 'groomer' && st.is_active).map(st => (st.name || '').trim().split(/\s+/)[0]).filter(Boolean)))
+                        return (
+                          <div key={rule.date} className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                            <div className="flex items-center mb-1.5">
+                              <span className="text-xs font-semibold text-amber-800">{label}</span>
+                              <button type="button" onClick={() => setDateRules(prev => prev.filter(r => r.date !== rule.date))}
+                                className="ml-auto text-amber-300 hover:text-rose-500 text-lg leading-none">×</button>
+                            </div>
+                            <div className="space-y-1">
+                              {services.filter(sv => sv.category !== 'addon').map(sv => {
+                                const e = rule.services.find(x => x.id === sv.id)
+                                const val = !e ? '' : e.who === 'groomer' ? `groomer:${e.groomer || ''}` : e.who
+                                return (
+                                  <div key={sv.id} className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-600 flex-1 truncate">{sv.name}</span>
+                                    <select value={val} onChange={ev => setDateRuleService(rule.date, sv.id, ev.target.value)}
+                                      className={`text-xs border rounded-lg px-2 py-1 bg-white ${val ? 'border-sky-300 text-sky-700 font-semibold' : 'border-gray-200 text-gray-400'}`}>
+                                      <option value="">Not offered 不開放</option>
+                                      <option value="all">Everyone 所有客人</option>
+                                      <option value="returning">Returning only 僅老客人</option>
+                                      {groomerNames.map(n => (
+                                        <option key={n} value={`groomer:${n}`}>{n}'s returning clients 僅{n}的老客人</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <button type="button" onClick={() => saveDateRules(dateRules)} disabled={savingDateRules}
+                    className="mt-3 text-xs bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-semibold px-3 py-1.5 rounded-lg">
+                    {savingDateRules ? 'Saving…' : dateRulesSaved ? '✓ Saved' : 'Save date rules'}
+                  </button>
                 </div>
 
                 {/* Only when a groomer is in — reads that groomer's schedule (days off / hours) */}
