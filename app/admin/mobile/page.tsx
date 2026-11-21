@@ -8,6 +8,7 @@ import Image from 'next/image'
 import { TagPill, TagPicker, tagClasses, type Tag as PetTag } from '@/lib/tags'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 import { sameStaff, displayName } from '@/lib/staff-name'
+import { staffWorksOn } from '@/lib/bookable-date'
 import { stackedCoupons, restoreCoupons, promoCouponFor } from '@/lib/commission'
 
 // Dashboard-tab permissions are managed once, on the desktop admin's tab set
@@ -3506,6 +3507,9 @@ export default function AdminPage() {
                         <span className={`text-xs font-bold inline-flex items-center justify-center w-6 h-6 rounded-full
                           ${isToday ? 'bg-sky-500 text-white' : isSelected ? 'bg-sky-200 text-sky-800' : 'text-gray-700'}
                         `}>{dayNum}</span>
+                        {!isBlocked && openDays.includes(col) && staffWorksOn(staff as unknown as Parameters<typeof staffWorksOn>[0], 'Wylie', dateStr) && (
+                          <span className="ml-0.5 text-[10px] font-black text-emerald-600 bg-emerald-100 rounded px-0.5 leading-4" title="Wylie is in">W</span>
+                        )}
                       </div>
 
                       {/* Content */}

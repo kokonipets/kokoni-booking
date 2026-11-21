@@ -11,6 +11,7 @@ import RetailSell from '@/components/RetailSell'
 import { readAuthRaw, clearAuth } from '@/lib/authStorage'
 import { commissionableAmount, ratesOn, helperCut, stackedCoupons, restoreCoupons, promoCouponFor, type RateHistoryRow } from '@/lib/commission'
 import { sameStaff, canonicalStaffName } from '@/lib/staff-name'
+import { staffWorksOn } from '@/lib/bookable-date'
 
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -10275,9 +10276,14 @@ export default function DeskAdmin() {
                         <div key={dayNum} onClick={()=>setSelectedDay(isSelected?null:dateStr)}
                           className={`min-h-16 md:min-h-28 p-1 md:p-2 border-r border-b border-gray-100 last:border-r-0 transition-colors cursor-pointer ${i%7===6?'border-r-0':''}
                             ${isSelected?'bg-sky-50 ring-2 ring-inset ring-sky-300':isToday?'bg-sky-50/50':isStoreClosedDay?'bg-gray-50':'bg-white hover:bg-gray-50'}`}>
-                          <div className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full mb-1
-                            ${isToday?'bg-sky-600 text-white':isSelected?'bg-sky-500 text-white':isStoreClosedDay?'text-gray-400':'text-gray-700'}`}>
-                            {dayNum}
+                          <div className="flex items-center gap-1 mb-1">
+                            <div className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full
+                              ${isToday?'bg-sky-600 text-white':isSelected?'bg-sky-500 text-white':isStoreClosedDay?'text-gray-400':'text-gray-700'}`}>
+                              {dayNum}
+                            </div>
+                            {!isStoreClosedDay && staffWorksOn(staff as unknown as Parameters<typeof staffWorksOn>[0], 'Wylie', dateStr) && (
+                              <span className="text-xs font-black text-emerald-600 bg-emerald-100 rounded px-1 leading-4" title="Wylie is in">W</span>
+                            )}
                           </div>
                           {isStoreClosedDay ? (
                             <div className="text-xs text-gray-400 font-medium mb-0.5">Closed{blockedDay?.reason ? <span className="block font-normal text-[10px] text-gray-400 truncate">{blockedDay.reason}</span> : null}</div>
