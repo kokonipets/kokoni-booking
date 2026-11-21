@@ -346,7 +346,7 @@ export default function BookPage() {
       .then(data => { setSlotsRuleNote(ruleNoteText(data.rule)); if (Array.isArray(data.slots)) setDateSlots(data.slots) })
       .catch(() => {})
       .finally(() => setDateSlotsLoading(false))
-  }, [])
+  }, [phone])
 
   useEffect(() => {
     fetchAvailability()
