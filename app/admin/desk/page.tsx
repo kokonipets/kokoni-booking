@@ -7156,6 +7156,13 @@ export default function DeskAdmin() {
           {/* ── PET PARENTS ───────────────────────────────────────────────── */}
           {tab === 'clients' && (
             <div>
+              {/* Photo enlarge overlay (the appointment-detail sheet has its own copy) */}
+              {photoZoom && !detailAppt && typeof document !== 'undefined' && createPortal(
+                <div className="fixed inset-0 z-[400] bg-black/80 flex flex-col items-center justify-center p-4 cursor-zoom-out" onClick={() => setPhotoZoom(null)}>
+                  <img src={photoZoom.url} alt="" className="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl" />
+                  {photoZoom.name && <p className="mt-3 text-white text-lg font-semibold">{photoZoom.name}</p>}
+                  <button className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white text-xl" onClick={() => setPhotoZoom(null)}>✕</button>
+                </div>, document.body)}
               {/* ── Search bar ──────────────────────────────── */}
               <div className="flex items-center gap-4 mb-3">
                 <div className="relative flex-1 max-w-sm">
@@ -7531,20 +7538,21 @@ export default function DeskAdmin() {
 
                                         {/* Pet header */}
                                         <div className="px-4 pt-4 pb-3 flex items-start gap-4">
-                                          {/* Photo */}
+                                          {/* Photo — click the picture to enlarge; use the small 📷 badge to upload/replace */}
                                           <div className="relative group flex-shrink-0">
                                             {pet.photo_url
-                                              ? <img src={pet.photo_url} className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md" alt={pet.name} />
+                                              ? <img src={pet.photo_url} onClick={() => setPhotoZoom({ url: pet.photo_url!, name: pet.name })} className="cursor-zoom-in w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md" alt={pet.name} />
                                               : <div className="w-16 h-16 rounded-2xl bg-sky-100 flex items-center justify-center text-3xl border-2 border-white shadow-md">🐶</div>}
-                                            <label className={`absolute inset-0 rounded-2xl flex items-center justify-center cursor-pointer transition-all
-                                              ${uploadingPetId===pet.id ? 'bg-black/50' : uploadDonePetId===pet.id ? 'bg-green-500/80' : 'bg-black/0 group-hover:bg-black/40'}`}>
+                                            <label title={pet.photo_url ? 'Replace photo' : 'Upload photo'} className={pet.photo_url
+                                              ? `absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer shadow border border-gray-200 text-xs ${uploadingPetId===pet.id ? 'bg-gray-200' : uploadDonePetId===pet.id ? 'bg-green-500 text-white' : 'bg-white hover:bg-sky-50'}`
+                                              : `absolute inset-0 rounded-2xl flex items-center justify-center cursor-pointer transition-all ${uploadingPetId===pet.id ? 'bg-black/50' : uploadDonePetId===pet.id ? 'bg-green-500/80' : 'bg-black/0 group-hover:bg-black/40'}`}>
                                               <input type="file" accept="image/*" className="hidden"
                                                 onChange={e => { const f=e.target.files?.[0]; if(f) uploadPetPhoto(pet.id, f) }} />
                                               {uploadingPetId===pet.id
-                                                ? <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                                                ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                                 : uploadDonePetId===pet.id
-                                                  ? <span className="text-white text-xl font-bold">✓</span>
-                                                  : <span className="text-white text-sm opacity-0 group-hover:opacity-100">📷</span>}
+                                                  ? <span className="font-bold">✓</span>
+                                                  : <span className={pet.photo_url ? '' : 'text-white text-sm opacity-0 group-hover:opacity-100'}>📷</span>}
                                             </label>
                                           </div>
 
