@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     for (const d of dogs) {
       const dr = await checkDateServiceRule(supabase, dateStr, body.phone, d?.service)
       if (!dr.ok) {
-        return NextResponse.json({ slots: [], assignments: {}, service_day_blocked: true, message: dr.error, rule: { code: dr.code, groomer: dr.groomer ?? null } }, {
+        return NextResponse.json({ slots: [], assignments: {}, service_day_blocked: true }, {
           headers: { 'Cache-Control': 'no-store' }
         })
       }

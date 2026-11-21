@@ -182,7 +182,7 @@ export async function GET(req: NextRequest) {
     // booking pages pass a phone; admin screens see every time.
     const dr = await checkDateServiceRule(supabase, dateStr, phoneParam, serviceId)
     if (!dr.ok) {
-      return NextResponse.json({ slots: [], service_day_blocked: true, message: dr.error, rule: { code: dr.code, groomer: dr.groomer ?? null }, groomer_count: 0, booked: {} }, {
+      return NextResponse.json({ slots: [], service_day_blocked: true, groomer_count: 0, booked: {} }, {
         headers: { 'Cache-Control': 'no-store' }
       })
     }

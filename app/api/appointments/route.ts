@@ -120,7 +120,8 @@ export async function POST(req: NextRequest) {
     const sg = await checkStaffGate(supabase, date, service)
     if (!sg.ok) return NextResponse.json({ error: sg.error }, { status: 400 })
     const dr = await checkDateServiceRule(supabase, date, phone, service, { requirePhone: true })
-    if (!dr.ok) return NextResponse.json({ error: dr.error }, { status: 400 })
+    // Neutral wording on purpose — customers aren't told who the date is reserved for.
+    if (!dr.ok) return NextResponse.json({ error: 'Sorry, that date is not available. Please pick another date, or call us.' }, { status: 400 })
   }
 
   let resolvedPetId = existingPetId
