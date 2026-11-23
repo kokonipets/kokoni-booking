@@ -691,14 +691,25 @@ export default function AdminPage() {
     }, 800)
   }, [])
 
+  const apptReqRef = useRef(0)
   const fetchAppointments = useCallback(async () => {
     setLoading(true)
+    // A slow response from another tab (e.g. Requests = every upcoming booking) must never
+    // overwrite the tab the user is on now, so only the latest request is applied.
+    const reqId = ++apptReqRef.current
     try {
       // pending tab uses 'requests' to get all sections (pending + confirmed needs-staff)
       const apiStatus = tab === 'pending' ? 'requests' : tab
       const res = await fetch(`/api/admin/appointments?status=${apiStatus}`, { cache: 'no-store' })
       const data = await res.json()
-      setAppointments(data.appointments || [])
+      if (reqId !== apptReqRef.current) return
+      let list: Appointment[] = data.appointments || []
+      // Today tab: only today's bookings, whatever the server sent.
+      if (tab === 'today') {
+        const laToday = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+        list = list.filter(a => String(a.appointment_date).slice(0, 10) === laToday)
+      }
+      setAppointments(list)
       if (tab === 'pending') {
         const allAppts = data.appointments || []
         const alertCount = allAppts.filter((a: Appointment) =>
@@ -709,9 +720,9 @@ export default function AdminPage() {
         setPendingCount(alertCount)
       }
     } catch {
-      setAppointments([])
+      if (reqId === apptReqRef.current) setAppointments([])
     }
-    setLoading(false)
+    if (reqId === apptReqRef.current) setLoading(false)
   }, [tab])
 
   const fetchCalendar = useCallback(async () => {
