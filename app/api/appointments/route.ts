@@ -4,6 +4,7 @@ import { checkBookableDate, checkStaffGate, checkDateServiceRule } from '@/lib/b
 import { notifyAdminNewRequest } from '@/lib/sms'
 import { sendPushToAdmin } from '@/lib/push-notify'
 import { findBlocked } from '@/lib/blocklist'
+import { isPromoLinkDisabled } from '@/lib/promo-links'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -235,7 +236,9 @@ export async function POST(req: NextRequest) {
         console.error('Promo lookup from recent texts failed (non-blocking):', e)
       }
     }
-    const promoCode = (promoRaw || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30)
+    let promoCode = (promoRaw || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30)
+    // Promo link turned off (lib/promo-links.ts) — the coupon still works if staff pick it at checkout.
+    if (isPromoLinkDisabled(promoCode)) promoCode = ''
     if (promoCode && appointment?.id && !anonymousWalkIn) {
       try {
         const { data: coupon } = await supabase

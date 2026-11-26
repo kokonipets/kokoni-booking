@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isPromoLinkDisabled } from '@/lib/promo-links'
 
 // Promo links like /book?promo=DOUBLE11 (sent in announcements) remember the
 // code in a cookie for the rest of the booking, including after the language
@@ -11,6 +12,11 @@ function withPromo(request: NextRequest, res: NextResponse) {
   if (!raw) return res
   const code = raw.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30)
   if (!code) return res
+  // Link turned off (lib/promo-links.ts): don't remember it, and clear any old cookie for it.
+  if (isPromoLinkDisabled(code)) {
+    if (isPromoLinkDisabled(request.cookies.get(PROMO_COOKIE)?.value)) res.cookies.delete(PROMO_COOKIE)
+    return res
+  }
   res.cookies.set(PROMO_COOKIE, code, { path: '/', maxAge: 60 * 60 * 24 * 7, sameSite: 'lax', secure: true })
   return res
 }
