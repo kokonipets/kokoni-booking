@@ -2589,6 +2589,7 @@ export default function DeskAdmin() {
     if (only) setPayrollSendBusy(only)
     try {
       const { jsPDF } = await import('jspdf')
+      const { patchCjkText } = await import('@/lib/pdfCjk') // Chinese names → drawn as images
       const JSZip = (await import('jszip')).default
 
       // ── Kokoni brand palette ──
@@ -2664,7 +2665,7 @@ export default function DeskAdmin() {
       }
 
       const buildDoc = (g: GRow, coverUrl: string | null) => {
-        const doc = new jsPDF({ unit: 'pt', format: 'letter' })
+        const doc = patchCjkText(new jsPDF({ unit: 'pt', format: 'letter' }))
         const W = doc.internal.pageSize.getWidth()
         const H = doc.internal.pageSize.getHeight()
         const M = 48
@@ -2831,7 +2832,7 @@ export default function DeskAdmin() {
           for (const ch of text) {
             if (PDF_CHAR_MAP[ch]) { out += PDF_CHAR_MAP[ch]; continue }
             const code = ch.codePointAt(0) || 0
-            if (code < 0x2000 || PDF_SAFE_EXTRA.test(ch)) out += ch
+            if (code < 0x2000 || PDF_SAFE_EXTRA.test(ch) || code >= 0x2e80) out += ch // CJK kept: patchCjkText draws it
           }
           return out
         }
